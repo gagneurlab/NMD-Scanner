@@ -18,3 +18,4 @@ dependencies:
   - pyfaidx
   - biopython
   - pyranges
+  - pandas-stubs

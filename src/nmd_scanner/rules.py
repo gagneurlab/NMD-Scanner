@@ -1,25 +1,25 @@
 import pandas as pd
 import pyranges as pr
 
-def single_exon_rule(filtered_df_with_counts):
-    filtered_df_with_counts["NMD_is_single_exon"] = filtered_df_with_counts["num_exons_per_transcript"] == 1
-    return filtered_df_with_counts
-
-def long_exon_rule(filtered_df_with_counts, exon_length = 400):
-    filtered_df_with_counts["NMD_is_long_exon"] = filtered_df_with_counts["exon_length"] >= exon_length
-    return filtered_df_with_counts
-
-def last_exon_rule(filtered_df_with_counts):
-    # Ensure exon_number is numeric
-    filtered_df_with_counts["exon_number"] = pd.to_numeric(filtered_df_with_counts["exon_number"], errors="coerce")
-
-    # Compute the max exon number per transcript
-    max_exon = filtered_df_with_counts.groupby("transcript_id")["exon_number"].transform("max")
-
-    # Mark whether the exon is the last (=max) one
-    filtered_df_with_counts["NMD_is_last_exon"] = filtered_df_with_counts["exon_number"] == max_exon
-
-    return filtered_df_with_counts
+# def single_exon_rule(filtered_df_with_counts):
+#     filtered_df_with_counts["NMD_is_single_exon"] = filtered_df_with_counts["num_exons_per_transcript"] == 1
+#     return filtered_df_with_counts
+#
+# def long_exon_rule(filtered_df_with_counts, exon_length = 400):
+#     filtered_df_with_counts["NMD_is_long_exon"] = filtered_df_with_counts["exon_length"] >= exon_length
+#     return filtered_df_with_counts
+#
+# def last_exon_rule(filtered_df_with_counts):
+#     # Ensure exon_number is numeric
+#     filtered_df_with_counts["exon_number"] = pd.to_numeric(filtered_df_with_counts["exon_number"], errors="coerce")
+#
+#     # Compute the max exon number per transcript
+#     max_exon = filtered_df_with_counts.groupby("transcript_id")["exon_number"].transform("max")
+#
+#     # Mark whether the exon is the last (=max) one
+#     filtered_df_with_counts["NMD_is_last_exon"] = filtered_df_with_counts["exon_number"] == max_exon
+#
+#     return filtered_df_with_counts
 
 # Main extract PTC script:
 def extract_PTC(cds_df, hg38_example, fasta, exons_df):
@@ -570,8 +570,9 @@ def analyze_transcript(results_df):
 
     return df
 
-
+# TODO: test analysis of rules
 def evaluate_nmd_escape_rules(row):
+
     # Only relevant for premature stop codons
     if not row.get("alt_is_premature"):
         return {

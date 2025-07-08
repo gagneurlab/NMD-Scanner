@@ -3,9 +3,11 @@ from nmd_scanner.scan import *
 from nmd_scanner.rules import *
 from nmd_scanner.analyze_gtf import *
 
+# TODO: add argument output file
 def main(vcf_path, gtf_path, fasta_path):
 
     # read VCF directory or file
+    # TODO: read only one VCF file
     vcf_files, is_single_file = list_vcf_files(vcf_path)
     if is_single_file:
         print(f"Processing single VCF file: {vcf_files[0]}")
@@ -62,7 +64,7 @@ if __name__ == '__main__':
     parser.add_argument('--vcf', required=True, help='Path to VCF file or directory')
     parser.add_argument('--gtf', required=True, help='Path to GTF file')
     parser.add_argument('--fasta', required=True, help='Path to FASTA file')
-    parser.add_argument('--output', required=False, help='Path to output results Directory')
+    parser.add_argument('--output', required=False, help='Path to output results File')
     args = parser.parse_args()
 
     main(args.vcf, args.gtf, args.fasta, args.output)
