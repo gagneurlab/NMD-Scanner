@@ -3,7 +3,6 @@ from nmd_scanner.scan import *
 from nmd_scanner.rules import *
 from nmd_scanner.analyze_gtf import *
 
-# TODO: add argument output file
 def main(vcf_path, gtf_path, fasta_path, output):
 
     # read VCF file
