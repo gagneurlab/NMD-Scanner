@@ -51,6 +51,6 @@ def test_read_fasta_file(fasta_path):
     fasta = nmd_scanner.scan.read_fasta(fasta_path)
     assert fasta is not None
 
-    keys = list(fasta.keys())  # convert to list for safety
+    keys = list(fasta.keys())
     assert isinstance(keys, list)
     assert len(keys) > 0
