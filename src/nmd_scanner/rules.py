@@ -1,55 +1,60 @@
 import pandas as pd
 import pyranges as pr
-
-# def single_exon_rule(filtered_df_with_counts):
-#     filtered_df_with_counts["NMD_is_single_exon"] = filtered_df_with_counts["num_exons_per_transcript"] == 1
-#     return filtered_df_with_counts
-#
-# def long_exon_rule(filtered_df_with_counts, exon_length = 400):
-#     filtered_df_with_counts["NMD_is_long_exon"] = filtered_df_with_counts["exon_length"] >= exon_length
-#     return filtered_df_with_counts
-#
-# def last_exon_rule(filtered_df_with_counts):
-#     # Ensure exon_number is numeric
-#     filtered_df_with_counts["exon_number"] = pd.to_numeric(filtered_df_with_counts["exon_number"], errors="coerce")
-#
-#     # Compute the max exon number per transcript
-#     max_exon = filtered_df_with_counts.groupby("transcript_id")["exon_number"].transform("max")
-#
-#     # Mark whether the exon is the last (=max) one
-#     filtered_df_with_counts["NMD_is_last_exon"] = filtered_df_with_counts["exon_number"] == max_exon
-#
-#     return filtered_df_with_counts
+from Bio.Seq import Seq
 
 # Main extract PTC script:
-def extract_PTC(cds_df, hg38_example, fasta, exons_df):
-    #intersection = transcripts.join(hg38_example, how=None, suffix="_variant")
-    #df = intersection.df
-
-    # Drop duplicates to get one strand per transcript_id
-    #transcript_strands = df[["transcript_id", "Strand"]].drop_duplicates()
-
-    # Optionally, convert to a dictionary: {transcript_id: strand}
-    #transcript_strand_dict = dict(zip(transcript_strands["transcript_id"], transcript_strands["Strand"]))
+def extract_ptc(cds_df, hg38_example, fasta, exons_df):
 
     cds_df_test = adjust_last_cds_for_stop_codon(cds_df)
+    print("Adjusting last CDS for stop codon: done.")
 
     intersection_test = pr.PyRanges(cds_df_test).join(hg38_example, how=None,
                                                       suffix="_variant").df  # test with two transcript example
+    print("Joining variants with cds entries: done.")
 
     df3 = intersection_test.copy()
-    df3["Exon_CDS_seq"] = df3.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
+    # df3["Exon_CDS_seq"] = df3.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
+    df3["Exon_CDS_seq"] = [
+        fasta[chrom][start:end].seq.upper()
+        for chrom, start, end in zip(df3["Chromosome"], df3["Start"], df3["End"])
+    ]
+    print("Creating exon CDS sequence: done.")
 
     df3[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = df3.apply(
         apply_variant_edge_aware_with_lengths,
         axis=1
     )
+    print("Creating exon CDS and alt CDS sequence: done.")
+
+    # make output file of df3 and save in resources/test_output_files
+    df3.to_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t", index=False)
+    print("Creating resources/test_output_files/variant_exon_output.tsv: done.")
+
+    relevant_transcripts = df3["transcript_id"].unique() # only look at for us relevant transcripts because otherwise too much time
+
+    cds_df_test = cds_df_test[cds_df_test["transcript_id"].isin(relevant_transcripts)].copy()
+    # cds_df_test["Exon_CDS_seq"] = cds_df_test.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
+    cds_df_test["Exon_CDS_seq"] = [
+        fasta[chrom][start:end].seq.upper()
+        for chrom, start, end in zip(cds_df_test["Chromosome"], cds_df_test["Start"], cds_df_test["End"])
+    ]
+    print("Creating exon CDS sequence for all exons for transcripts in df3: done.")
 
     # get reference sequence
-    results_df = create_reference_CDS(df3, cds_df_test)
+    results_df = create_reference_cds(df3, cds_df_test)
+    print("Create reference CDS: done.")
+    # make output file of results_df
+    results_df.to_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t", index=False)
+    print("Creating resources/test_output_files/create_reference_CDS.tsv: done.")
+
+    exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy() # filter for relevant transcripts to speed up process
 
     # get transcript sequence
     exon_seqs = get_transcript_sequence(exons_df, fasta)
+    print("Get transcript sequence: done.")
+    # make output file of exon_seqs
+    exon_seqs.to_csv("resources/test_output_files/transcript_sequences.tsv", sep="\t", index=False)
+    print("Creating resources/test_output_files/transcript_sequences.tsv: done.")
 
     # check if the CDS sequences we generated before are contained in the transcript sequence,
     # so I know whether the transcript sequence was computed correctly
@@ -73,10 +78,12 @@ def extract_PTC(cds_df, hg38_example, fasta, exons_df):
     analysis_df = analyze_sequence(results_df)
     loss_df = start_stop_loss(analysis_df) # instead of loss_analysis_df (test for start stop loss)
 
+    print("Analyzing sequence: done.")
+
 
     # 2. Step: loop through the dataframe and check for start_loss or stop_loss and handle it
     # transcript sequences are in: exon_seqs_subset
-
+    print("Analysis of start stop loss.")
     # add information such as transcript start and end
     transcript_starts = exon_seqs.set_index("transcript_id")["start"].to_dict()
     loss_df["transcript_start"] = loss_df["transcript_id"].map(transcript_starts)
@@ -84,7 +91,7 @@ def extract_PTC(cds_df, hg38_example, fasta, exons_df):
     transcript_ends = exon_seqs.set_index("transcript_id")["end"].to_dict()
     loss_df["transcript_end"] = loss_df["transcript_id"].map(transcript_ends)
 
-    # add trancript sequence to loss_df
+    # add transcript sequence to loss_df
     transcript_sequences = exon_seqs.set_index("transcript_id")[
         "transcript_sequence"].to_dict()  # create map of transcript-id to transcript sequence
     loss_df["transcript_seq"] = loss_df["transcript_id"].map(transcript_sequences)
@@ -110,13 +117,19 @@ def extract_PTC(cds_df, hg38_example, fasta, exons_df):
 
     # Analyze transcript sequence in case of start or stop loss
     analyze_transcript_df = analyze_transcript(loss_df)
-
+    # save result
+    analyze_transcript_df.to_csv("resources/test_output_files/final_ptc_analysis.tsv", sep="\t", index=False)
+    print("Save results in: resources/test_output_files/final_ptc_analysis.tsv.")
 
     return analyze_transcript_df # (?)
 
 
 # Functions used for extracting PTC:
+
 def adjust_last_cds_for_stop_codon(df, exon_col="exon_number", transcript_col="transcript_id"):
+
+    # We need to adjust the positions, because the stop codon is not in the sequence
+
     df = df.copy()
 
     # Search for the last exon in a transcript
@@ -209,7 +222,10 @@ def apply_variant_edge_aware_with_lengths(row):
     })
 
 
-def create_reference_CDS(df3, cds_df_test):
+def create_reference_cds(df3, cds_df_test):
+
+    # Function that creates the whole CDS sequence (multiple exons) per incorporated variant, with exon info etc.
+
     results = []
 
     for transcript_id, var_df in df3.groupby("transcript_id"):  # Only transcripts with a variant
@@ -570,7 +586,6 @@ def analyze_transcript(results_df):
 
     return df
 
-# TODO: test analysis of rules
 def evaluate_nmd_escape_rules(row):
 
     # Only relevant for premature stop codons

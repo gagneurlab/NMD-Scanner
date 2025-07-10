@@ -1,9 +1,6 @@
 # Import dependencies
-import os
-import tempfile
 import pytest
 import nmd_scanner
-import gzip
 
 # pytest-fixtures as inputs for the tests
 
