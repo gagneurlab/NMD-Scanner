@@ -3,6 +3,7 @@ import pyranges as pr
 from Bio.Seq import Seq
 
 # Main extract PTC script:
+
 def extract_ptc(cds_df, hg38_example, fasta, exons_df):
 
     cds_df_test = adjust_last_cds_for_stop_codon(cds_df)
@@ -39,6 +40,7 @@ def extract_ptc(cds_df, hg38_example, fasta, exons_df):
         for chrom, start, end in zip(cds_df_test["Chromosome"], cds_df_test["Start"], cds_df_test["End"])
     ]
     print("Creating exon CDS sequence for all exons for transcripts in df3: done.")
+    cds_df_test.to_csv("resources/test_output_files/cds_df_test.tsv", sep="\t", index=False)
 
     # get reference sequence
     results_df = create_reference_cds(df3, cds_df_test)
@@ -221,7 +223,6 @@ def apply_variant_edge_aware_with_lengths(row):
         "Exon_Alt_CDS_length": len(alt_seq)
     })
 
-
 def create_reference_cds(df3, cds_df_test):
 
     # Function that creates the whole CDS sequence (multiple exons) per incorporated variant, with exon info etc.
@@ -353,7 +354,7 @@ def get_transcript_sequence(exons_df, fasta):
             ends.append(end)
 
             # Fetch exon sequence from fasta reference genome
-            exon_seq = fasta[chrom][start:end].seq
+            exon_seq = fasta[chrom][start:end] #.seq
             exon_seq_str = str(exon_seq).upper()
             seq_parts.append(exon_seq_str)
 
@@ -381,7 +382,6 @@ def get_transcript_sequence(exons_df, fasta):
     exon_seqs = pd.DataFrame(exon_data)
     return(exon_seqs)
 
-
 def get_exon(cds_pos, exon_info):
     """
     Map a CDS-relative position to the corresponding exon number using exon_info,
@@ -393,7 +393,6 @@ def get_exon(cds_pos, exon_info):
             return exon_number
         pos_counter += exon_length
     return exon_info[-1][0]  # fallback
-
 
 def analyze_sequence(results_df):
     valid_stop_codons = {"TAA", "TAG", "TGA"}
@@ -498,7 +497,6 @@ def splice_alt_cds_into_transcript(row, transcript_seq):
     )
 
     return new_transcript_seq
-
 
 def analyze_transcript(results_df):
     valid_stop_codons = {"TAA", "TAG", "TGA"}

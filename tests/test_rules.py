@@ -50,15 +50,183 @@ def test_apply_variant_edge_aware_with_lengths():
         assert row["Exon_Alt_CDS_length"] == row[
             "Exon_Alt_CDS_length_actual"], f"Mismatch in Alt_CDS_length at row {i}"
 
-    print("All variant edge-aware tests passed using the precomputed input/output files.")
+def test_create_reference_cds_using_file():
+    # Load expected output
+    expected = pd.read_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t")
+
+    # Load df3 and cds_df_test from the previous step of your pipeline
+    df3 = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
+    cds_df_test = pd.read_csv("resources/test_output_files/cds_df_test.tsv",sep="\t")
+
+    # Run the function
+    actual = create_reference_cds(df3, cds_df_test)
+
+    # Sort both for consistent comparison
+    expected_sorted = expected.sort_values(["transcript_id", "variant_id"]).reset_index(drop=True)
+    actual_sorted = actual.sort_values(["transcript_id", "variant_id"]).reset_index(drop=True)
+
+    # Compare critical columns
+    columns_to_check = [
+        "transcript_id", "variant_id",
+        "ref_cds_seq", "alt_cds_seq",
+        "ref_cds_len", "alt_cds_len",
+        "strand", "ref", "alt"
+    ]
+
+    for col in columns_to_check:
+        assert all(expected_sorted[col] == actual_sorted[col]), f"Mismatch in column: {col}"
 
 def test_create_reference_cds():
-    # TODO
-    assert None
+    # create example dataframe
+    cds_df_test = pd.DataFrame({
+        "transcript_id": ["tx1"] * 5,
+        "exon_number": [2, 3, 4, 5, 6],
+        "Chromosome": ["chr1"] * 5,
+        "Start": [100, 200, 300, 400, 500],
+        "End": [150, 250, 350, 450, 550],
+        "Strand": ["+" for _ in range(5)],
+        "Exon_CDS_seq": ["AAA", "CCC", "GGG", "TTT", "AAA"]
+    })
+
+    # Variant 1: SNP on exon 3
+    variant_snp = {
+        "transcript_id": "tx1",
+        "exon_number": 3,
+        "Chromosome": "chr1",
+        "Start": 200,
+        "End": 250,
+        "Strand": "+",
+        "ID": "var_snp",
+        "Start_variant": 210,
+        "End_variant": 211,
+        "Ref": "C",
+        "Alt": "T",
+        "Exon_Alt_CDS_seq": "CCT"  # Same length
+    }
+
+    # Variant 2: Insertion on exon 4
+    variant_ins = {
+        "transcript_id": "tx1",
+        "exon_number": 4,
+        "Chromosome": "chr1",
+        "Start": 300,
+        "End": 350,
+        "Strand": "+",
+        "ID": "var_ins",
+        "Start_variant": 325,
+        "End_variant": 325,
+        "Ref": "-",
+        "Alt": "A",
+        "Exon_Alt_CDS_seq": "GGGA"  # Inserted A
+    }
+
+    # Variant 3: Deletion on exon 5
+    variant_del = {
+        "transcript_id": "tx1",
+        "exon_number": 5,
+        "Chromosome": "chr1",
+        "Start": 400,
+        "End": 450,
+        "Strand": "+",
+        "ID": "var_del",
+        "Start_variant": 440,
+        "End_variant": 441,
+        "Ref": "T",
+        "Alt": "-",
+        "Exon_Alt_CDS_seq": "TT"  # One T removed
+    }
+
+    # Variant 4: Deletion spanning exon 3 to 4
+    spanning_del_3_4 = [
+        {
+            "transcript_id": "tx1",
+            "exon_number": 3,
+            "Chromosome": "chr1",
+            "Start": 200,
+            "End": 250,
+            "Strand": "+",
+            "ID": "var_spanning",
+            "Start_variant": 240,
+            "End_variant": 310,
+            "Ref": "CCGG",
+            "Alt": "-",
+            "Exon_Alt_CDS_seq": "C"  # Shortened version
+        },
+        {
+            "transcript_id": "tx1",
+            "exon_number": 4,
+            "Chromosome": "chr1",
+            "Start": 300,
+            "End": 350,
+            "Strand": "+",
+            "ID": "var_spanning",
+            "Start_variant": 240,
+            "End_variant": 310,
+            "Ref": "CCGG",
+            "Alt": "-",
+            "Exon_Alt_CDS_seq": "G"  # Shortened version
+        }
+    ]
+
+    # Combine all variants
+    df3 = pd.DataFrame([variant_snp, variant_ins, variant_del] + spanning_del_3_4)
+
+    # Run the function
+    result = create_reference_cds(df3, cds_df_test)
+
+    # Reference CDS sequence
+    ref_seq = "AAACCCGGGTTTAAA"
+    ref_len = len(ref_seq)
+
+    for _, row in result.iterrows():
+        assert row["ref_cds_seq"] == ref_seq
+        assert row["ref_cds_len"] == ref_len
+
+    alt_seqs = {row["variant_id"]: row["alt_cds_seq"] for _, row in result.iterrows()}
+    alt_lens = {row["variant_id"]: row["alt_cds_len"] for _, row in result.iterrows()}
+
+    # Variant-specific checks
+    assert alt_seqs["var_snp"] == "AAACCTGGGTTTAAA"
+    assert alt_lens["var_snp"] == ref_len
+
+    assert alt_seqs["var_ins"] == "AAACCCGGGATTTAAA"
+    assert alt_lens["var_ins"] == ref_len + 1
+
+    assert alt_seqs["var_del"] == "AAACCCGGGTTAAA"
+    assert alt_lens["var_del"] == ref_len - 1
+
+    assert alt_seqs["var_spanning"] == "AAACGTTTAAA"
+    assert alt_lens["var_spanning"] == ref_len - 4
 
 def test_get_transcript_sequence():
-    # TODO
-    assert None
+    fasta = {"chr1": "AAAAAAAAAACCCCCCCCCCCCCCCCCCCCGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"} # ("A" * 10 + "C" * 20 + "G" * 30 + "T" * 40)
+
+    exons_df = pd.DataFrame([
+        {"transcript_id": "tx1", "exon_number": 1, "Chromosome": "chr1", "Start": 10, "End": 13, "Strand": "+"},
+        {"transcript_id": "tx1", "exon_number": 2, "Chromosome": "chr1", "Start": 20, "End": 24, "Strand": "+"},
+        {"transcript_id": "tx1", "exon_number": 3, "Chromosome": "chr1", "Start": 30, "End": 35, "Strand": "+"},
+
+        {"transcript_id": "tx2", "exon_number": 1, "Chromosome": "chr1", "Start": 40, "End": 43, "Strand": "-"},
+        {"transcript_id": "tx2", "exon_number": 2, "Chromosome": "chr1", "Start": 50, "End": 53, "Strand": "-"},
+        {"transcript_id": "tx2", "exon_number": 3, "Chromosome": "chr1", "Start": 60, "End": 63, "Strand": "-"},
+    ])
+
+    # Run function
+    transcript_df = get_transcript_sequence(exons_df, fasta)
+
+    # Check tx1
+    tx1 = transcript_df[transcript_df["transcript_id"] == "tx1"].iloc[0]
+    expected_tx1_seq = "CCCCCCCGGGGG"
+    assert tx1["transcript_sequence"] == expected_tx1_seq
+    assert tx1["transcript_length"] == len(expected_tx1_seq)
+    assert tx1["transcript_exon_info"] == [(1, 3), (2, 4), (3, 5)]
+
+    # Check tx2
+    tx2 = transcript_df[transcript_df["transcript_id"] == "tx2"].iloc[0]
+    expected_tx2_seq = "AAACCCCCC" # reverse complement of "GGGGGGTTT"
+    assert tx2["transcript_sequence"] == expected_tx2_seq
+    assert tx2["transcript_length"] == len(expected_tx2_seq)
+    assert tx2["transcript_exon_info"] == [(3, 3), (2, 3), (1, 3)]  # reversed for minus strand
 
 def test_get_exon():
     exon_info = [(1, 10), (2, 20), (3, 30)]
@@ -88,8 +256,8 @@ def test_start_stop_loss():
         "alt_last_codon": "GGA"
     }])
     result = start_stop_loss(df)
-    assert result["start_loss"].iloc[0] is True
-    assert result["stop_loss"].iloc[0] is True
+    assert result["start_loss"].iloc[0] == True
+    assert result["stop_loss"].iloc[0] == True
 
 def test_splice_alt_cds_into_transcript():
     row = {
