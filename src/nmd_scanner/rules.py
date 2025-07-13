@@ -6,44 +6,43 @@ from Bio.Seq import Seq
 
 def extract_ptc(cds_df, hg38_example, fasta, exons_df):
 
-    cds_df_test = adjust_last_cds_for_stop_codon(cds_df)
+    cds_df_adj = adjust_last_cds_for_stop_codon(cds_df)
     print("Adjusting last CDS for stop codon: done.")
 
-    intersection_test = pr.PyRanges(cds_df_test).join(hg38_example, how=None,
-                                                      suffix="_variant").df  # test with two transcript example
+    intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(hg38_example, how=None,suffix="_variant").df
     print("Joining variants with cds entries: done.")
 
-    df3 = intersection_test.copy()
+    # intersection = intersection_test.copy()
     # df3["Exon_CDS_seq"] = df3.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    df3["Exon_CDS_seq"] = [
+    intersection_cds_vcf["Exon_CDS_seq"] = [
         fasta[chrom][start:end].seq.upper()
-        for chrom, start, end in zip(df3["Chromosome"], df3["Start"], df3["End"])
+        for chrom, start, end in zip(intersection_cds_vcf["Chromosome"], intersection_cds_vcf["Start"], intersection_cds_vcf["End"])
     ]
     print("Creating exon CDS sequence: done.")
 
-    df3[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = df3.apply(
+    intersection_cds_vcf[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = intersection_cds_vcf.apply(
         apply_variant_edge_aware_with_lengths,
         axis=1
     )
     print("Creating exon CDS and alt CDS sequence: done.")
 
     # make output file of df3 and save in resources/test_output_files
-    df3.to_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t", index=False)
+    intersection_cds_vcf.to_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t", index=False)
     print("Creating resources/test_output_files/variant_exon_output.tsv: done.")
 
-    relevant_transcripts = df3["transcript_id"].unique() # only look at for us relevant transcripts because otherwise too much time
+    relevant_transcripts = intersection_cds_vcf["transcript_id"].unique() # only look at for us relevant transcripts because otherwise too much time
 
-    cds_df_test = cds_df_test[cds_df_test["transcript_id"].isin(relevant_transcripts)].copy()
-    # cds_df_test["Exon_CDS_seq"] = cds_df_test.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    cds_df_test["Exon_CDS_seq"] = [
+    cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
+    # cds_df_adj["Exon_CDS_seq"] = cds_df_adj.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
+    cds_df_adj["Exon_CDS_seq"] = [
         fasta[chrom][start:end].seq.upper()
-        for chrom, start, end in zip(cds_df_test["Chromosome"], cds_df_test["Start"], cds_df_test["End"])
+        for chrom, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
     ]
     print("Creating exon CDS sequence for all exons for transcripts in df3: done.")
-    cds_df_test.to_csv("resources/test_output_files/cds_df_test.tsv", sep="\t", index=False)
+    cds_df_adj.to_csv("resources/test_output_files/cds_df_adj.tsv", sep="\t", index=False)
 
     # get reference sequence
-    results_df = create_reference_cds(df3, cds_df_test)
+    results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
     print("Create reference CDS: done.")
     # make output file of results_df
     results_df.to_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t", index=False)
@@ -54,6 +53,7 @@ def extract_ptc(cds_df, hg38_example, fasta, exons_df):
     # get transcript sequence
     exon_seqs = get_transcript_sequence(exons_df, fasta)
     print("Get transcript sequence: done.")
+
     # make output file of exon_seqs
     exon_seqs.to_csv("resources/test_output_files/transcript_sequences.tsv", sep="\t", index=False)
     print("Creating resources/test_output_files/transcript_sequences.tsv: done.")
@@ -223,13 +223,13 @@ def apply_variant_edge_aware_with_lengths(row):
         "Exon_Alt_CDS_length": len(alt_seq)
     })
 
-def create_reference_cds(df3, cds_df_test):
+def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
     # Function that creates the whole CDS sequence (multiple exons) per incorporated variant, with exon info etc.
 
     results = []
 
-    for transcript_id, var_df in df3.groupby("transcript_id"):  # Only transcripts with a variant
+    for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id"):  # Only transcripts with a variant
 
         # 1. Get reference exons
         ref_exons = cds_df_test[cds_df_test["transcript_id"] == transcript_id].copy()
@@ -243,7 +243,6 @@ def create_reference_cds(df3, cds_df_test):
         ref_seq = "".join(ref_exons["Exon_CDS_seq"].tolist())
 
         ######
-        # TODO: save exon lengths for ref seq --> what we do here is to save the cds chunk lengths I think
         # ref_cds_lengths = [len(seq) for seq in ref_exons["Exon_CDS_seq"].tolist()]
         ref_cds_info = [
             (row["exon_number"], len(row["Exon_CDS_seq"]))
@@ -272,7 +271,6 @@ def create_reference_cds(df3, cds_df_test):
             alt_exons = alt_exons.sort_values("Start")
 
             ######
-            # TODO: save exon lengths for alt seq --> what we do here is to save the cds chunk lengths I think
             # alt_cds_lengths = [len(seq) for seq in alt_exons["Exon_CDS_seq"].tolist()]
             alt_cds_info = [
                 (row["exon_number"], len(row["Exon_CDS_seq"]))
@@ -499,6 +497,9 @@ def splice_alt_cds_into_transcript(row, transcript_seq):
     return new_transcript_seq
 
 def analyze_transcript(results_df):
+
+    # function to analyze the alternative transcript sequence in case of start or stop loss
+
     valid_stop_codons = {"TAA", "TAG", "TGA"}
     start_codon = "ATG"
 
@@ -553,7 +554,7 @@ def analyze_transcript(results_df):
 
                     break
 
-                    # STOP LOSS rescue search
+        # STOP LOSS rescue search
         elif row["stop_loss"]:
             # Start at cds_stop, scan codons in frame to end --> lets start at cds start so we are in frame
             for i in range(cds_start, len(seq) - 2, 3):

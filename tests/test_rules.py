@@ -1,9 +1,5 @@
-import pytest
-import pandas as pd
-import pysam
-import csv
+# Import dependencies
 from nmd_scanner.rules import *
-from pathlib import Path
 
 def test_adjust_last_cds_for_stop_codon():
     df = pd.DataFrame({
@@ -25,7 +21,6 @@ def test_adjust_last_cds_for_stop_codon():
     tx2_last = adjusted[(adjusted.transcript_id == "tx2") & (adjusted.exon_number == 3)].iloc[0]
     assert tx2_last["Start"] == 897  # 900 - 3
     assert tx2_last["End"] == 950
-
 
 def test_apply_variant_edge_aware_with_lengths():
     # need to keep in mind all the cases (variant goes over start or end of exon, indels, SNPs)
@@ -270,9 +265,176 @@ def test_splice_alt_cds_into_transcript():
     assert result == "TTTAAATTTCCCGGG"
 
 def test_analyze_transcript():
-    # TODO
-    assert None
+    def test_analyze_transcript_basic():
+        df = pd.DataFrame([
+            {
+                "alt_transcript_seq": "CCCATGAAATAATAGGGG",  # ATG at pos 3, TAA at 9, TAG at 12
+                "alt_cds_start": 0,
+                "transcript_start": 0,
+                "transcript_exon_info": [
+                    (1, 10, 0, 10),
+                    (2, 10, 10, 20)
+                ],
+                "start_loss": True,
+                "stop_loss": False
+            }
+        ])
+
+        result = analyze_transcript(df)
+
+        # Check values
+        row = result.loc[0]
+        assert row["transcript_start_codon_pos"] == 3
+        assert row["transcript_start_codon_exon"] == 1
+        assert row["transcript_first_stop_codon"] == "TAA"
+        assert row["transcript_first_stop_pos"] == 9
+        assert row["transcript_last_codon"] == "GGG"
+        assert row["transcript_valid_stop"] is False
+        assert row["transcript_num_stop_codons"] == 2
+        assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
+        assert row["transcript_stop_codon_exons"] == [1, 2]
 
 def test_evaluate_nmd_escape_rules():
-    # TODO
-    assert None
+
+    # Example 1: Single exon rule
+    row2 = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 90,
+        "alt_stop_codon_exons": [1],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [
+            (1, 100)
+        ]
+    }
+
+    result = evaluate_nmd_escape_rules(row2)
+    assert result["nmd_single_exon_rule"] == True
+    assert result["nmd_last_exon_rule"] == False
+    assert result["nmd_50nt_penultimate_rule"] == False
+    assert result["nmd_long_exon_rule"] == False
+    assert result["nmd_start_proximal_rule"] == True
+    assert result["nmd_escape"] == True
+
+    # Example 2: Last exon rule
+    row = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 250,
+        "alt_stop_codon_exons": [3],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [
+            (1, 100),
+            (2, 100),
+            (3, 100)
+        ]
+    }
+
+    result = evaluate_nmd_escape_rules(row)
+    assert result["nmd_single_exon_rule"] == False
+    assert result["nmd_last_exon_rule"] == True
+    assert result["nmd_50nt_penultimate_rule"] == False
+    assert result["nmd_long_exon_rule"] == False
+    assert result["nmd_start_proximal_rule"] == False
+    assert result["nmd_escape"] == True
+
+    # Example 3: 50nt from penultimate exon end
+    row = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 160,
+        "alt_stop_codon_exons": [2],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [
+            (1, 100),
+            (2, 100),
+            (3, 100)
+        ]
+    }
+
+    result = evaluate_nmd_escape_rules(row)
+    assert result["nmd_single_exon_rule"] == False
+    assert result["nmd_last_exon_rule"] == False
+    assert result["nmd_50nt_penultimate_rule"] == True
+    assert result["nmd_long_exon_rule"] == False
+    assert result["nmd_start_proximal_rule"] == False
+    assert result["nmd_escape"] == True
+
+    # Example 4: Long exon rule
+    row = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 300,
+        "alt_stop_codon_exons": [2],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [
+            (1, 100),
+            (2, 500),
+            (3, 100)
+        ]
+    }
+
+    result = evaluate_nmd_escape_rules(row)
+    assert result["nmd_single_exon_rule"] == False
+    assert result["nmd_last_exon_rule"] == False
+    assert result["nmd_50nt_penultimate_rule"] == False
+    assert result["nmd_long_exon_rule"] == True
+    assert result["nmd_start_proximal_rule"] == False
+    assert result["nmd_escape"] == True
+
+    # Example 5: Start-proximal rule
+    row = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 100,
+        "alt_stop_codon_exons": [2],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [
+            (1, 100),
+            (2, 100)
+        ]
+    }
+
+    result = evaluate_nmd_escape_rules(row)
+    assert result["nmd_single_exon_rule"] == False
+    assert result["nmd_last_exon_rule"] == True
+    assert result["nmd_50nt_penultimate_rule"] == False
+    assert result["nmd_long_exon_rule"] == False
+    assert result["nmd_start_proximal_rule"] == True
+    assert result["nmd_escape"] == True
+
+    # Example 6: multiple escape rules
+    row = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 145,
+        "alt_stop_codon_exons": [3],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [
+            (1, 100),
+            (2, 100),
+            (3, 500)
+        ]
+    }
+
+    result = evaluate_nmd_escape_rules(row)
+    assert result["nmd_single_exon_rule"] == False
+    assert result["nmd_last_exon_rule"] == True
+    assert result["nmd_50nt_penultimate_rule"] == False
+    assert result["nmd_long_exon_rule"] == True
+    assert result["nmd_start_proximal_rule"] == True
+    assert result["nmd_escape"] == True
+
+    # Example 7: Not premature → should skip
+    row3 = {
+        "alt_is_premature": False,
+        "alt_first_stop_pos": 150,
+        "alt_stop_codon_exons": [2],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [
+            (1, 100),
+            (2, 100)
+        ]
+    }
+
+    result = evaluate_nmd_escape_rules(row3)
+    assert result["nmd_single_exon_rule"] == False
+    assert result["nmd_last_exon_rule"] == False
+    assert result["nmd_50nt_penultimate_rule"] == False
+    assert result["nmd_long_exon_rule"] == False
+    assert result["nmd_start_proximal_rule"] == False
+    assert result["nmd_escape"] == False
