@@ -40,7 +40,7 @@ def main(vcf_path, gtf_path, fasta_path, output):
 
     # Apply the NMD rules
     print("Extracting PTCs and evaluating NMD escape rules...")
-    results = extract_ptc(cds_df, vcf, fasta, exons_df)
+    results = extract_ptc(cds_df, vcf, fasta, exons_df, output)
     nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
     results = pd.concat([results, nmd_results], axis=1)
 

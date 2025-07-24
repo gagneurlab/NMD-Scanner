@@ -1,23 +1,37 @@
 import pandas as pd
 import pyranges as pr
 from Bio.Seq import Seq
+import os
+from nmd_scanner import catch_sequence
+
 
 # Main extract PTC script:
 
-def extract_ptc(cds_df, hg38_example, fasta, exons_df):
+def extract_ptc(cds_df, vcf, fasta, exons_df, output):
 
     cds_df_adj = adjust_last_cds_for_stop_codon(cds_df)
     print("Adjusting last CDS for stop codon: done.")
 
-    intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(hg38_example, how=None,suffix="_variant").df
+    intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
     print("Joining variants with cds entries: done.")
+
+    ##########################################################################################
+    # fix minus strand variants (only for TCGA VCF!)
+    # Fix REF and ALT for minus-strand CDSs
+    #mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
+    #intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
+    #    lambda seq: str(Seq(seq).reverse_complement()))
+    #intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
+    #    lambda seq: str(Seq(seq).reverse_complement()))
+    ##########################################################################################
 
     # intersection = intersection_test.copy()
     # df3["Exon_CDS_seq"] = df3.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    intersection_cds_vcf["Exon_CDS_seq"] = [
-        fasta[chrom][start:end].seq.upper()
-        for chrom, start, end in zip(intersection_cds_vcf["Chromosome"], intersection_cds_vcf["Start"], intersection_cds_vcf["End"])
-    ]
+    #intersection_cds_vcf["Exon_CDS_seq"] = [
+    #    fasta[chrom][start:end].seq.upper()
+    #    for chrom, start, end in zip(intersection_cds_vcf["Chromosome"], intersection_cds_vcf["Start"], intersection_cds_vcf["End"])
+    #]
+    intersection_cds_vcf = catch_sequence.add_exon_cds_sequence(intersection_cds_vcf, fasta) # for faster access
     print("Creating exon CDS sequence: done.")
 
     intersection_cds_vcf[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = intersection_cds_vcf.apply(
@@ -27,26 +41,30 @@ def extract_ptc(cds_df, hg38_example, fasta, exons_df):
     print("Creating exon CDS and alt CDS sequence: done.")
 
     # make output file of df3 and save in resources/test_output_files
-    intersection_cds_vcf.to_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t", index=False)
-    print("Creating resources/test_output_files/variant_exon_output.tsv: done.")
+    output_path = os.path.join(output, "variant_exon_output.tsv")
+    intersection_cds_vcf.to_csv(output_path, sep="\t", index=False)
+    print(f"Creating {output_path}: done.")
 
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique() # only look at for us relevant transcripts because otherwise too much time
 
     cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
     # cds_df_adj["Exon_CDS_seq"] = cds_df_adj.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    cds_df_adj["Exon_CDS_seq"] = [
-        fasta[chrom][start:end].seq.upper()
-        for chrom, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
-    ]
-    print("Creating exon CDS sequence for all exons for transcripts in df3: done.")
-    cds_df_adj.to_csv("resources/test_output_files/cds_df_adj.tsv", sep="\t", index=False)
+    #cds_df_adj["Exon_CDS_seq"] = [
+    #    fasta[chrom][start:end].seq.upper()
+    #    for chrom, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
+    #]
+    cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta) # for faster access
+    output_path = os.path.join(output, "cds_df_adj.tsv")
+    cds_df_adj.to_csv(output_path, sep="\t", index=False)
+    print(f"Creating exon CDS sequence for all exons for transcripts in df3: done. Saved in: {output_path}")
 
     # get reference sequence
     results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
     print("Create reference CDS: done.")
     # make output file of results_df
-    results_df.to_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t", index=False)
-    print("Creating resources/test_output_files/create_reference_CDS.tsv: done.")
+    output_path = os.path.join(output, "create_reference_CDS.tsv")
+    results_df.to_csv(output_path, sep="\t", index=False)
+    print(f"Creating {output_path}: done.")
 
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy() # filter for relevant transcripts to speed up process
 
@@ -55,8 +73,9 @@ def extract_ptc(cds_df, hg38_example, fasta, exons_df):
     print("Get transcript sequence: done.")
 
     # make output file of exon_seqs
-    exon_seqs.to_csv("resources/test_output_files/transcript_sequences.tsv", sep="\t", index=False)
-    print("Creating resources/test_output_files/transcript_sequences.tsv: done.")
+    output_path = os.path.join(output, "transcript_sequences.tsv")
+    exon_seqs.to_csv(output_path, sep="\t", index=False)
+    print(f"Creating {output_path}: done.")
 
     # check if the CDS sequences we generated before are contained in the transcript sequence,
     # so I know whether the transcript sequence was computed correctly
@@ -120,8 +139,9 @@ def extract_ptc(cds_df, hg38_example, fasta, exons_df):
     # Analyze transcript sequence in case of start or stop loss
     analyze_transcript_df = analyze_transcript(loss_df)
     # save result
-    analyze_transcript_df.to_csv("resources/test_output_files/final_ptc_analysis.tsv", sep="\t", index=False)
-    print("Save results in: resources/test_output_files/final_ptc_analysis.tsv.")
+    output_path = os.path.join(output, "final_ptc_analysis.tsv")
+    analyze_transcript_df.to_csv(output_path, sep="\t", index=False)
+    print(f"Save results in: {output_path}.")
 
     return analyze_transcript_df # (?)
 
