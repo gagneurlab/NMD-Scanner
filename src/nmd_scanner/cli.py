@@ -2,6 +2,7 @@ import argparse
 from nmd_scanner.scan import *
 from nmd_scanner.rules import *
 from nmd_scanner.analyze_gtf import *
+from nmd_scanner.extra_features import add_nmd_features
 from pyfaidx import Fasta
 
 def main(vcf_path, gtf_path, fasta_path, output):
@@ -40,22 +41,23 @@ def main(vcf_path, gtf_path, fasta_path, output):
 
     # Apply the NMD rules
     print("Extracting PTCs and evaluating NMD escape rules...")
-    results = extract_ptc(cds_df, vcf, fasta, exons_df, output)
+    results = extract_ptc(cds_df, vcf, fasta, exons_df, output) # output of this (+ Zwischenschritte) saved in _final_ptc_analysis.tsv
     nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
     results = pd.concat([results, nmd_results], axis=1)
 
-    # Determine output file path
-    if os.path.isdir(output):
-        os.makedirs(output, exist_ok=True)
-        vcf_base = os.path.splitext(os.path.basename(vcf_path))[0]
-        output_file = os.path.join(output, f"{vcf_base}_nmd_results.csv")
-    else:
-        parent_dir = os.path.dirname(output)
-        if parent_dir and not os.path.exists(parent_dir):
-            os.makedirs(parent_dir, exist_ok=True)
-        output_file = output
+    # save as file --> can be removed later
+    output_path = os.path.join(output, "nmd_rules.tsv")
+    results.to_csv(output_path, sep="\t", index=False)
+    print(f"Save nmd rules results in: {output_path}.")
+
+    # Add additional features (inspired by benchmark dataset)
+    extra_features = results.apply(add_nmd_features, axis=1, result_type='expand')
+    results = pd.concat([results, extra_features], axis=1)
+
 
     # Write output
+    vcf_base = os.path.splitext(os.path.basename(vcf_path))[0]
+    output_file = os.path.join(output, f"{vcf_base}_final_nmd_results.csv")
     print(f"Writing results to {output_file}")
     results.to_csv(output_file, index=False)
 

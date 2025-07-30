@@ -16,13 +16,13 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     print("Joining variants with cds entries: done.")
 
     ##########################################################################################
-    # fix minus strand variants (only for TCGA VCF!)
+    # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
     # Fix REF and ALT for minus-strand CDSs
-    #mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
-    #intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
-    #    lambda seq: str(Seq(seq).reverse_complement()))
-    #intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
-    #    lambda seq: str(Seq(seq).reverse_complement()))
+    mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
+    intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
+        lambda seq: str(Seq(seq).reverse_complement()))
+    intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
+        lambda seq: str(Seq(seq).reverse_complement()))
     ##########################################################################################
 
     # intersection = intersection_test.copy()
@@ -31,6 +31,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     #    fasta[chrom][start:end].seq.upper()
     #    for chrom, start, end in zip(intersection_cds_vcf["Chromosome"], intersection_cds_vcf["Start"], intersection_cds_vcf["End"])
     #]
+    print("Begin creating exon CDS sequence.")
     intersection_cds_vcf = catch_sequence.add_exon_cds_sequence(intersection_cds_vcf, fasta) # for faster access
     print("Creating exon CDS sequence: done.")
 
@@ -651,10 +652,10 @@ def evaluate_nmd_escape_rules(row):
     else:
         rule_50nt_penultimate = False
 
-    # Long exon rule
-    rule_long_exon = any(exon_length_map.get(exon, 0) > 400 for exon in stop_exons)
+    # Long exon rule (with exon longer than >407nt)
+    rule_long_exon = any(exon_length_map.get(exon, 0) > 407 for exon in stop_exons)
 
-    # Start-proximal rule
+    # Start-proximal rule (closer than 150nt from the start codon)
     rule_start_proximal = start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150
 
     # Escape if any rule is true

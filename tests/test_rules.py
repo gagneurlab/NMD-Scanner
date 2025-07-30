@@ -265,34 +265,34 @@ def test_splice_alt_cds_into_transcript():
     assert result == "TTTAAATTTCCCGGG"
 
 def test_analyze_transcript():
-    def test_analyze_transcript_basic():
-        df = pd.DataFrame([
-            {
-                "alt_transcript_seq": "CCCATGAAATAATAGGGG",  # ATG at pos 3, TAA at 9, TAG at 12
-                "alt_cds_start": 0,
-                "transcript_start": 0,
-                "transcript_exon_info": [
-                    (1, 10, 0, 10),
-                    (2, 10, 10, 20)
-                ],
-                "start_loss": True,
-                "stop_loss": False
-            }
-        ])
 
-        result = analyze_transcript(df)
+    df = pd.DataFrame([
+        {
+            "alt_transcript_seq": "CCCATGAAATAATAGGGG",  # ATG at pos 3, TAA at 9, TAG at 12
+            "alt_cds_start": 0,
+            "transcript_start": 0,
+            "transcript_exon_info": [
+                (1, 10, 0, 10),
+                (2, 10, 10, 20)
+            ],
+            "start_loss": True,
+            "stop_loss": False
+        }
+    ])
 
-        # Check values
-        row = result.loc[0]
-        assert row["transcript_start_codon_pos"] == 3
-        assert row["transcript_start_codon_exon"] == 1
-        assert row["transcript_first_stop_codon"] == "TAA"
-        assert row["transcript_first_stop_pos"] == 9
-        assert row["transcript_last_codon"] == "GGG"
-        assert row["transcript_valid_stop"] is False
-        assert row["transcript_num_stop_codons"] == 2
-        assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
-        assert row["transcript_stop_codon_exons"] == [1, 2]
+    result = analyze_transcript(df)
+
+    # Check values
+    row = result.loc[0]
+    assert row["transcript_start_codon_pos"] == 3
+    assert row["transcript_start_codon_exon"] == 1
+    assert row["transcript_first_stop_codon"] == "TAA"
+    assert row["transcript_first_stop_pos"] == 9
+    assert row["transcript_last_codon"] == "GGG"
+    assert row["transcript_valid_stop"] is False
+    assert row["transcript_num_stop_codons"] == 2
+    assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
+    assert row["transcript_stop_codon_exons"] == [1, 2]
 
 def test_evaluate_nmd_escape_rules():
 
