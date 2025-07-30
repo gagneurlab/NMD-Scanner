@@ -46,7 +46,7 @@ def main(vcf_path, gtf_path, fasta_path, output):
     results = pd.concat([results, nmd_results], axis=1)
 
     # save as file --> can be removed later
-    output_path = os.path.join(output, "nmd_rules.tsv")
+    output_path = os.path.join(output, "6_nmd_rules.tsv")
     results.to_csv(output_path, sep="\t", index=False)
     print(f"Save nmd rules results in: {output_path}.")
 

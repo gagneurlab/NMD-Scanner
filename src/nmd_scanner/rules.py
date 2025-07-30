@@ -41,8 +41,19 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     )
     print("Creating exon CDS and alt CDS sequence: done.")
 
+    ##### New ######
+    # Filter out Variants that have a reference mismatch
+    mismatched_rows = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].isna()]
+    print(f"\n[Warning] Skipping {len(mismatched_rows)} variants due to reference mismatches:")
+    if not mismatched_rows.empty:
+        print(mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
+            index=False))
+    intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].notna()].copy()
+    ################
+
+
     # make output file of df3 and save in resources/test_output_files
-    output_path = os.path.join(output, "variant_exon_output.tsv")
+    output_path = os.path.join(output, "1_variant_exon_output.tsv")
     intersection_cds_vcf.to_csv(output_path, sep="\t", index=False)
     print(f"Creating {output_path}: done.")
 
@@ -55,7 +66,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     #    for chrom, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
     #]
     cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta) # for faster access
-    output_path = os.path.join(output, "cds_df_adj.tsv")
+    output_path = os.path.join(output, "2_cds_df_adj.tsv")
     cds_df_adj.to_csv(output_path, sep="\t", index=False)
     print(f"Creating exon CDS sequence for all exons for transcripts in df3: done. Saved in: {output_path}")
 
@@ -63,7 +74,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
     print("Create reference CDS: done.")
     # make output file of results_df
-    output_path = os.path.join(output, "create_reference_CDS.tsv")
+    output_path = os.path.join(output, "3_create_reference_CDS.tsv")
     results_df.to_csv(output_path, sep="\t", index=False)
     print(f"Creating {output_path}: done.")
 
@@ -74,7 +85,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     print("Get transcript sequence: done.")
 
     # make output file of exon_seqs
-    output_path = os.path.join(output, "transcript_sequences.tsv")
+    output_path = os.path.join(output, "4_transcript_sequences.tsv")
     exon_seqs.to_csv(output_path, sep="\t", index=False)
     print(f"Creating {output_path}: done.")
 
@@ -140,7 +151,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     # Analyze transcript sequence in case of start or stop loss
     analyze_transcript_df = analyze_transcript(loss_df)
     # save result
-    output_path = os.path.join(output, "final_ptc_analysis.tsv")
+    output_path = os.path.join(output, "5_final_ptc_analysis.tsv")
     analyze_transcript_df.to_csv(output_path, sep="\t", index=False)
     print(f"Save results in: {output_path}.")
 
@@ -264,10 +275,18 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         ref_seq = "".join(ref_exons["Exon_CDS_seq"].tolist())
 
         ######
+        # Since I sometimes get errors in the following code snippet because of NaN values,
+        # we print them but leave them in our dataframe for now
+        #nan_rows = ref_exons[ref_exons["Exon_CDS_seq"].isna()]
+        #if not nan_rows.empty:
+        #    print(f"\n[Warning] Found {len(nan_rows)} NaN Exon_CDS_seq entries in transcript: {transcript_id}")
+        #    print(nan_rows.to_string(index=False))
+
         # ref_cds_lengths = [len(seq) for seq in ref_exons["Exon_CDS_seq"].tolist()]
         ref_cds_info = [
             (row["exon_number"], len(row["Exon_CDS_seq"]))
             for _, row in ref_exons.iterrows()
+        #    if pd.notna(row["Exon_CDS_seq"])  # sometimes we get NaN errors
         ]
         ######
 
@@ -292,10 +311,18 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             alt_exons = alt_exons.sort_values("Start")
 
             ######
+            # Since I sometimes get errors in the following code snippet because of NaN values,
+            # we print them but leave them in our dataframe for now (same as before)
+            #nan_alt_rows = alt_exons[alt_exons["Exon_CDS_seq"].isna()]
+            #if not nan_alt_rows.empty:
+            #    print(f"\n[Warning] NaN Exon_CDS_seq values found in alt_exons for variant in transcript: {transcript_id}")
+            #    print(nan_alt_rows.to_string(index=False))
+
             # alt_cds_lengths = [len(seq) for seq in alt_exons["Exon_CDS_seq"].tolist()]
             alt_cds_info = [
                 (row["exon_number"], len(row["Exon_CDS_seq"]))
                 for _, row in alt_exons.iterrows()
+            #    if pd.notna(row["Exon_CDS_seq"])  # sometimes we get NaN errors
             ]
             ######
 
