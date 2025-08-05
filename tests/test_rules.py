@@ -51,7 +51,7 @@ def test_create_reference_cds_using_file():
 
     # Load df3 and cds_df_test from the previous step of your pipeline
     df3 = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
-    cds_df_test = pd.read_csv("resources/test_output_files/cds_df_test.tsv",sep="\t")
+    cds_df_test = pd.read_csv("resources/test_output_files/cds_df_adj.tsv",sep="\t")
 
     # Run the function
     actual = create_reference_cds(df3, cds_df_test)
@@ -272,8 +272,8 @@ def test_analyze_transcript():
             "alt_cds_start": 0,
             "transcript_start": 0,
             "transcript_exon_info": [
-                (1, 10, 0, 10),
-                (2, 10, 10, 20)
+                (1, 10),
+                (2, 10)
             ],
             "start_loss": True,
             "stop_loss": False

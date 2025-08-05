@@ -1,8 +1,8 @@
-import os
-import pandas as pd
-import numpy as np
-import pyranges as pr
+# analyze_gtf.py is not needed anymore
 
+import pandas as pd
+import pyranges as pr
+from nmd_scanner.scan import read_gtf
 
 def extract_features(gr: pr.PyRanges, feature: str, chromosomes=None) -> pd.DataFrame:
     """

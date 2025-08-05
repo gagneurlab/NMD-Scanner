@@ -18,7 +18,7 @@ def read_vcf(vcf_path):
         names=['Chromosome', 'Start', 'ID', 'Ref', 'Alt', 'Qual', 'Filter', 'Info']
     )
 
-    # Adjust coordinates to 0-based, half-open (BED-like)
+    # Adjust coordinates to 0-based
     df['Start'] = df['Start'] - 1
     df['End'] = df['Start'] + df['Ref'].str.len()
 

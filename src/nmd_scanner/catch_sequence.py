@@ -1,8 +1,12 @@
-# for faster access to the fasta sequence
+"""
+For faster access of sequences from a FASTA reference using caching
+Returns original DataFrame with an additional column containing the extracted sequence per row
+"""
 
+# Import Dependencies
 from functools import lru_cache
 
-# Global cache to map id -> actual fasta object
+# Global cache to map id --> actual fasta object
 _fasta_cache = {}
 
 @lru_cache(maxsize=None)
