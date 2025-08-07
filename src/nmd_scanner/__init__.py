@@ -3,5 +3,5 @@ from .rules import (
 )
 
 from .scan import (
-    read_gtf
+    read_gtf, read_fasta
 )
