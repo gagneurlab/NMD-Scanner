@@ -123,7 +123,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
 
     results_df["cds_in_transcript"] = results_df.apply(check_cds_in_transcript, axis=1)
 
-    # TODO: ChatGPT: Analyze reference and alternative CDS for start / stop codons
+    # TODO: Analyze reference and alternative CDS for start / stop codons
     analysis_df = analyze_sequence(results_df)
     loss_df = start_stop_loss(analysis_df) # instead of loss_analysis_df (test for start stop loss)
     print("Analyzing sequence: done.")
@@ -666,6 +666,7 @@ def analyze_transcript(results_df):
         stop_exons = []  # for exon number
 
         # only analyze rows flagged with start or stop codon loss: skip the others and fill with None values
+        # Skips only if we have both start_loss = FALSE and stop_loss = FALSE. If one is true, then don't skip.
         if not (row["start_loss"] or row["stop_loss"]):
             continue
 
