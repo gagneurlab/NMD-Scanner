@@ -68,9 +68,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     ################
 
     # Save exon-variant merge result
-    output_path = os.path.join(output, "1_variant_exon_output.tsv")
-    intersection_cds_vcf.to_csv(output_path, sep="\t", index=False)
-    print(f"Creating {output_path}: done.")
+    #output_path = os.path.join(output, "1_variant_exon_output.tsv")
+    #intersection_cds_vcf.to_csv(output_path, sep="\t", index=False)
+    #print(f"Creating {output_path}: done.")
 
     # Limit to relevant transcript (to save time)
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
@@ -84,26 +84,31 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
 
     # Fetch reference sequence for all CDS entries per (relevant) transcripts
     cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta) # for faster access
-    output_path = os.path.join(output, "2_cds_df_adj.tsv")
-    cds_df_adj.to_csv(output_path, sep="\t", index=False)
-    print(f"Creating exon CDS sequence for all exons for transcripts in df3: done. Saved in: {output_path}")
+
+    # save preliminary result
+    #output_path = os.path.join(output, "2_cds_df_adj.tsv")
+    #cds_df_adj.to_csv(output_path, sep="\t", index=False)
+    #print(f"Creating exon CDS sequence for all exons for transcripts in df3: done. Saved in: {output_path}")
+
 
     # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
     results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
     print("Create reference CDS: done.")
+
     # make intermediate output file of results_df
-    output_path = os.path.join(output, "3_create_reference_CDS.tsv")
-    results_df.to_csv(output_path, sep="\t", index=False)
-    print(f"Creating {output_path}: done.")
+    #output_path = os.path.join(output, "3_create_reference_CDS.tsv")
+    #results_df.to_csv(output_path, sep="\t", index=False)
+    #print(f"Creating {output_path}: done.")
 
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
     exon_seqs = get_transcript_sequence(exons_df, fasta)
     print("Get transcript sequence: done.")
+
     # make output file of exon_seqs
-    output_path = os.path.join(output, "4_transcript_sequences.tsv")
-    exon_seqs.to_csv(output_path, sep="\t", index=False)
-    print(f"Creating {output_path}: done.")
+    #output_path = os.path.join(output, "4_transcript_sequences.tsv")
+    #exon_seqs.to_csv(output_path, sep="\t", index=False)
+    #print(f"Creating {output_path}: done.")
 
     # Validate that the CDS is present inside the transcript sequence, to make sure the transcript sequence was computed correctly
     exon_seqs_indexed = exon_seqs.set_index("transcript_id")
@@ -163,9 +168,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
 
 
     # save result
-    output_path = os.path.join(output, "5_final_ptc_analysis.tsv")
-    analyze_transcript_df.to_csv(output_path, sep="\t", index=False)
-    print(f"Save results in: {output_path}.")
+    #output_path = os.path.join(output, "5_final_ptc_analysis.tsv")
+    #analyze_transcript_df.to_csv(output_path, sep="\t", index=False)
+    #print(f"Save results in: {output_path}.")
 
     return analyze_transcript_df
 
