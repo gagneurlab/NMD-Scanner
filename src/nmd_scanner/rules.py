@@ -401,6 +401,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                 "alt_cds_len": len(alt_seq_final),
 
                 "chromosome": var_row["Chromosome"],
+                "gene_id": var_row["gene_id"],
                 "strand": strand,
                 "ref": var_row["Ref"],
                 "alt": var_row["Alt"],

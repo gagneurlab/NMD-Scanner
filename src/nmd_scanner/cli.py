@@ -32,7 +32,7 @@ def main(vcf_path, gtf_path, fasta_path, output):
     vcf = read_vcf(vcf_path)
     print(f"VCF shape: {vcf.df.shape}")
 
-    # read GTF fil (gene annotation)
+    # read GTF file (gene annotation)
     print(f"Reading GTF file: {gtf_path}")
     gtf = read_gtf(gtf_path)
     print(f"GTF File shape: {gtf.df.shape}")
