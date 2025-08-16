@@ -2,25 +2,93 @@
 from nmd_scanner.rules import *
 
 def test_adjust_last_cds_for_stop_codon():
-    df = pd.DataFrame({
-        "transcript_id": ["tx1", "tx1", "tx2", "tx2", "tx2"],
-        "exon_number": [1, 2, 1, 2, 3],
-        "Start": [100, 200, 500, 800, 900],
-        "End": [150, 250, 550, 850, 950],
-        "Strand": ["+", "+", "-", "-", "-"]
+
+    # if exon on plus strand, exon with highest exon number should be adjusted: end_highest_exon + 3
+    # if on minus strand, exon with lowest exon number is the end exon and should be adjusted: start_highest_exon + 3 (because of reverse complement)
+
+    # Multiple exons, plus strand
+
+    df_plus = pd.DataFrame({
+        "transcript_id": ["tx1", "tx1", "tx1"],
+        "exon_number": [1, 2, 3],
+        "Start": [100, 200, 300],
+        "End": [150, 250, 350],
+        "Strand": ["+", "+", "+"]
     })
 
-    adjusted = adjust_last_cds_for_stop_codon(df)
+    adjusted = adjust_last_cds_for_stop_codon(df_plus)
 
+    # Get first exon of tx1
+    tx1_first = adjusted[(adjusted.transcript_id == "tx1") & (adjusted.exon_number == 1)].iloc[0]
+    assert tx1_first["Start"] == 100
+    assert tx1_first["End"] == 150
+    # Get second exon of tx1
+    tx1_second = adjusted[(adjusted.transcript_id == "tx1") & (adjusted.exon_number == 2)].iloc[0]
+    assert tx1_second["Start"] == 200
+    assert tx1_second["End"] == 250
     # Get the last exon of tx1 (+ strand)
-    tx1_last = adjusted[(adjusted.transcript_id == "tx1") & (adjusted.exon_number == 2)].iloc[0]
-    assert tx1_last["Start"] == 200
-    assert tx1_last["End"] == 253  # 250 + 3
+    tx1_last = adjusted[(adjusted.transcript_id == "tx1") & (adjusted.exon_number == 3)].iloc[0]
+    assert tx1_last["Start"] == 300
+    assert tx1_last["End"] == 353  # 350 + 3
+
+
+    # Multiple exons, ,minus strand
+
+    df_minus = pd.DataFrame({
+        "transcript_id": ["tx2", "tx2", "tx2"],
+        "exon_number": [1, 2, 3],
+        "Start": [500, 800, 900],
+        "End": [550, 850, 950],
+        "Strand": ["-", "-", "-"]
+    })
+
+    adjusted = adjust_last_cds_for_stop_codon(df_minus)
 
     # Get the last exon of tx2 (- strand)
-    tx2_last = adjusted[(adjusted.transcript_id == "tx2") & (adjusted.exon_number == 3)].iloc[0]
-    assert tx2_last["Start"] == 897  # 900 - 3
-    assert tx2_last["End"] == 950
+    tx2_last = adjusted[(adjusted.transcript_id == "tx2") & (adjusted.exon_number == 1)].iloc[0]
+    assert tx2_last["Start"] == 497  # 500 - 3
+    assert tx2_last["End"] == 550
+    # Get the middle exon of tx2
+    tx2_middle = adjusted[(adjusted.transcript_id == "tx2") & (adjusted.exon_number == 2)].iloc[0]
+    assert tx2_middle["Start"] == 800
+    assert tx2_middle["End"] == 850
+    # Get the first exon of tx2
+    tx2_first = adjusted[(adjusted.transcript_id == "tx2") & (adjusted.exon_number == 3)].iloc[0]
+    assert tx2_first["Start"] == 900
+    assert tx2_first["End"] == 950
+
+    # Single exon, plus strand:
+
+    df_single_plus = pd.DataFrame({
+        "transcript_id": ["tx_single_plus"],
+        "exon_number": [1],
+        "Start": [1000],
+        "End": [1100],
+        "Strand": ["+"]
+    })
+
+    adjusted_single_plus = adjust_last_cds_for_stop_codon(df_single_plus)
+
+    exon = adjusted_single_plus.iloc[0]
+    assert exon["Start"] == 1000
+    assert exon["End"] == 1103  # extended at End
+
+    # Single exon, minus strand
+
+    df_single_minus = pd.DataFrame({
+        "transcript_id": ["tx_single_minus"],
+        "exon_number": [1],
+        "Start": [2000],
+        "End": [2100],
+        "Strand": ["-"]
+    })
+
+    adjusted_single_minus = adjust_last_cds_for_stop_codon(df_single_minus)
+
+    exon = adjusted_single_minus.iloc[0]
+    assert exon["Start"] == 1997  # extended at Start
+    assert exon["End"] == 2100
+
 
 def test_apply_variant_edge_aware_with_lengths():
     # need to keep in mind all the cases (variant goes over start or end of exon, indels, SNPs)
