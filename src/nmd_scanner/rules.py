@@ -803,7 +803,7 @@ def evaluate_nmd_escape_rules(row):
     rule_long_exon = any(exon_length_map.get(exon, 0) > 407 for exon in stop_exons)
 
     # Start-proximal rule (closer than 150nt from the start codon)
-    rule_start_proximal = start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150
+    rule_start_proximal = start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
 
     # NMD escape if any rule is true
     escape = rule_last_exon or rule_50nt_penultimate or rule_long_exon or rule_start_proximal or rule_single_exon

@@ -61,11 +61,15 @@ def calculate_utr_lengths(row):
     # Handle single exon
     if len(transcript_exon_dict) == 1:
         if strand == "+":
-            utr5 = max(0, row["ref_cds_start"] - row["transcript_start"])
-            utr3 = max(0, row["transcript_end"] - row["ref_cds_stop"])
+            utr5 = row["ref_cds_start"] - row["transcript_start"]
+            utr3 = row["transcript_end"] - row["ref_cds_stop"]
         else:
-            utr5 = max(0, row["transcript_end"] - row["ref_cds_stop"])
-            utr3 = max(0, row["ref_cds_start"] - row["transcript_start"])
+            utr5 = row["transcript_end"] - row["ref_cds_stop"]
+            utr3 = row["ref_cds_start"] - row["transcript_start"]
+
+        utr5 = utr5 if utr5 >= 0 else None
+        utr3 = utr3 if utr3 >= 0 else None
+
         return {"utr5_length": utr5, "utr3_length": utr3}
 
     cds_exon_nums = sorted(cds_exons_dict.keys())
@@ -107,6 +111,8 @@ def calculate_utr_lengths(row):
                 elif exon < cds_exon_nums[0]:
                     utr3 += exon_len
 
+    utr5 = utr5 if utr5 >= 0 else None
+    utr3 = utr3 if utr3 >= 0 else None
     return {"utr5_length": utr5, "utr3_length": utr3}
 
 def calculate_exon_features(row):

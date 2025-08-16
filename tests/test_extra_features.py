@@ -97,8 +97,8 @@ def test_calculate_utr_lengths():
     }
     result = calculate_utr_lengths(row)
     # CDS spans exons 1 (60 used), 3 (80 used), 5 (100 used)
-    # 5'UTR = 40 (from exon 1) + 100 (exon 2)
-    # 3'UTR = 100 (exon 4)
+    # 5'UTR = 40 (from exon 1) + 100 (exon 3)
+    # 3'UTR = 100 (exon 5)
     assert result["utr5_length"] == 40
     assert result["utr3_length"] == 0
 
