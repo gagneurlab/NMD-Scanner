@@ -213,7 +213,7 @@ def test_calculate_exon_features():
     }
     result7 = calculate_exon_features(row7)
     assert result7 == {
-        "total_exon_count": None,
+        "total_exon_count": 2,
         "upstream_exon_count": None,
         "downstream_exon_count": None
     }
@@ -227,6 +227,20 @@ def test_calculate_exon_features():
     }
     result8 = calculate_exon_features(row8)
     assert result8 == {
+        "total_exon_count": 2,
+        "upstream_exon_count": None,
+        "downstream_exon_count": None
+    }
+
+    # Example 9: Transcript with no exons
+    row9 = {
+        "alt_is_premature": False,
+        "strand": "+",
+        "transcript_exon_info": [],
+        "alt_stop_codon_exons": []
+    }
+    result9 = calculate_exon_features(row9)
+    assert result9 == {
         "total_exon_count": None,
         "upstream_exon_count": None,
         "downstream_exon_count": None
@@ -313,3 +327,44 @@ def test_calculate_ptc_exon_length():
                                  ('8', 5848)],
     }
     assert calculate_ptc_exon_length(row4) is None
+
+def test_calculate_stop_codon_dist():
+    # Case 1: PTC upstream of reference stop
+    row1 = {
+        "ref_first_stop_pos": 1000,
+        "alt_first_stop_pos": 800,
+        "alt_is_premature": True
+    }
+    assert calculate_stop_codon_dist(row1) == 200
+
+    # Case 2: PTC downstream of reference stop (rare, negative distance)
+    row2 = {
+        "ref_first_stop_pos": 800,
+        "alt_first_stop_pos": 1000,
+        "alt_is_premature": True
+    }
+    assert calculate_stop_codon_dist(row2) == -200
+
+    # Case 3: PTC exactly at reference stop
+    row3 = {
+        "ref_first_stop_pos": 900,
+        "alt_first_stop_pos": 900,
+        "alt_is_premature": True
+    }
+    assert calculate_stop_codon_dist(row3) == 0
+
+    # Case 4: Missing alt stop codon
+    row4 = {
+        "ref_first_stop_pos": 900,
+        "alt_first_stop_pos": None,
+        "alt_is_premature": True
+    }
+    assert calculate_stop_codon_dist(row4) is None
+
+    # Case 5: Missing ref stop codon
+    row5 = {
+        "ref_first_stop_pos": None,
+        "alt_first_stop_pos": 750,
+        "alt_is_premature": True
+    }
+    assert calculate_stop_codon_dist(row5) is None

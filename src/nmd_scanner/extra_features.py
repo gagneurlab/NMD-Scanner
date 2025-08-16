@@ -30,6 +30,11 @@ def add_nmd_features(row):
     # PTC exon length
     ptc_exon_length = calculate_ptc_exon_length(row)
 
+    # Distance PTC to normal stop codon
+    stop_codon_distance = calculate_stop_codon_dist(row)
+    # TODO: add dist_to_stop_codon (as Dist PTC to normal stop codon): The distance between the PTC and normal stop codon
+    # TODO: results["stop_codon_distance_nmd"] = results["ref_first_stop_pos"] - results["alt_first_stop_pos"]
+
     return {
         "3UTR_length": utr3_length,
         "5UTR_length": utr5_length,
@@ -39,7 +44,8 @@ def add_nmd_features(row):
         # "ptc_pos_codon": ptc_pos_codon,
         "ptc_to_start_codon": ptc_to_start_codon,
         "ptc_less_than_150nt_to_start": ptc_less_than_150nt_to_start,
-        "ptc_exon_length": ptc_exon_length
+        "ptc_exon_length": ptc_exon_length,
+        "stop_codon_distance": stop_codon_distance
     }
 
 def calculate_utr_lengths(row):
@@ -107,12 +113,11 @@ def calculate_utr_lengths(row):
 
 def calculate_exon_features(row):
 
-    if not row.get("alt_is_premature"):
-        return {
-            "total_exon_count": None,
-            "upstream_exon_count": None,
-            "downstream_exon_count": None
-        }
+    """
+    Calculate exon-related features:
+    - total_exon_count: always computed if transcript_exon_info is available
+    - upstream_exon_count / downstream_exon_count: only computed if a PTC exists
+    """
 
     exon_info = row.get("transcript_exon_info") or []
     stop_exons = row.get("alt_stop_codon_exons") or []
@@ -121,7 +126,15 @@ def calculate_exon_features(row):
     # Total exon count
     total_exons = len(exon_info)
 
-    if not exon_info or not stop_exons:
+
+    if not row.get("alt_is_premature") or not stop_exons:
+        return {
+            "total_exon_count": total_exons if total_exons > 0 else None,
+            "upstream_exon_count": None,
+            "downstream_exon_count": None
+        }
+
+    if not exon_info:
         return {
             "total_exon_count": None,
             "upstream_exon_count": None,
@@ -166,7 +179,7 @@ def calculate_ptc_to_start_distance(row):
     #return offset // 3 if offset >= 0 else None
 
     if stop <= start:
-        return None  # TODO: How to handle if PTC before stop codon?
+        return None  # TODO: How to handle if PTC before start codon?
 
     return stop-start # distance between the PTC to start codon in nt
 
@@ -185,3 +198,18 @@ def calculate_ptc_exon_length(row):
     exon_dict = {int(e): int(length) for e, length in exon_info}
 
     return exon_dict.get(ptc_exon)
+
+def calculate_stop_codon_dist(row):
+
+    """
+    Calculate the distance between the reference stop codon and the alternative stop codon.
+    Positive means the PTC is upstream of the reference stop codon.
+    """
+
+    ref_stop = row.get("ref_first_stop_pos")
+    alt_stop = row.get("alt_first_stop_pos")
+
+    if ref_stop is None or alt_stop is None:
+        return None
+
+    return ref_stop - alt_stop
