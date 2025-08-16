@@ -183,7 +183,7 @@ def calculate_ptc_to_start_distance(row):
     #return offset // 3 if offset >= 0 else None
 
     if stop <= start:
-        return None  # TODO: How to handle if PTC before start codon?
+        return None
 
     return stop-start # distance between the PTC to start codon in nt
 
