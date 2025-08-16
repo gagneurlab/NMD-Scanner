@@ -34,8 +34,8 @@ def add_nmd_features(row):
     stop_codon_distance = calculate_stop_codon_dist(row)
 
     return {
-        "3UTR_length": utr3_length,
-        "5UTR_length": utr5_length,
+        "utr3_length": utr3_length,
+        "utr5_length": utr5_length,
         "total_exon_count": total_exon_count,
         "upstream_exon_count": upstream_exon_count,
         "downstream_exon_count": downstream_exon_count,
