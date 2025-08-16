@@ -32,8 +32,6 @@ def add_nmd_features(row):
 
     # Distance PTC to normal stop codon
     stop_codon_distance = calculate_stop_codon_dist(row)
-    # TODO: add dist_to_stop_codon (as Dist PTC to normal stop codon): The distance between the PTC and normal stop codon
-    # TODO: results["stop_codon_distance_nmd"] = results["ref_first_stop_pos"] - results["alt_first_stop_pos"]
 
     return {
         "3UTR_length": utr3_length,
