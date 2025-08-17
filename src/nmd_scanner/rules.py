@@ -24,6 +24,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     cds_df_adj = adjust_last_cds_for_stop_codon(cds_df)
     print("Adjusting last CDS for stop codon: done.")
 
+    # adjust exon_number as int datatype
+    cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
+
     # Intersect variants with CDS regions
     intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
     print("Joining variants with cds entries: done.")
