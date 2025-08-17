@@ -32,7 +32,7 @@ def test_adjust_last_cds_for_stop_codon():
     assert tx1_last["End"] == 353  # 350 + 3
 
 
-    # Multiple exons, ,minus strand
+    # Multiple exons, minus strand --> TODO: Wrong!! Minus strand highest exon number start should be adjusted
 
     df_minus = pd.DataFrame({
         "transcript_id": ["tx2", "tx2", "tx2"],
