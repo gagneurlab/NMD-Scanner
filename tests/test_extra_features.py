@@ -262,7 +262,7 @@ def test_calculate_ptc_to_start_distance():
     }
     assert calculate_ptc_to_start_distance(row2) is None
 
-    # Same position → distance 0
+    # Same position → distance 0 # can not happen
     row3 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 120,

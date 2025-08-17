@@ -89,7 +89,6 @@ def test_adjust_last_cds_for_stop_codon():
     assert exon["Start"] == 1997  # extended at Start
     assert exon["End"] == 2100
 
-
 def test_apply_variant_edge_aware_with_lengths():
     # need to keep in mind all the cases (variant goes over start or end of exon, indels, SNPs)
     # Maybe can use the test input and output files
