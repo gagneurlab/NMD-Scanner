@@ -31,11 +31,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     ##########################################################################################
     # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
     # Fix REF and ALT for minus-strand CDSs
-    # mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
-    # intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
-    #    lambda seq: str(Seq(seq).reverse_complement()))
-    # intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
-    #    lambda seq: str(Seq(seq).reverse_complement()))
+    mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
+    intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
+       lambda seq: str(Seq(seq).reverse_complement()))
+    intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
+       lambda seq: str(Seq(seq).reverse_complement()))
     ##########################################################################################
 
     # intersection = intersection_test.copy()
