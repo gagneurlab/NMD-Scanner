@@ -334,7 +334,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         # Collect exon numbers and lengths (for tracking exon contribution later on)
         # ref_cds_lengths = [len(seq) for seq in ref_exons["Exon_CDS_seq"].tolist()]
         ref_cds_info = [
-            (row["exon_number"], len(row["Exon_CDS_seq"]))
+            (int(row["exon_number"]), len(row["Exon_CDS_seq"]))
             for _, row in ref_exons.iterrows()
         #    if pd.notna(row["Exon_CDS_seq"])  # sometimes we get NaN errors
         ]
@@ -370,7 +370,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
             # alt_cds_lengths = [len(seq) for seq in alt_exons["Exon_CDS_seq"].tolist()]
             alt_cds_info = [
-                (row["exon_number"], len(row["Exon_CDS_seq"]))
+                (int(row["exon_number"]), len(row["Exon_CDS_seq"]))
                 for _, row in alt_exons.iterrows()
             #    if pd.notna(row["Exon_CDS_seq"])  # sometimes we get NaN errors
             ]
