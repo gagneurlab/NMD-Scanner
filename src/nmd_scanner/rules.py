@@ -177,10 +177,13 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
 
 # Functions used for extracting PTC:
 
-def adjust_last_cds_for_stop_codon(df, exon_col="exon_number", transcript_col="transcript_id"):
+def adjust_last_cds_for_stop_codon(df, transcript_col="transcript_id"):
 
     """
-    Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions, thus to include the stop codon.
+    Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions,
+    thus to include the stop codon.
+    Plus strand: extend last exon (largest start position) at the END (+3 to End)
+    Minus strand: extend last exon (smallest start position) at the START (-3 from Start)
     :param df: Dataframe containing CDS annotation
     :param exon_col: The name of the column that indicated the exon number, so we can find out which is the last CDS snippet
     :param transcript_col: The name of the column that indicates the transcript ID
@@ -189,18 +192,20 @@ def adjust_last_cds_for_stop_codon(df, exon_col="exon_number", transcript_col="t
 
     df = df.copy()
 
-    # Search for the last exon in a transcript
-    df[exon_col] = df[exon_col].astype(int)  # because otherwise e.g. 10 smaller than 9
-    df.sort_values(by=[transcript_col, exon_col], inplace=True)
-    last_exon_idx = df.groupby(transcript_col)[exon_col].idxmax()
+    adjusted_idx = []
+    for tx, group in df.groupby(transcript_col):
+        strand = group["Strand"].iloc[0]
 
-    # Adjust start or end based on strand
-    for idx in last_exon_idx:
-        strand = df.at[idx, "Strand"]
         if strand == "+":
+            # last exon has max Start position
+            idx = group["Start"].idxmax()
             df.at[idx, "End"] += 3
         elif strand == "-":
+            # last exon has min Start position
+            idx = group["Start"].idxmin()
             df.at[idx, "Start"] -= 3
+
+        adjusted_idx.append(idx)
 
     return df
 
@@ -806,3 +811,31 @@ def evaluate_nmd_escape_rules(row):
         "nmd_single_exon_rule": rule_single_exon,
         "nmd_escape": escape
     }
+
+
+def adjust_last_cds_for_stop_codon_old(df, exon_col="exon_number", transcript_col="transcript_id"):
+
+    """
+    Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions, thus to include the stop codon.
+    :param df: Dataframe containing CDS annotation
+    :param exon_col: The name of the column that indicated the exon number, so we can find out which is the last CDS snippet
+    :param transcript_col: The name of the column that indicates the transcript ID
+    :return: Modified pandas DataFrame where the last exon of each transcript is extended by 3 bases to include the stop codon.
+    """
+
+    df = df.copy()
+
+    # Search for the last exon in a transcript
+    df[exon_col] = df[exon_col].astype(int)  # because otherwise e.g. 10 smaller than 9
+    df.sort_values(by=[transcript_col, exon_col], inplace=True)
+    last_exon_idx = df.groupby(transcript_col)[exon_col].idxmax()
+
+    # Adjust start or end based on strand
+    for idx in last_exon_idx:
+        strand = df.at[idx, "Strand"]
+        if strand == "+":
+            df.at[idx, "End"] += 3
+        elif strand == "-":
+            df.at[idx, "Start"] -= 3
+
+    return df
