@@ -189,27 +189,17 @@ def adjust_last_cds_for_stop_codon(df, exon_col="exon_number", transcript_col="t
 
     df = df.copy()
 
-    # Identify the last exon in a transcript
-    df[exon_col] = df[exon_col].astype(int)  # Ensure exon numbers are integers to correctly determine ordering (e.g., 10 > 9)
+    # Search for the last exon in a transcript
+    df[exon_col] = df[exon_col].astype(int)  # because otherwise e.g. 10 smaller than 9
     df.sort_values(by=[transcript_col, exon_col], inplace=True)
+    last_exon_idx = df.groupby(transcript_col)[exon_col].idxmax()
 
-    # last_exon_idx = df.groupby(transcript_col)[exon_col].idxmax()
-    #
-    # # For each last exon, adjust coordinates based on the strand direction
-    # for idx in last_exon_idx:
-    #     strand = df.at[idx, "Strand"]
-    #     if strand == "+":
-    #         df.at[idx, "End"] += 3 # On the + strand, the stop codon is at the end: extend the End coordinate downstream
-    #     elif strand == "-":
-    #         df.at[idx, "Start"] -= 3 # On the - strand, the stop codon is at the beginning: extend the Start coordinate upstream
-
-    for transcript_id, group in df.groupby(transcript_col):
-        strand = group["Strand"].iloc[0]
+    # Adjust start or end based on strand
+    for idx in last_exon_idx:
+        strand = df.at[idx, "Strand"]
         if strand == "+":
-            idx = group[exon_col].idxmax()  # last exon
             df.at[idx, "End"] += 3
         elif strand == "-":
-            idx = group[exon_col].idxmin()  # first exon
             df.at[idx, "Start"] -= 3
 
     return df

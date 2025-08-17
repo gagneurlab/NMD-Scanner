@@ -65,9 +65,9 @@ def main(vcf_path, gtf_path, fasta_path, output):
     results = pd.concat([results, nmd_results], axis=1)
 
     # Save intermediate NMD rule output --> can be removed later
-    output_path = os.path.join(output, "6_nmd_rules.tsv")
-    results.to_csv(output_path, sep="\t", index=False)
-    print(f"Save nmd rules results in: {output_path}.")
+    #output_path = os.path.join(output, "6_nmd_rules.tsv")
+    #results.to_csv(output_path, sep="\t", index=False)
+    #print(f"Save nmd rules results in: {output_path}.")
 
     # Add additional features (inspired by benchmark dataset)
     extra_features = results.apply(add_nmd_features, axis=1, result_type='expand')
