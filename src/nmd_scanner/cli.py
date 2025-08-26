@@ -2,9 +2,9 @@
 import argparse
 import os
 import pandas as pd
-from nmd_scanner.scan import read_vcf, read_gtf
-from nmd_scanner.rules import extract_ptc, evaluate_nmd_escape_rules
-from nmd_scanner.extra_features import add_nmd_features
+from nmd_scanner.scan import read_vcf, read_gtf, compute_exon_numbers
+from nmd_scanner.rules import extract_ptc
+from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from pyfaidx import Fasta
 
 def main(vcf_path, gtf_path, fasta_path, output):
@@ -37,6 +37,9 @@ def main(vcf_path, gtf_path, fasta_path, output):
     gtf = read_gtf(gtf_path)
     print(f"GTF File shape: {gtf.df.shape}")
 
+    # adjust exon number in GTF --> need this for the (old) hg19 version
+    gtf = compute_exon_numbers(gtf)
+
     # read FASTA file (genome sequence)
     print(f"Reading FASTA file: {fasta_path}")
     fasta = Fasta(fasta_path)
@@ -61,8 +64,9 @@ def main(vcf_path, gtf_path, fasta_path, output):
     # Apply the NMD rules
     print("Extracting PTCs and evaluating NMD escape rules...")
     results = extract_ptc(cds_df, vcf, fasta, exons_df, output) # output of this (+ Zwischenschritte) saved in _final_ptc_analysis.tsv
-    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
-    results = pd.concat([results, nmd_results], axis=1)
+
+    # nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
+    # results = pd.concat([results, nmd_results], axis=1)
 
     # Save intermediate NMD rule output --> can be removed later
     #output_path = os.path.join(output, "6_nmd_rules.tsv")
@@ -73,6 +77,9 @@ def main(vcf_path, gtf_path, fasta_path, output):
     extra_features = results.apply(add_nmd_features, axis=1, result_type='expand')
     results = pd.concat([results, extra_features], axis=1)
 
+    # NEW: compute nmd-rules as last step
+    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
+    results = pd.concat([results, nmd_results], axis=1)
 
     # # adjust datatypes --> TODO: adjust in code, not afterwards
     # dtype_mapping = {

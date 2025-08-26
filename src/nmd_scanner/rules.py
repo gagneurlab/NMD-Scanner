@@ -34,11 +34,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     ##########################################################################################
     # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
     # Fix REF and ALT for minus-strand CDSs
-    # mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
-    # intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
-    #    lambda seq: str(Seq(seq).reverse_complement()))
-    # intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
-    #    lambda seq: str(Seq(seq).reverse_complement()))
+    mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
+    intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
+       lambda seq: str(Seq(seq).reverse_complement()))
+    intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
+       lambda seq: str(Seq(seq).reverse_complement()))
     ##########################################################################################
 
     # intersection = intersection_test.copy()
@@ -234,6 +234,65 @@ def apply_variant_edge_aware_with_lengths(row):
     cds_end = int(row["End"])
     var_start = int(row["Start_variant"])
     var_end = int(row["End_variant"])
+
+    # Special handling for deletions (Ref = N and Alt = <DEL>)
+    if ref == "N" and alt == "<DEL>":
+        # Clip deletion to the CDS region (only remove overlap part)
+
+        # Determine the overlap between variant and this CDS region
+        overlap_start = max(var_start, cds_start)
+        overlap_end = min(var_end, cds_end)
+
+        # If there is no overlap between the variant and this CDS region
+        if overlap_start >= overlap_end:
+            return pd.Series({
+                "Exon_CDS_length": len(cds_seq),
+                "Exon_Alt_CDS_seq": None,
+                "Exon_Alt_CDS_length": None
+            })
+
+        cds_index_start = overlap_start - cds_start
+        cds_index_end = overlap_end - cds_start
+
+        alt_seq = []
+        alt_seq.extend(cds_seq[:cds_index_start])  # keep sequence before deletion
+        alt_seq.extend(cds_seq[cds_index_end:])  # keep sequence after deletion
+
+        return pd.Series({
+            "Exon_CDS_length": len(cds_seq),
+            "Exon_Alt_CDS_seq": "".join(alt_seq),
+            "Exon_Alt_CDS_length": len(alt_seq)
+        })
+
+    # Special handling for duplications (Ref = N and Alt = <DUP>)
+    if ref == "N" and alt == "<DUP>":
+
+        # Determine the overlap between variant and this CDS region
+        overlap_start = max(var_start, cds_start)
+        overlap_end = min(var_end, cds_end)
+
+        # If there is no overlap between the variant and this CDS region
+        if overlap_start >= overlap_end:
+            return pd.Series({
+                "Exon_CDS_length": len(cds_seq),
+                "Exon_Alt_CDS_seq": None,
+                "Exon_Alt_CDS_length": None
+            })
+
+        cds_index_start = overlap_start - cds_start
+        cds_index_end = overlap_end - cds_start
+
+        alt_seq = []
+        alt_seq.extend(cds_seq[:cds_index_start])  # sequence up to the end of the overlap
+        alt_seq.extend(cds_seq[cds_index_start:cds_index_end]) # overlap-region (original, in CDS)
+        alt_seq.extend(cds_seq[cds_index_start:cds_index_end])  # duplicate the overlapped region
+        alt_seq.extend(cds_seq[cds_index_end:])  # keep sequence after duplication
+
+        return pd.Series({
+            "Exon_CDS_length": len(cds_seq),
+            "Exon_Alt_CDS_seq": "".join(alt_seq),
+            "Exon_Alt_CDS_length": len(alt_seq)
+        })
 
     # Determine the overlap between variant and this CDS region
     overlap_start = max(var_start, cds_start)
@@ -734,7 +793,9 @@ def analyze_transcript(results_df):
 
     return df
 
-def evaluate_nmd_escape_rules(row):
+
+
+def evaluate_nmd_escape_rules_old(row):
 
     """
     Evaluate whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on
@@ -814,7 +875,6 @@ def evaluate_nmd_escape_rules(row):
         "nmd_single_exon_rule": rule_single_exon,
         "nmd_escape": escape
     }
-
 
 def adjust_last_cds_for_stop_codon_old(df, exon_col="exon_number", transcript_col="transcript_id"):
 

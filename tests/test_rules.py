@@ -79,7 +79,6 @@ def test_adjust_last_cds_for_stop_codon():
     assert exon["Start"] == 1997  # extended at Start
     assert exon["End"] == 2100
 
-
 def test_apply_variant_edge_aware_with_lengths():
     # need to keep in mind all the cases (variant goes over start or end of exon, indels, SNPs)
     # Maybe can use the test input and output files
@@ -102,6 +101,68 @@ def test_apply_variant_edge_aware_with_lengths():
         assert row["Exon_Alt_CDS_seq"] == row["Exon_Alt_CDS_seq_actual"], f"Mismatch in Alt_CDS_seq at row {i}"
         assert row["Exon_Alt_CDS_length"] == row[
             "Exon_Alt_CDS_length_actual"], f"Mismatch in Alt_CDS_length at row {i}"
+
+def test_apply_variant_edge_aware_with_lengths_with_DELs():
+    cases = [
+        # cds_seq, start, end, var_start, var_end, ref, alt, expected_seq
+        ("ATGCGTAC", 100, 108, 101, 107, "N", "<DEL>", "AC"),   # internal deletion
+        ("ATGCGTAC", 100, 108, 100, 108, "N", "<DEL>", ""),     # entire CDS deleted
+        ("ATGCGTAC", 100, 108, 90, 104, "N", "<DEL>", "GTAC"),  # deletion starts before CDS
+        ("ATGCGTAC", 100, 108, 104, 120, "N", "<DEL>", "ATGC"), # deletion ends after CDS
+        ("ATGCGTAC", 100, 108, 200, 210, "N", "<DEL>", None),   # deletion outside CDS
+    ]
+
+    for cds_seq, start, end, var_start, var_end, ref, alt, expected_seq in cases:
+        row = pd.Series({
+            "Exon_CDS_seq": cds_seq,
+            "Strand": "+",
+            "Start": start,
+            "End": end,
+            "Start_variant": var_start,
+            "End_variant": var_end,
+            "Ref": ref,
+            "Alt": alt,
+        })
+
+        result = apply_variant_edge_aware_with_lengths(row)
+
+        if expected_seq is None:
+            assert result["Exon_Alt_CDS_seq"] is None or pd.isna(result["Exon_Alt_CDS_seq"])
+            assert result["Exon_Alt_CDS_length"] is None or pd.isna(result["Exon_Alt_CDS_length"])
+        else:
+            assert result["Exon_Alt_CDS_seq"] == expected_seq
+            assert result["Exon_Alt_CDS_length"] == len(expected_seq)
+
+def test_apply_variant_edge_aware_with_lengths_with_DUPs():
+    cases = [
+        # cds_seq, start, end, var_start, var_end, ref, alt, expected_seq
+        ("ATGCGTAC", 100, 108, 101, 107, "N", "<DUP>", "ATGCGTATGCGTAC"),  # internal duplication (TGCGTA duplicated)
+        ("ATGCGTAC", 100, 108, 100, 108, "N", "<DUP>", "ATGCGTACATGCGTAC"),  # entire CDS duplicated
+        ("ATGCGTAC", 100, 108, 90, 104, "N", "<DUP>", "ATGCATGCGTAC"), # duplication starts before CDS, overlap "ATGC" duplicated
+        ("ATGCGTAC", 100, 108, 104, 120, "N", "<DUP>", "ATGCGTACGTAC"), # duplication ends after CDS, overlap "GTAC" duplicated
+        ("ATGCGTAC", 100, 108, 200, 210, "N", "<DUP>", None),  # duplication outside CDS
+    ]
+
+    for cds_seq, start, end, var_start, var_end, ref, alt, expected_seq in cases:
+        row = pd.Series({
+            "Exon_CDS_seq": cds_seq,
+            "Strand": "+",
+            "Start": start,
+            "End": end,
+            "Start_variant": var_start,
+            "End_variant": var_end,
+            "Ref": ref,
+            "Alt": alt,
+        })
+
+        result = apply_variant_edge_aware_with_lengths(row)
+
+        if expected_seq is None:
+            assert result["Exon_Alt_CDS_seq"] is None or pd.isna(result["Exon_Alt_CDS_seq"])
+            assert result["Exon_Alt_CDS_length"] is None or pd.isna(result["Exon_Alt_CDS_length"])
+        else:
+            assert result["Exon_Alt_CDS_seq"] == expected_seq
+            assert result["Exon_Alt_CDS_length"] == len(expected_seq)
 
 def test_create_reference_cds_using_file():
     # Load expected output
@@ -358,150 +419,7 @@ def test_analyze_transcript():
     assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
     assert row["transcript_stop_codon_exons"] == [1, 2]
 
-def test_evaluate_nmd_escape_rules():
 
-    # Example 1: Single exon rule
-    row2 = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": 90,
-        "alt_stop_codon_exons": [1],
-        "alt_start_codon_pos": 0,
-        "transcript_exon_info": [
-            (1, 100)
-        ]
-    }
-
-    result = evaluate_nmd_escape_rules(row2)
-    assert result["nmd_single_exon_rule"] == True
-    assert result["nmd_last_exon_rule"] == False
-    assert result["nmd_50nt_penultimate_rule"] == False
-    assert result["nmd_long_exon_rule"] == False
-    assert result["nmd_start_proximal_rule"] == True
-    assert result["nmd_escape"] == True
-
-    # Example 2: Last exon rule
-    row = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": 250,
-        "alt_stop_codon_exons": [3],
-        "alt_start_codon_pos": 0,
-        "transcript_exon_info": [
-            (1, 100),
-            (2, 100),
-            (3, 100)
-        ]
-    }
-
-    result = evaluate_nmd_escape_rules(row)
-    assert result["nmd_single_exon_rule"] == False
-    assert result["nmd_last_exon_rule"] == True
-    assert result["nmd_50nt_penultimate_rule"] == False
-    assert result["nmd_long_exon_rule"] == False
-    assert result["nmd_start_proximal_rule"] == False
-    assert result["nmd_escape"] == True
-
-    # Example 3: 50nt from penultimate exon end
-    row = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": 160,
-        "alt_stop_codon_exons": [2],
-        "alt_start_codon_pos": 0,
-        "transcript_exon_info": [
-            (1, 100),
-            (2, 100),
-            (3, 100)
-        ]
-    }
-
-    result = evaluate_nmd_escape_rules(row)
-    assert result["nmd_single_exon_rule"] == False
-    assert result["nmd_last_exon_rule"] == False
-    assert result["nmd_50nt_penultimate_rule"] == True
-    assert result["nmd_long_exon_rule"] == False
-    assert result["nmd_start_proximal_rule"] == False
-    assert result["nmd_escape"] == True
-
-    # Example 4: Long exon rule
-    row = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": 300,
-        "alt_stop_codon_exons": [2],
-        "alt_start_codon_pos": 0,
-        "transcript_exon_info": [
-            (1, 100),
-            (2, 500),
-            (3, 100)
-        ]
-    }
-
-    result = evaluate_nmd_escape_rules(row)
-    assert result["nmd_single_exon_rule"] == False
-    assert result["nmd_last_exon_rule"] == False
-    assert result["nmd_50nt_penultimate_rule"] == False
-    assert result["nmd_long_exon_rule"] == True
-    assert result["nmd_start_proximal_rule"] == False
-    assert result["nmd_escape"] == True
-
-    # Example 5: Start-proximal rule
-    row = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": 100,
-        "alt_stop_codon_exons": [2],
-        "alt_start_codon_pos": 0,
-        "transcript_exon_info": [
-            (1, 100),
-            (2, 100)
-        ]
-    }
-
-    result = evaluate_nmd_escape_rules(row)
-    assert result["nmd_single_exon_rule"] == False
-    assert result["nmd_last_exon_rule"] == True
-    assert result["nmd_50nt_penultimate_rule"] == False
-    assert result["nmd_long_exon_rule"] == False
-    assert result["nmd_start_proximal_rule"] == True
-    assert result["nmd_escape"] == True
-
-    # Example 6: multiple escape rules
-    row = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": 145,
-        "alt_stop_codon_exons": [3],
-        "alt_start_codon_pos": 0,
-        "transcript_exon_info": [
-            (1, 100),
-            (2, 100),
-            (3, 500)
-        ]
-    }
-
-    result = evaluate_nmd_escape_rules(row)
-    assert result["nmd_single_exon_rule"] == False
-    assert result["nmd_last_exon_rule"] == True
-    assert result["nmd_50nt_penultimate_rule"] == False
-    assert result["nmd_long_exon_rule"] == True
-    assert result["nmd_start_proximal_rule"] == True
-    assert result["nmd_escape"] == True
-
-    # Example 7: Not premature → should skip
-    row3 = {
-        "alt_is_premature": False,
-        "alt_first_stop_pos": 150,
-        "alt_stop_codon_exons": [2],
-        "alt_start_codon_pos": 0,
-        "transcript_exon_info": [
-            (1, 100),
-            (2, 100)
-        ]
-    }
-
-    result = evaluate_nmd_escape_rules(row3)
-    assert result["nmd_single_exon_rule"] == False
-    assert result["nmd_last_exon_rule"] == False
-    assert result["nmd_50nt_penultimate_rule"] == False
-    assert result["nmd_long_exon_rule"] == False
-    assert result["nmd_start_proximal_rule"] == False
-    assert result["nmd_escape"] == False
 
 
 

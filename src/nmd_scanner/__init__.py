@@ -1,7 +1,7 @@
 from .rules import (
-    extract_ptc, evaluate_nmd_escape_rules
+    extract_ptc
 )
 
 from .extra_features import (
-    add_nmd_features
+    add_nmd_features, evaluate_nmd_escape_rules
 )
