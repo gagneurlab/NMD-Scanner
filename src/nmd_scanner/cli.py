@@ -38,7 +38,9 @@ def main(vcf_path, gtf_path, fasta_path, output):
     print(f"GTF File shape: {gtf.df.shape}")
 
     # adjust exon number in GTF --> need this for the (old) hg19 version
+    print("Adjust exon numbers")
     gtf = compute_exon_numbers(gtf)
+    print("Exon numbers adjsuted.")
 
     # read FASTA file (genome sequence)
     print(f"Reading FASTA file: {fasta_path}")
