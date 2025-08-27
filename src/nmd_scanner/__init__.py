@@ -5,3 +5,7 @@ from .rules import (
 from .extra_features import (
     add_nmd_features, evaluate_nmd_escape_rules
 )
+
+from .scan import (
+    compute_exon_numbers
+)
