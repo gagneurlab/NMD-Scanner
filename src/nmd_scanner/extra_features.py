@@ -407,6 +407,7 @@ def calculate_exon_features_old(row):
     exon_order = [int(e[0]) for e in sorted_exons]
 
     ptc_exon = int(stop_exons[0])  # Take first exon containing PTC
+
     if ptc_exon not in exon_order:
         return {
             "total_exon_count": total_exons,
