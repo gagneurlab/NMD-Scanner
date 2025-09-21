@@ -305,6 +305,42 @@ def evaluate_nmd_escape_rules(row):
     }
 
 def calculate_ptc_to_downstream_ej(row):
+    """
+    Calculate distance from PTC to the downstream exon junction (next exon start/end depending on strand).
+    Returns None if not applicable.
+    """
+
+    # only calculate if we have PTC
+    if not row.get("alt_is_premature"):
+        return None
+
+    stop_exons = row.get("alt_stop_codon_exons") or []
+
+    # exon_info = row.get("transcript_exon_info") or []
+    exon_info = row.get(
+        "alt_cds_info") or []  # Assuming that the PTC cannot be outside the CDS, since it needs to come before the original stop codon
+
+    ptc_pos = row.get("alt_first_stop_pos")
+
+    if not stop_exons or not exon_info or ptc_pos is None:
+        return None
+
+    # Choose the PTC exon (smallest number, closer to start)
+    ptc_exon = min(stop_exons)
+
+    # Sum lengths of exons up to and including ptc_exon
+    cumulative_length = 0
+    for exon_num, length in exon_info:
+        cumulative_length += length
+        if exon_num == ptc_exon:
+            break
+
+    # Distance from PTC to downstream exon junction
+    distance = cumulative_length - ptc_pos
+    return distance
+
+
+def calculate_ptc_to_downstream_ej_old(row):
 
     """
     Calculate distance from PTC to the downstream exon junction (next exon start/end depending on strand).
@@ -335,7 +371,6 @@ def calculate_ptc_to_downstream_ej(row):
     # Distance from PTC to downstream exon junction
     distance = cumulative_length - ptc_pos
     return distance
-
 
 def calculate_exon_features_old(row):
 

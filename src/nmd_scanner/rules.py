@@ -34,11 +34,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     ##########################################################################################
     # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
     # Fix REF and ALT for minus-strand CDSs
-    #mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
-    #intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
-    #   lambda seq: str(Seq(seq).reverse_complement()))
-    #intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
-    #   lambda seq: str(Seq(seq).reverse_complement()))
+    mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
+    intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
+       lambda seq: str(Seq(seq).reverse_complement()))
+    intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
+       lambda seq: str(Seq(seq).reverse_complement()))
     ##########################################################################################
 
     # intersection = intersection_test.copy()
@@ -395,11 +395,19 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
         # Collect exon numbers and lengths (for tracking exon contribution later on)
         # ref_cds_lengths = [len(seq) for seq in ref_exons["Exon_CDS_seq"].tolist()]
-        ref_cds_info = [
-            (int(row["exon_number"]), len(row["Exon_CDS_seq"]))
+
+        ## old option:
+        # ref_cds_info = [
+        #    (row["exon_number"], len(row["Exon_CDS_seq"]))
+        #    for _, row in ref_exons.iterrows()
+        # ]
+
+        ## new option:
+        ref_cds_info = sorted([
+            (row["exon_number"], len(row["Exon_CDS_seq"]))
             for _, row in ref_exons.iterrows()
-        #    if pd.notna(row["Exon_CDS_seq"])  # sometimes we get NaN errors
-        ]
+        ], key=lambda x: x[0])
+
         ######
 
         # Get strand info (all should be the same within transcript)
@@ -431,11 +439,18 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             #    print(nan_alt_rows.to_string(index=False))
 
             # alt_cds_lengths = [len(seq) for seq in alt_exons["Exon_CDS_seq"].tolist()]
-            alt_cds_info = [
-                (int(row["exon_number"]), len(row["Exon_CDS_seq"]))
+
+            ## old option:
+            # alt_cds_info = [
+            #    (row["exon_number"], len(row["Exon_CDS_seq"]))
+            #    for _, row in alt_exons.iterrows()
+            # ]
+
+            ## new option:
+            alt_cds_info = sorted([
+                (row["exon_number"], len(row["Exon_CDS_seq"]))
                 for _, row in alt_exons.iterrows()
-            #    if pd.notna(row["Exon_CDS_seq"])  # sometimes we get NaN errors
-            ]
+            ], key=lambda x: x[0])
             ######
 
             # Get alternative CDS sequence start and stop position for finding position in transcript sequence
@@ -764,7 +779,7 @@ def analyze_transcript(results_df):
 
         # STOP LOSS rescue search
         elif row["stop_loss"]:
-            # Start at cds_stop, scan codons in frame to end --> lets start at cds start so we are in frame
+            # Start at cds_start, scan codons in frame to end --> lets start at cds start so we are in frame
             for i in range(cds_start, len(seq) - 2, 3):
                 codon = seq[i:i + 3]
                 if codon == start_codon and start_pos is None:
