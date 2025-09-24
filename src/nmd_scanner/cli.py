@@ -7,7 +7,7 @@ from nmd_scanner.rules import extract_ptc
 from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from pyfaidx import Fasta
 
-def main(vcf_path, gtf_path, fasta_path, output):
+def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
 
     """
     Main function for NMD scanner
@@ -38,9 +38,10 @@ def main(vcf_path, gtf_path, fasta_path, output):
     print(f"GTF File shape: {gtf.df.shape}")
 
     # adjust exon number in GTF --> need this for the (old) hg19 version
-    #print("Adjust exon numbers")
-    #gtf = compute_exon_numbers(gtf)
-    #print("Exon numbers adjsuted.")
+    if reassign_exons:
+        print("Adjust exon numbers")
+        gtf = compute_exon_numbers(gtf)
+        print("Exon numbers adjusted.")
 
     # read FASTA file (genome sequence)
     print(f"Reading FASTA file: {fasta_path}")
@@ -193,6 +194,9 @@ if __name__ == '__main__':
     parser.add_argument('--fasta', required=True, help='Path to FASTA file')
     parser.add_argument('--output', required=True, help='Path to output file or output directory')
 
+    # If user adds flag, reassign exon numbers
+    parser.add_argument('--reassign_exons', action='store_true', help='Recompute exon numbers (recommended for hg19; may be slow)')
+
     args = parser.parse_args()
 
     # Check that the output path is valid
@@ -200,5 +204,5 @@ if __name__ == '__main__':
         raise ValueError(f"Invalid output path: {args.output}")
 
     # Run the main pipeline
-    main(args.vcf, args.gtf, args.fasta, args.output)
+    main(args.vcf, args.gtf, args.fasta, args.output, reassign_exons=args.reassign_exons)
 
