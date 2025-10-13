@@ -592,6 +592,61 @@ def test_calculate_ptc_to_downstream_ej():
     }
     assert calculate_ptc_to_downstream_ej(row6) is None
 
+def test_add_likely_misannotated_flag():
+
+    # Baseline: "good" annotation, not misannotated
+    row0 = {
+        "cds_in_transcript": True,
+        "ref_start_codon_pos": 0,
+        "ref_valid_stop": True
+    }
+    assert add_likely_misannotated_flag(row0) is False
+
+    # CDS not in transcript
+    row1 = {
+        "cds_in_transcript": False,
+        "ref_start_codon_pos": 0,
+        "ref_valid_stop": True
+    }
+    assert add_likely_misannotated_flag(row1) is True
+
+    # Start position of CDS not at position 0
+    row2 = {
+        "cds_in_transcript": True,
+        "ref_start_codon_pos": 14, # start codon is not at beginning of CDS
+        "ref_valid_stop": True
+    }
+    assert add_likely_misannotated_flag(row2) is True
+
+    # No valid stop codon at the end of the CDS sequence
+    row3 = {
+        "cds_in_transcript": True,
+        "ref_start_codon_pos": 0,
+        "ref_valid_stop": False
+    }
+    assert add_likely_misannotated_flag(row3) is True
+
+    # Multiple conditions that point to a likely misannotation
+    row4 = {
+        "cds_in_transcript": True,
+        "ref_start_codon_pos": 13,
+        "ref_valid_stop": False
+    }
+    assert add_likely_misannotated_flag(row4) is True
+
+    # Missing information
+    row5 = {}
+    assert add_likely_misannotated_flag(row5) is True
+
+    # No start codon position
+    row5 = {
+        "cds_in_transcript": True,
+        "ref_start_codon_pos": None,
+        "ref_valid_stop": True
+    }
+    assert add_likely_misannotated_flag(row5) is True
+
+
 
 # def test_calculate_ptc_to_downstream_ej_old():
 #     # Case 1: PTC in exon 2, simple transcript

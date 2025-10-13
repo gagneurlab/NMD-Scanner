@@ -14,8 +14,8 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
 
     Steps:
     1. Read input files (VCF, GTF, FASTA)
-    2. Parse and preprocess gene annotations (CDS, exons)
-    3. Get number of exons per transcript
+    2. Assign exon numbers (optional, recommended for hg19)
+    3. Parse and preprocess gene annotations (CDS, exons)
     4. Extract premature termination codons (PTCs) & Evaluate NMD escape rules
     5. Add extra features to output (e.g. 3' & 5'UTR length, downstream & upstream exon counts, etc.)
     6. Return and Save output results
@@ -37,50 +37,45 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     gtf = read_gtf(gtf_path)
     print(f"GTF File shape: {gtf.df.shape}")
 
-    # adjust exon number in GTF --> need this for the (old) hg19 version
+    # read FASTA file (genome sequence)
+    print(f"Reading FASTA file: {fasta_path}")
+    fasta = Fasta(fasta_path)
+
+
+    # Adjust exon number in GTF (need this for the (old) hg19 version)
     if reassign_exons:
         print("Adjust exon numbers")
         gtf = compute_exon_numbers(gtf)
         print("Exon numbers adjusted.")
 
-    # read FASTA file (genome sequence)
-    print(f"Reading FASTA file: {fasta_path}")
-    fasta = Fasta(fasta_path)
 
     # extract CDS regions from the GTF file
     cds = gtf[gtf.Feature == "CDS"]
     cds_df = cds.df
 
-    #transcripts = gtf[gtf.Feature == "transcript"]
-    #transcripts_df = transcripts.df
 
     # extract exon regions from the GTF file and compute exon related metrics:
     # exon length & number of exons contained in each transcript
     exons = gtf[gtf.Feature == "exon"]
     exons_df = exons.df
     exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
-    # I don't think I am using "num_exon_per_transcript" --> leave out or build in --> results in same df
-    #exon_counts = exons_df.groupby("transcript_id").size().reset_index(name="num_exons_per_transcript")
-    #filtered_df_with_counts = exons_df.merge(exon_counts, on="transcript_id", how="left")
-    #filtered_df_with_counts["num_exons_per_transcript"] = filtered_df_with_counts["num_exons_per_transcript"].fillna(0).astype(int)
 
-    # Apply the NMD rules
-    print("Extracting PTCs and evaluating NMD escape rules...")
-    results = extract_ptc(cds_df, vcf, fasta, exons_df, output) # output of this (+ Zwischenschritte) saved in _final_ptc_analysis.tsv
 
-    # nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
-    # results = pd.concat([results, nmd_results], axis=1)
+    # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
+    print("Creating sequences and analyzing...")
+    results = extract_ptc(cds_df, vcf, fasta, exons_df, output)
 
-    # Save intermediate NMD rule output --> can be removed later
+
+    # Save intermediate NMD rule output
     #output_path = os.path.join(output, "6_nmd_rules.tsv")
     #results.to_csv(output_path, sep="\t", index=False)
     #print(f"Save nmd rules results in: {output_path}.")
 
-    # Add additional features (inspired by benchmark dataset)
+    # Add additional features (inspired by NMD efficiency benchmark dataset)
     extra_features = results.apply(add_nmd_features, axis=1, result_type='expand')
     results = pd.concat([results, extra_features], axis=1)
 
-    # NEW: compute nmd-rules as last step
+    # Compute NMD-rules as last step
     nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
     results = pd.concat([results, nmd_results], axis=1)
 

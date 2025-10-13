@@ -36,6 +36,10 @@ def add_nmd_features(row):
     # Distance PTC to downstream exon junction
     ptc_to_intron = calculate_ptc_to_downstream_ej(row)
 
+    # Add likely_misannotated flag
+    likely_misannotated = add_likely_misannotated_flag(row)
+
+
     return {
         "utr3_length": utr3_length,
         "utr5_length": utr5_length,
@@ -48,9 +52,11 @@ def add_nmd_features(row):
         "ptc_exon_length": ptc_exon_length,
         "stop_codon_distance": stop_codon_distance,
         "ptc_to_intron": ptc_to_intron,
+        "likely_misannotated": likely_misannotated
     }
 
 def calculate_utr_lengths(row):
+
     strand = row.get("strand")
     ref_cds_info = row.get("ref_cds_info") or []
     transcript_exon_info = row.get("transcript_exon_info") or []
@@ -338,6 +344,40 @@ def calculate_ptc_to_downstream_ej(row):
     # Distance from PTC to downstream exon junction
     distance = cumulative_length - ptc_pos
     return distance
+
+def add_likely_misannotated_flag(row):
+
+    """
+    Flag rows that look inconsistent between CDS and transcript annotations and might be likely misannotated.
+    A row is flagged as likely misannotated if any of these conditions apply:
+        cds_in_transcript = False (the assembled CDS is not found in the transcript sequence)
+        ref_start_codon_pos is defined and not 0 (reference CDS has a start codon not at the very start)
+        ref_valid_stop is False (the last reference codon is not a valid stop codon)
+
+    :return: A boolean flag. True if any condition above is met and thus the row is likely misannotated, False otherwise.
+    """
+
+    # Add likely_misannotated flag: when
+    # "cds_in_transcript" is FALSE
+    # "ref_start_codon_pos" is not 0
+    # "ref_valid_stop" is FALSE
+
+    cds_in_transcript = row.get("cds_in_transcript")
+    ref_start_codon_pos = row.get("ref_start_codon_pos")
+    ref_valid_stop = row.get("ref_valid_stop")
+
+    # if any of these are missing entirely, flag as likely misannotated
+    if cds_in_transcript is None or ref_start_codon_pos is None or ref_valid_stop is None:
+        return True
+
+    flag = (
+        (cds_in_transcript is False) or
+        ((ref_start_codon_pos is not None) and (ref_start_codon_pos != 0)) or
+        (ref_valid_stop is False)
+    )
+
+    return(flag)
+
 
 
 def calculate_ptc_to_downstream_ej_old(row):
