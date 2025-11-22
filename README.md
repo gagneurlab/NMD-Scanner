@@ -22,23 +22,21 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
 - Outputs all annotations as a structured DataFrame (CSV)
 
 ## Installation
-```
-git clone https://gitlab.cmm.in.tum.de/gagneurlab/nmd-variant-effect-prediction.git
-cd nmd-variant-effect-prediction
-pip install nmd-scanner
-
-import nmd_scanner
+```bash
+git clone https://github.com/gagneurlab/NMD-Scanner.git
+cd NMD-Scanner
+pip install .
 ```
 
 ## Usage
 
-### Option 1)
-```
+### Option 1: Annotating a VCF on the command line
+```bash
 # if running the script directly
-python nmd_scanner.py --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/
+python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/
 
 # option: fix exon numbering (recommended for hg19)
-python nmd_scanner.py --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/ --reassign_exons
+python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/ --reassign_exons
 ```
 
 Arguments:
@@ -55,7 +53,7 @@ Output:
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.)
 
-### Option 2)
+### Option 2: Import as a python moduele
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
 This is useful if you want to 
 - only reconstruct transcript / CDS sequences
@@ -64,7 +62,7 @@ This is useful if you want to
 - build custom features
 
 For reconstructing reference and alternative coding and transcript sequences, PTC detection and start / stop-loss information:
-```
+```python
 import pandas as pd
 import pyranges as pr
 from pyfaidx import Fasta
@@ -87,13 +85,13 @@ results = extract_ptc(cds_df, vcf, fasta, exons_df, output="tmp/")
 ```
 
 Add NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:
-```
+```python
 nmd_results = results.apply(nmd_scanner.evaluate_nmd_escape_rules, axis=1, result_type='expand')
 results = pd.concat([results, nmd_results], axis=1)
 ```
 
 Add extra NMD-related features (utr lengths, exon counts, ptc-related features) to above computed results:
-```
+```python
 extra_features = results.apply(nmd_scanner.add_nmd_features, axis=1, result_type='expand')
 results = pd.concat([results, extra_features], axis=1)
 ```
