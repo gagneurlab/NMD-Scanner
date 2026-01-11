@@ -55,15 +55,17 @@ It includes:
 
 ---
 
-### 4. `NMD.ipynb` (WILL BE DEPRECATED / REPLACED)
-This notebook originally contained exploratory code for implementing the NMD logic.  
-It can be deleted or replaced with a cleaner notebook containing:
-- examples of how to use the installed `nmd_scanner` package  
-- code snippets to manually inspect transcripts, PTCs, and escape rules  
-- debugging notes
+### 4. `nmd-vep.ipynb`
+This notebook contains the full NMD-Scanner implementation split into individual cells, allowing users to:
+- follow the workflow step-by-step
+- inspect intermediate outputs
+- debug or modify specific steps of the pipeline
+- reuse, adapt or extend the code for custom analyses.
+
 
 ---
 
 ## Notes
 - None of the notebooks are required for end users of the package.  
 - They are included for transparency and reproducibility of the development process.
+- The recommended entry point for users is the installed nmd_scanner package or the CLI interface described in the main README.
