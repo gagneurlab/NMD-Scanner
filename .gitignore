@@ -7,4 +7,5 @@
 .coverage
 coverage.xml
 .*.swp
-data/
+data/*
+output/*

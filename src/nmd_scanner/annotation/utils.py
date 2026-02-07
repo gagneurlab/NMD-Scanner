@@ -1,181 +1,7 @@
 # Import dependencies
 import pandas as pd
-import pyranges as pr
-import os
 from Bio.Seq import Seq
-from nmd_scanner import catch_sequence
-
-# Main extract PTC script:
-def extract_ptc(cds_df, vcf, fasta, exons_df, output):
-
-    """
-    Main function for extracting reference coding sequence, alternative coding sequence by incorporating the variant, analyzing for premature termination codons (PTCs),
-    start and stop loss, and getting the transcript information.
-
-    :param cds_df: CDS entries from the GTF file (Dataframe)
-    :param vcf: Parsed VCF variant entries (PyRanges object)
-    :param fasta: Reference genome sequence (pyfaidx.Fasta object)
-    :param exons_df: All exonic entries from the GTF file (DataFrame)
-    :param output: Output directory path for intermediate results (str)
-    :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information
-    """
-
-    # Adjust the last 3 CDS positions to include stop codons
-    cds_df_adj = adjust_last_cds_for_stop_codon(cds_df)
-    print("Adjusting last CDS for stop codon: done.")
-
-    # adjust exon_number as int datatype
-    cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
-
-    # Intersect variants with CDS regions
-    intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
-    print("Joining variants with cds entries: done.")
-
-    ##########################################################################################
-    # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
-    # Fix REF and ALT for minus-strand CDSs
-    #mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
-    #intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
-    #   lambda seq: str(Seq(seq).reverse_complement()))
-    #intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
-    #   lambda seq: str(Seq(seq).reverse_complement()))
-    ##########################################################################################
-
-    # intersection = intersection_test.copy()
-    # df3["Exon_CDS_seq"] = df3.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    #intersection_cds_vcf["Exon_CDS_seq"] = [
-    #    fasta[chrom][start:end].seq.upper()
-    #    for chrom, start, end in zip(intersection_cds_vcf["Chromosome"], intersection_cds_vcf["Start"], intersection_cds_vcf["End"])
-    #]
-
-    # Fetch reference CDS sequence for each variant region
-    print("Begin creating exon CDS sequence.")
-    intersection_cds_vcf = catch_sequence.add_exon_cds_sequence(intersection_cds_vcf, fasta) # for faster access
-    print("Creating exon CDS sequence: done.")
-
-    # Apply variant to CDS and compute alternative CDS sequence and lengths
-    intersection_cds_vcf[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = intersection_cds_vcf.apply(
-        apply_variant_edge_aware_with_lengths,
-        axis=1
-    )
-    print("Creating exon CDS and alt CDS sequence: done.")
-
-    ##### New ######
-    # Filter out Variants with a reference mismatch
-    mismatched_rows = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].isna()]
-    print(f"\n[Warning] Skipping {len(mismatched_rows)} variants due to reference mismatches:")
-    if not mismatched_rows.empty:
-        print(mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
-            index=False))
-    intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].notna()].copy()
-    ################
-
-    # Save exon-variant merge result
-    #output_path = os.path.join(output, "1_variant_exon_output.tsv")
-    #intersection_cds_vcf.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating {output_path}: done.")
-
-    # Limit to relevant transcript (to save time)
-    relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
-    cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
-
-    # cds_df_adj["Exon_CDS_seq"] = cds_df_adj.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    #cds_df_adj["Exon_CDS_seq"] = [
-    #    fasta[chrom][start:end].seq.upper()
-    #    for chrom, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
-    #]
-
-    # Fetch reference sequence for all CDS entries per (relevant) transcripts
-    cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta) # for faster access
-
-    # save preliminary result
-    #output_path = os.path.join(output, "2_cds_df_adj.tsv")
-    #cds_df_adj.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating exon CDS sequence for all exons for transcripts in df3: done. Saved in: {output_path}")
-
-
-    # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
-    results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
-    print("Create reference CDS: done.")
-
-    # make intermediate output file of results_df
-    #output_path = os.path.join(output, "3_create_reference_CDS.tsv")
-    #results_df.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating {output_path}: done.")
-
-    # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
-    exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
-    exon_seqs = get_transcript_sequence(exons_df, fasta)
-    print("Get transcript sequence: done.")
-
-    # make output file of exon_seqs
-    #output_path = os.path.join(output, "4_transcript_sequences.tsv")
-    #exon_seqs.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating {output_path}: done.")
-
-    # Validate that the CDS is present inside the transcript sequence, to make sure the transcript sequence was computed correctly
-    exon_seqs_indexed = exon_seqs.set_index("transcript_id")
-
-    def check_cds_in_transcript(row):
-        transcript_id = row["transcript_id"]
-
-        # Skip if transcript_id not found
-        if transcript_id not in exon_seqs_indexed.index:
-            return False
-
-        transcript_seq = exon_seqs_indexed.loc[transcript_id, "transcript_sequence"]
-        ref_cds_seq = row["ref_cds_seq"]
-
-        # Check if CDS is a substring of the transcript
-        return ref_cds_seq in transcript_seq
-
-    results_df["cds_in_transcript"] = results_df.apply(check_cds_in_transcript, axis=1)
-
-    # TODO: Analyze reference and alternative CDS for start / stop codons
-    analysis_df = analyze_sequence(results_df)
-    loss_df = start_stop_loss(analysis_df) # instead of loss_analysis_df (test for start stop loss)
-    print("Analyzing sequence: done.")
-
-
-    # Annotate transcript information (transcript start, end, sequence, length, exon info) in case of start or stop loss
-    # transcript sequences are in: exon_seqs_subset
-    print("Annotating transcript information in case of start/stop loss.")
-    transcript_starts = exon_seqs.set_index("transcript_id")["start"].to_dict()
-    loss_df["transcript_start"] = loss_df["transcript_id"].map(transcript_starts)
-    transcript_ends = exon_seqs.set_index("transcript_id")["end"].to_dict()
-    loss_df["transcript_end"] = loss_df["transcript_id"].map(transcript_ends)
-    transcript_sequences = exon_seqs.set_index("transcript_id")["transcript_sequence"].to_dict()  # create map of transcript-id to transcript sequence
-    loss_df["transcript_seq"] = loss_df["transcript_id"].map(transcript_sequences)
-    transcript_lengths = exon_seqs.set_index("transcript_id")["transcript_length"].to_dict()
-    loss_df["transcript_length"] = loss_df["transcript_id"].map(transcript_lengths)
-
-    # In case of start or stop loss:
-    # Splice alternative CDS into reference transcript sequence to create alternative transcript sequence and measure new length
-    loss_df["alt_transcript_seq"] = loss_df.apply(
-        lambda row: splice_alt_cds_into_transcript(row, row["transcript_seq"])
-        if pd.notnull(row["transcript_seq"]) else None,
-        axis=1
-    )
-    loss_df["alt_transcript_length"] = loss_df["alt_transcript_seq"].apply(
-        lambda x: len(x) if pd.notnull(x) else None
-    )
-
-
-    # Add exon information to dataframe
-    transcript_exon_info = exon_seqs.set_index("transcript_id")["transcript_exon_info"].to_dict()
-    loss_df["transcript_exon_info"] = loss_df["transcript_id"].map(transcript_exon_info)
-
-
-    # Analyze transcript sequence (e.g., frame, length, stop codon position, etc.) in case of start or stop loss
-    analyze_transcript_df = analyze_transcript(loss_df)
-
-
-    # save result
-    #output_path = os.path.join(output, "5_final_ptc_analysis.tsv")
-    #analyze_transcript_df.to_csv(output_path, sep="\t", index=False)
-    #print(f"Save results in: {output_path}.")
-
-    return analyze_transcript_df
+from tqdm import tqdm
 
 
 # Functions used for extracting PTC:
@@ -372,7 +198,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
     results = []
 
-    for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id"):  # Only transcripts with a variant
+    transcript_groups = list(intersection_cds_vcf.groupby("transcript_id"))
+    for transcript_id, var_df in tqdm(transcript_groups, desc="Processing transcripts"):  # Only transcripts with a variant
 
         # 1. Get reference exons
         ref_exons = cds_df_test[cds_df_test["transcript_id"] == transcript_id].copy()
@@ -808,9 +635,176 @@ def analyze_transcript(results_df):
 
     return df
 
+def calculate_utr_lengths(strand, ref_cds_info, transcript_exon_info, ref_cds_start, transcript_start, ref_cds_stop, transcript_end):
 
+    ref_cds_info = ref_cds_info or []
+    transcript_exon_info = transcript_exon_info or []
 
-def evaluate_nmd_escape_rules_old(row):
+    if not ref_cds_info or not transcript_exon_info:
+        return {"utr5_length": None, "utr3_length": None}
+
+    # Convert to dicts for easier lookup
+    transcript_exon_dict = {int(k): int(v) for k, v in transcript_exon_info}
+    cds_exons_dict = {int(exon): int(length) for exon, length in ref_cds_info}
+
+    # Handle single exon
+    if len(transcript_exon_dict) == 1:
+        if strand == "+":
+            utr5 = ref_cds_start - transcript_start
+            utr3 = transcript_end - ref_cds_stop
+        else:
+            utr5 = transcript_end - ref_cds_stop
+            utr3 = ref_cds_start - transcript_start
+
+        utr5 = utr5 if utr5 >= 0 else None
+        utr3 = utr3 if utr3 >= 0 else None
+
+        return {"utr5_length": utr5, "utr3_length": utr3}
+
+    cds_exon_nums = sorted(cds_exons_dict.keys())
+    tx_exon_nums = sorted(transcript_exon_dict.keys())
+
+    utr5 = 0
+    utr3 = 0
+
+    for exon in tx_exon_nums:
+        exon_len = transcript_exon_dict[exon]
+        cds_len = cds_exons_dict.get(exon, 0)
+        utr_len = exon_len - cds_len
+
+        if utr_len <= 0:
+            continue
+
+        if exon in cds_exons_dict:
+            # Exon overlaps CDS, partial UTR
+            if strand == "+":
+                if exon == cds_exon_nums[0]:
+                    utr5 += utr_len
+                elif exon == cds_exon_nums[-1]:
+                    utr3 += utr_len
+            else:
+                if exon == cds_exon_nums[0]:
+                    utr3 += utr_len
+                elif exon == cds_exon_nums[-1]:
+                    utr5 += utr_len
+        else:
+            # Exon is outside CDS
+            if strand == "+":
+                if exon < cds_exon_nums[0]:
+                    utr5 += exon_len
+                elif exon > cds_exon_nums[-1]:
+                    utr3 += exon_len
+            else:
+                if exon > cds_exon_nums[-1]:
+                    utr5 += exon_len
+                elif exon < cds_exon_nums[0]:
+                    utr3 += exon_len
+
+    utr5 = utr5 if utr5 >= 0 else None
+    utr3 = utr3 if utr3 >= 0 else None
+    return {"utr5_length": utr5, "utr3_length": utr3}
+
+def calculate_exon_features(transcript_exon_info, alt_stop_codon_exons, alt_is_premature):
+
+    """
+    Calculate exon-related features:
+    - total_exon_count: always computed if transcript_exon_info is available
+    - upstream_exon_count / downstream_exon_count: only computed if a PTC exists
+    """
+
+    exon_info = transcript_exon_info or []
+    stop_exons = alt_stop_codon_exons or []
+
+    total_exons = len(exon_info)
+
+    if not alt_is_premature or not stop_exons or not exon_info:
+        return {
+            "total_exon_count": total_exons if total_exons > 0 else None,
+            "upstream_exon_count": None,
+            "downstream_exon_count": None
+        }
+
+    # Take the PTC exon closest to CDS start
+    ptc_exon = min(int(e) for e in stop_exons)
+
+    # get exon numbers from transcript_exon_info
+    exon_numbers = [int(e[0]) for e in exon_info]
+
+    # If the PTC exon is not in transcript → cannot compute
+    if ptc_exon not in exon_numbers:
+        return {
+            "total_exon_count": int(total_exons),
+            "upstream_exon_count": None,
+            "downstream_exon_count": None
+        }
+
+    upstream = sum(1 for e in exon_numbers if e < ptc_exon)
+    downstream = sum(1 for e in exon_numbers if e > ptc_exon)
+
+    return {
+        "total_exon_count": int(total_exons),
+        "upstream_exon_count": int(upstream),
+        "downstream_exon_count": int(downstream)
+    }
+
+def calculate_ptc_to_start_distance(alt_is_premature, alt_start_codon_pos, alt_first_stop_pos):
+
+    if not alt_is_premature:
+        return None
+
+    start = alt_start_codon_pos
+    stop = alt_first_stop_pos
+
+    if start is None or stop is None:
+        return None
+
+    # PTC codon position: is PTC_to_start_codon / 3 --> leave it out
+    #offset = stop - start
+    #return offset // 3 if offset >= 0 else None
+
+    if stop <= start:
+        return None
+
+    return stop-start # distance between the PTC to start codon in nt
+
+def calculate_ptc_exon_length(alt_is_premature, alt_stop_codon_exons, transcript_exon_info):
+    """
+    Return the length of the exon containing the first premature stop codon (PTC).
+    """
+
+    if not alt_is_premature:
+        return None
+
+    stop_exons = alt_stop_codon_exons or []
+    exon_info = transcript_exon_info or []
+
+    if not stop_exons or not exon_info:
+        return None
+
+    # First PTC exon = smallest exon number (transcript-order, strand-corrected)
+    ptc_exon = min(int(e) for e in stop_exons)
+
+    exon_dict = {int(e): int(length) for e, length in exon_info}
+    return exon_dict.get(ptc_exon)
+
+def calculate_stop_codon_dist(ref_first_stop_pos, alt_first_stop_pos):
+
+    """
+    Calculate the distance between the reference stop codon and the alternative stop codon.
+    Positive means the PTC is upstream of the reference stop codon.
+    """
+
+    ref_stop = ref_first_stop_pos
+    alt_stop = alt_first_stop_pos
+
+    if ref_stop is None or alt_stop is None:
+        return None
+
+    return ref_stop - alt_stop
+
+def evaluate_nmd_escape_rules(alt_is_premature, alt_first_stop_pos, alt_stop_codon_exons, 
+                              transcript_exon_info, alt_start_codon_pos, total_exon_count, 
+                              downstream_exon_count, ptc_exon_length):
 
     """
     Evaluate whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on
@@ -823,14 +817,11 @@ def evaluate_nmd_escape_rules_old(row):
     5. Single exon rule: The transcript where the PTC lays consists only of a single exon
     A PTC is considered to escape NMD if it satisfies any of the above rules.
 
-    :param row: A row of the DataFrame including alt_is_premature (bool), alt_first_stop_pos (int),
-                alt_stop_codon_exons (list[int]), transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]),
-                alt_start_codon_pos (int)
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
     # Only relevant for premature stop codons
-    if not row.get("alt_is_premature"):
+    if not alt_is_premature:
         return {
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": False,
@@ -841,14 +832,12 @@ def evaluate_nmd_escape_rules_old(row):
         }
 
     # Extract relevant data
-    stop_pos = row.get("alt_first_stop_pos")
-    stop_exons = row.get("alt_stop_codon_exons") or []
-    exon_info = row.get("transcript_exon_info") or []
-    start_pos = row.get("alt_start_codon_pos")
+    stop_pos = alt_first_stop_pos
+    exon_info = transcript_exon_info or []
+    start_pos = alt_start_codon_pos
 
     # Preprocess exon info
     sorted_exons = sorted(exon_info, key=lambda x: x[0])
-    exon_length_map = {exon_num: length for exon_num, length in sorted_exons}
     exon_offsets = {}
     offset = 0
     for exon_num, length in sorted_exons:
@@ -856,14 +845,10 @@ def evaluate_nmd_escape_rules_old(row):
         offset += length
 
     # Single exon rule
-    rule_single_exon = len(sorted_exons) == 1
+    rule_single_exon = total_exon_count == 1
 
     # Last exon rule
-    if not rule_single_exon:
-        last_exon = sorted_exons[-1][0] if sorted_exons else None
-        rule_last_exon = bool(stop_exons and max(stop_exons) == last_exon)
-    else:
-        rule_last_exon = False
+    rule_last_exon = downstream_exon_count == 0 if downstream_exon_count is not None else False
 
     # 50nt from penultimate exon end
     if len(sorted_exons) >= 2:
@@ -874,7 +859,7 @@ def evaluate_nmd_escape_rules_old(row):
         rule_50nt_penultimate = False
 
     # Long exon rule (with exon longer than >407nt)
-    rule_long_exon = any(exon_length_map.get(exon, 0) > 407 for exon in stop_exons)
+    rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
 
     # Start-proximal rule (closer than 150nt from the start codon)
     rule_start_proximal = start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
@@ -891,29 +876,139 @@ def evaluate_nmd_escape_rules_old(row):
         "nmd_escape": escape
     }
 
-def adjust_last_cds_for_stop_codon_old(df, exon_col="exon_number", transcript_col="transcript_id"):
-
+def calculate_ptc_to_downstream_ej(alt_is_premature, alt_stop_codon_exons, alt_cds_info, alt_first_stop_pos):
     """
-    Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions, thus to include the stop codon.
-    :param df: Dataframe containing CDS annotation
-    :param exon_col: The name of the column that indicated the exon number, so we can find out which is the last CDS snippet
-    :param transcript_col: The name of the column that indicates the transcript ID
-    :return: Modified pandas DataFrame where the last exon of each transcript is extended by 3 bases to include the stop codon.
+    Calculate distance from PTC to the downstream exon junction (next exon start/end depending on strand).
+    Returns None if not applicable.
     """
 
-    df = df.copy()
+    # only calculate if we have PTC
+    if not alt_is_premature:
+        return None
 
-    # Search for the last exon in a transcript
-    df[exon_col] = df[exon_col].astype(int)  # because otherwise e.g. 10 smaller than 9
-    df.sort_values(by=[transcript_col, exon_col], inplace=True)
-    last_exon_idx = df.groupby(transcript_col)[exon_col].idxmax()
+    stop_exons = alt_stop_codon_exons or []
 
-    # Adjust start or end based on strand
-    for idx in last_exon_idx:
-        strand = df.at[idx, "Strand"]
-        if strand == "+":
-            df.at[idx, "End"] += 3
-        elif strand == "-":
-            df.at[idx, "Start"] -= 3
+    # Assuming that the PTC cannot be outside the CDS, since it needs to come before the original stop codon
+    exon_info = alt_cds_info or []
 
-    return df
+    ptc_pos = alt_first_stop_pos
+
+    if not stop_exons or not exon_info or ptc_pos is None:
+        return None
+
+    # Choose the PTC exon (smallest number, closer to start)
+    ptc_exon = min(stop_exons)
+
+    # Sum lengths of exons up to and including ptc_exon
+    cumulative_length = 0
+    for exon_num, length in exon_info:
+        cumulative_length += length
+        if exon_num == ptc_exon:
+            break
+
+    # Distance from PTC to downstream exon junction
+    distance = cumulative_length - ptc_pos
+    return distance
+
+def add_likely_misannotated_flag(cds_in_transcript, ref_start_codon_pos, ref_valid_stop):
+
+    """
+    Flag rows that look inconsistent between CDS and transcript annotations and might be likely misannotated.
+    A row is flagged as likely misannotated if any of these conditions apply:
+        cds_in_transcript = False (the assembled CDS is not found in the transcript sequence)
+        ref_start_codon_pos is defined and not 0 (reference CDS has a start codon not at the very start)
+        ref_valid_stop is False (the last reference codon is not a valid stop codon)
+
+    :return: A boolean flag. True if any condition above is met and thus the row is likely misannotated, False otherwise.
+    """
+
+    # Add likely_misannotated flag: when
+    # "cds_in_transcript" is FALSE
+    # "ref_start_codon_pos" is not 0
+    # "ref_valid_stop" is FALSE
+
+    # if any of these are missing entirely, flag as likely misannotated
+    if cds_in_transcript is None or ref_start_codon_pos is None or ref_valid_stop is None:
+        return True
+
+    flag = (
+        (cds_in_transcript is False) or
+        ((ref_start_codon_pos is not None) and (ref_start_codon_pos != 0)) or
+        (ref_valid_stop is False)
+    )
+
+    return(flag)
+
+def evaluate_nmd_escape_rules(alt_is_premature, alt_first_stop_pos, alt_stop_codon_exons, 
+                              transcript_exon_info, alt_start_codon_pos, total_exon_count, 
+                              downstream_exon_count, ptc_exon_length):
+
+    """
+    Evaluate whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on
+    established biological rules. This function applies five NMD escape rules to determine if a premature termination
+    codon (PTC) is likely to escape degradation:
+    1. Last exon rule: The PTC is in the last exon
+    2. 50nt penultimate rule: The PTC is within 50 nucleotides upstream of the last exon junction
+    3. Long exon rule: The PTC is in an exon with >407 nucleotides
+    4. Start proximal rule: The PTC is within 150 nucleotides of the start codon
+    5. Single exon rule: The transcript where the PTC lays consists only of a single exon
+    A PTC is considered to escape NMD if it satisfies any of the above rules.
+
+    :return: A dictionary with boolean flags for each rule and overall NMD escape
+    """
+
+    # Only relevant for premature stop codons
+    if not alt_is_premature:
+        return {
+            "nmd_last_exon_rule": False,
+            "nmd_50nt_penultimate_rule": False,
+            "nmd_long_exon_rule": False,
+            "nmd_start_proximal_rule": False,
+            "nmd_single_exon_rule": False,
+            "nmd_escape": False
+        }
+
+    # Extract relevant data
+    stop_pos = alt_first_stop_pos
+    exon_info = transcript_exon_info or []
+    start_pos = alt_start_codon_pos
+
+    # Preprocess exon info
+    sorted_exons = sorted(exon_info, key=lambda x: x[0])
+    exon_offsets = {}
+    offset = 0
+    for exon_num, length in sorted_exons:
+        exon_offsets[exon_num] = (offset, offset + length)
+        offset += length
+
+    # Single exon rule
+    rule_single_exon = total_exon_count == 1
+
+    # Last exon rule
+    rule_last_exon = downstream_exon_count == 0 if downstream_exon_count is not None else False
+
+    # 50nt from penultimate exon end
+    if len(sorted_exons) >= 2:
+        penultimate_exon_num, penultimate_len = sorted_exons[-2]
+        pen_start, pen_end = exon_offsets.get(penultimate_exon_num, (None, None))
+        rule_50nt_penultimate = pen_end is not None and (stop_pos >= pen_end - 50) and (stop_pos < pen_end)
+    else:
+        rule_50nt_penultimate = False
+
+    # Long exon rule (with exon longer than >407nt)
+    rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
+
+    # Start-proximal rule (closer than 150nt from the start codon)
+    rule_start_proximal = start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
+
+    # NMD escape if any rule is true
+    escape = rule_last_exon or rule_50nt_penultimate or rule_long_exon or rule_start_proximal or rule_single_exon
+
+    return {
+        "nmd_last_exon_rule": rule_last_exon,
+        "nmd_50nt_penultimate_rule": rule_50nt_penultimate,
+        "nmd_long_exon_rule": rule_long_exon,
+        "nmd_start_proximal_rule": rule_start_proximal,
+        "nmd_single_exon_rule": rule_single_exon,
+        "nmd_escape": escape
+    }

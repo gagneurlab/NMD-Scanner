@@ -25,18 +25,25 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
 ```bash
 git clone https://github.com/gagneurlab/NMD-Scanner.git
 cd NMD-Scanner
-pip install .
+pip install -e .
 ```
 
 ## Usage
 
-### Option 1: Annotating a VCF on the command line
-```bash
-# if running the script directly
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/
+### Option 1: Using the command-line tool
+After installation, you can use the `nmd_scanner` command directly:
 
-# option: fix exon numbering (recommended for hg19)
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/ --reassign_exons
+```bash
+# Basic usage
+nmd_scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/
+
+# With exon numbering fix (recommended for hg19)
+nmd_scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/ --reassign_exons
+```
+
+Alternatively, you can run it as a Python module:
+```bash
+python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/
 ```
 
 Arguments:
@@ -47,19 +54,19 @@ Arguments:
 - `--reassign_exons`: (flag) Recompute exon numbers (useful for hg19)
 
 Output:
-- A CSV named `<vcf_basename>_final_nmd_results.csv` saved to `--output`, containing:
-  - reconstructed reference / alternative CDS and transcript sequences(+ metadata)
+- A CSV file named `<vcf_basename>_final_nmd_results.csv` saved to `--output`, containing:
+  - Reconstructed reference / alternative CDS and transcript sequences (+ metadata)
   - PTC detection and start / stop-loss flags
   - NMD escape rules
-  - extra features such as UTR lengths, exon counts, distances, etc.)
+  - Extra features (UTR lengths, exon counts, distances, etc.)
 
-### Option 2: Import as a python moduele
+### Option 2: Import as a Python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
-This is useful if you want to 
-- only reconstruct transcript / CDS sequences
-- only compute NMD escape rules
-- integrate NMD-Scanner into a larger workflow
-- build custom features
+This is useful if you want to:
+- Only reconstruct transcript / CDS sequences
+- Only compute NMD escape rules
+- Integrate NMD-Scanner into a larger workflow
+- Build custom features
 
 For reconstructing reference and alternative coding and transcript sequences, PTC detection and start / stop-loss information:
 ```python
@@ -84,13 +91,13 @@ exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 results = extract_ptc(cds_df, vcf, fasta, exons_df, output="tmp/")
 ```
 
-Add NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:
+**Add NMD escape rules** (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:
 ```python
 nmd_results = results.apply(nmd_scanner.evaluate_nmd_escape_rules, axis=1, result_type='expand')
 results = pd.concat([results, nmd_results], axis=1)
 ```
 
-Add extra NMD-related features (utr lengths, exon counts, ptc-related features) to above computed results:
+**Add extra NMD-related features** (utr lengths, exon counts, ptc-related features) to above computed results:
 ```python
 extra_features = results.apply(nmd_scanner.add_nmd_features, axis=1, result_type='expand')
 results = pd.concat([results, extra_features], axis=1)

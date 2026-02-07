@@ -1,175 +1,10 @@
 # Import dependencies
-import argparse
+import click
 import os
-import pandas as pd
-from nmd_scanner.scan import read_vcf, read_gtf, compute_exon_numbers
-from nmd_scanner.rules import extract_ptc
-from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
-from pyfaidx import Fasta
+from . import scanner
 
-def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
-
-    """
-    Main function for NMD scanner
-
-    Steps:
-    1. Read input files (VCF, GTF, FASTA)
-    2. Assign exon numbers (optional, recommended for hg19)
-    3. Parse and preprocess gene annotations (CDS, exons)
-    4. Extract premature termination codons (PTCs) & Evaluate NMD escape rules
-    5. Add extra features to output (e.g. 3' & 5'UTR length, downstream & upstream exon counts, etc.)
-    6. Return and Save output results
-
-    :param vcf_path: path to the input VCF file
-    :param gtf_path: path to the input GTF annotation file
-    :param fasta_path: path to the reference FASTA file
-    :param output: directory to save the results in
-    :return: CSV file summarizing all annotated variants
-    """
-
-    # read VCF file (variants)
-    print(f"Reading VCF file: {vcf_path}")
-    vcf = read_vcf(vcf_path)
-    print(f"VCF shape: {vcf.df.shape}")
-
-    # read GTF file (gene annotation)
-    print(f"Reading GTF file: {gtf_path}")
-    gtf = read_gtf(gtf_path)
-    print(f"GTF File shape: {gtf.df.shape}")
-
-    # read FASTA file (genome sequence)
-    print(f"Reading FASTA file: {fasta_path}")
-    fasta = Fasta(fasta_path)
-
-
-    # Adjust exon number in GTF (need this for the (old) hg19 version)
-    if reassign_exons:
-        print("Adjust exon numbers")
-        gtf = compute_exon_numbers(gtf)
-        print("Exon numbers adjusted.")
-
-
-    # extract CDS regions from the GTF file
-    cds = gtf[gtf.Feature == "CDS"]
-    cds_df = cds.df
-
-
-    # extract exon regions from the GTF file and compute exon related metrics:
-    # exon length & number of exons contained in each transcript
-    exons = gtf[gtf.Feature == "exon"]
-    exons_df = exons.df
-    exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
-
-
-    # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
-    print("Creating sequences and analyzing...")
-    results = extract_ptc(cds_df, vcf, fasta, exons_df, output)
-
-
-    # Save intermediate NMD rule output
-    #output_path = os.path.join(output, "6_nmd_rules.tsv")
-    #results.to_csv(output_path, sep="\t", index=False)
-    #print(f"Save nmd rules results in: {output_path}.")
-
-    # Add additional features (inspired by NMD efficiency benchmark dataset)
-    extra_features = results.apply(add_nmd_features, axis=1, result_type='expand')
-    results = pd.concat([results, extra_features], axis=1)
-
-    # Compute NMD-rules as last step
-    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
-    results = pd.concat([results, nmd_results], axis=1)
-
-    # # adjust datatypes --> TODO: adjust in code, not afterwards
-    # dtype_mapping = {
-    #     "transcript_id": "object",
-    #     "variant_id": "object",
-    #     "ref_cds_start": "Int64",
-    #     "ref_cds_stop": "Int64",
-    #     "ref_cds_seq": "string",
-    #     "ref_cds_len": "Int64",
-    #     "alt_cds_start": "Int64",
-    #     "alt_cds_stop": "Int64",
-    #     "alt_cds_seq": "string",
-    #     "alt_cds_len": "Int64",
-    #     "chromosome": "object",
-    #     "gene_id": "object",
-    #     "strand": "object",
-    #     "ref": "object",
-    #     "alt": "object",
-    #     "start_variant": "Int64",
-    #     "end_variant": "Int64",
-    #     "ref_cds_info": "object",
-    #     "alt_cds_info": "object",
-    #     "cds_in_transcript": "boolean",
-    #     "ref_start_codon_pos": "Int64",
-    #     "ref_start_codon_exon": "Int64",
-    #     "ref_last_codon": "object",
-    #     "ref_valid_stop": "boolean",
-    #     "ref_first_stop_codon": "object",
-    #     "ref_first_stop_pos": "Int64",
-    #     "ref_num_stop_codons": "Int64",
-    #     "ref_all_stop_codons": "object",
-    #     "ref_stop_codon_exons": "object",
-    #     "ref_is_premature": "boolean",
-    #     "alt_start_codon_pos": "Int64",
-    #     "alt_start_codon_exon": "Int64",
-    #     "alt_last_codon": "object",
-    #     "alt_valid_stop": "boolean",
-    #     "alt_first_stop_codon": "object",
-    #     "alt_first_stop_pos": "Int64",
-    #     "alt_num_stop_codons": "Int64",
-    #     "alt_all_stop_codons": "object",
-    #     "alt_stop_codon_exons": "object",
-    #     "alt_is_premature": "boolean",
-    #     "start_loss": "boolean",
-    #     "stop_loss": "boolean",
-    #     "transcript_start": "Int64",
-    #     "transcript_end": "Int64",
-    #     "transcript_seq": "string",
-    #     "transcript_length": "Int64",
-    #     "alt_transcript_seq": "string",
-    #     "alt_transcript_length": "Int64",
-    #     "transcript_exon_info": "object",
-    #     "transcript_start_codon_pos": "Int64",
-    #     "transcript_start_codon_exon": "Int64",
-    #     "transcript_last_codon": "object",
-    #     "transcript_valid_stop": "boolean",
-    #     "transcript_first_stop_codon": "object",
-    #     "transcript_first_stop_pos": "Int64",
-    #     "transcript_num_stop_codons": "Int64",
-    #     "transcript_all_stop_codons": "object",
-    #     "transcript_stop_codon_exons": "object",
-    #     "nmd_last_exon_rule": "boolean",
-    #     "nmd_50nt_penultimate_rule": "boolean",
-    #     "nmd_long_exon_rule": "boolean",
-    #     "nmd_start_proximal_rule": "boolean",
-    #     "nmd_single_exon_rule": "boolean",
-    #     "nmd_escape": "boolean",
-    #     "utr3_length": "Int64",
-    #     "utr5_length": "Int64",
-    #     "total_exon_count": "Int64",
-    #     "upstream_exon_count": "Int64",
-    #     "downstream_exon_count": "Int64",
-    #     "ptc_to_start_codon": "Int64",
-    #     "ptc_less_than_150nt_to_start": "boolean",
-    #     "ptc_exon_length": "Int64",
-    #     "stop_codon_distance_nmd": "Int64"
-    # }
-    # for col, dtype in dtype_mapping.items():
-    #     if col in results.columns:
-    #         results[col] = results[col].astype(dtype)
-
-
-    # Write output
-    vcf_base = os.path.splitext(os.path.basename(vcf_path))[0]
-    output_file = os.path.join(output, f"{vcf_base}_final_nmd_results.csv")
-    print(f"Writing results to {output_file}")
-    results.to_csv(output_file, index=False)
-
-    return results
 
 def is_valid_output_path(path):
-
     """
     Validate if the output path exists or is creatable.
     Allows a file path (where the parent directory must exist) or a directory.
@@ -180,24 +15,28 @@ def is_valid_output_path(path):
     parent = os.path.dirname(path)
     return os.path.isdir(parent) if parent else False
 
-if __name__ == '__main__':
 
-    # CLI argument parser
-    parser = argparse.ArgumentParser(description="Run NMD pipeline")
-    parser.add_argument('--vcf', required=True, help='Path to VCF file')
-    parser.add_argument('--gtf', required=True, help='Path to GTF file')
-    parser.add_argument('--fasta', required=True, help='Path to FASTA file')
-    parser.add_argument('--output', required=True, help='Path to output file or output directory')
-
-    # If user adds flag, reassign exon numbers
-    parser.add_argument('--reassign_exons', action='store_true', help='Recompute exon numbers (recommended for hg19; may be slow)')
-
-    args = parser.parse_args()
-
+@click.command()
+@click.option('--vcf', required=True, type=click.Path(exists=True),
+              help='Path to VCF file')
+@click.option('--gtf', required=True, type=click.Path(exists=True),
+              help='Path to GTF file')
+@click.option('--fasta', required=True, type=click.Path(exists=True),
+              help='Path to FASTA file')
+@click.option('--output', required=True,
+              help='Path to output file or output directory')
+@click.option('--reassign-exons', is_flag=True,
+              help='Recompute exon numbers (recommended for hg19; may be slow)')
+def cli(vcf, gtf, fasta, output, reassign_exons):
+    """Run NMD pipeline to analyze variants for nonsense-mediated decay."""
+    
     # Check that the output path is valid
-    if not is_valid_output_path(args.output):
-        raise ValueError(f"Invalid output path: {args.output}")
+    if not is_valid_output_path(output):
+        raise click.BadParameter(f"Invalid output path: {output}")
 
     # Run the main pipeline
-    main(args.vcf, args.gtf, args.fasta, args.output, reassign_exons=args.reassign_exons)
+    scanner.annotate_nmd(vcf, gtf, fasta, output, reassign_exons=reassign_exons)
 
+
+if __name__ == '__main__':
+    cli()

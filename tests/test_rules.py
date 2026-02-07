@@ -1,5 +1,6 @@
 # Import dependencies
-from nmd_scanner.rules import *
+from nmd_scanner.annotation.utils import *
+import pandas as pd
 
 def test_adjust_last_cds_for_stop_codon():
 
@@ -418,10 +419,6 @@ def test_analyze_transcript():
     assert row["transcript_num_stop_codons"] == 2
     assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
     assert row["transcript_stop_codon_exons"] == [1, 2]
-
-
-
-
 
 def test_adjust_last_cds_for_stop_codon_old():
 
