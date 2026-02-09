@@ -1,6 +1,7 @@
 from importlib.resources import files
 import joblib
 import numpy as np
+import pandas as pd
 
 path = files('nmd_scanner.assets').joinpath('nmdeff_regressor.pkl')
 
@@ -12,10 +13,29 @@ def nmdeff_predict(start_loss: np.ndarray, stop_loss: np.ndarray, total_exon_cou
     
     with open(path, 'rb') as f:
         model = joblib.load(f)
-        X = np.column_stack((start_loss, stop_loss, total_exon_count, ptc_less_than_150nt_to_start,
-                             nmd_long_exon_rule, nmd_start_proximal_rule, nmd_single_exon_rule, nmd_escape,
-                             downstream_exon_count, nmd_last_exon_rule, ptc_to_start_codon, stop_codon_distance,
-                             ptc_exon_length, ptc_to_intron, upstream_exon_count, nmd_50nt_penultimate_rule,
-                             utr5_length, utr3_length, transcript_length))
+        
+        # Create DataFrame with proper feature names to avoid sklearn warning
+        X = pd.DataFrame({
+            'start_loss': start_loss.flatten(),
+            'stop_loss': stop_loss.flatten(),
+            'total_exon_count': total_exon_count.flatten(),
+            'ptc_less_than_150nt_to_start': ptc_less_than_150nt_to_start.flatten(),
+            'nmd_long_exon_rule': nmd_long_exon_rule.flatten(),
+            'nmd_start_proximal_rule': nmd_start_proximal_rule.flatten(),
+            'nmd_single_exon_rule': nmd_single_exon_rule.flatten(),
+            'nmd_escape': nmd_escape.flatten(),
+            'downstream_exon_count': downstream_exon_count.flatten(),
+            'nmd_last_exon_rule': nmd_last_exon_rule.flatten(),
+            'ptc_to_start_codon': ptc_to_start_codon.flatten(),
+            'stop_codon_distance': stop_codon_distance.flatten(),
+            'ptc_exon_length': ptc_exon_length.flatten(),
+            'ptc_to_intron': ptc_to_intron.flatten(),
+            'upstream_exon_count': upstream_exon_count.flatten(),
+            'nmd_50nt_penultimate_rule': nmd_50nt_penultimate_rule.flatten(),
+            'utr5_length': utr5_length.flatten(),
+            'utr3_length': utr3_length.flatten(),
+            'transcript_length': transcript_length.flatten()
+        })
+        
         return model.predict(X)
     

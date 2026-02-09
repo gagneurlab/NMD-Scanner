@@ -14,6 +14,7 @@ dependencies = [
     "click>=8.3.1",
     "numpy>=1.26.4",
     "pandas>=2.3.3",
+    "pyarrow>=23.0.0",
     "pyfaidx>=0.9.0.3",
     "pyranges>=0.1.4",
     "pysam>=0.23.3",

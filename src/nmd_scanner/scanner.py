@@ -9,7 +9,7 @@ from .annotation import calculate_transcript_features, evaluate_nmd_escape, anno
 
 logger = logging.getLogger(__name__)
 
-def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=False, detailed=False, canonical_only=False):
+def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=False, detailed=False, canonical_only=False, output_format=None):
     """
     Main function for NMD scanner
 
@@ -28,6 +28,7 @@ def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=Fal
     :param reassign_exons: whether to reassign exon numbers
     :param detailed: if True, save all CDS, transcript, and NMD prediction fields; if False, only save IDs and NMD result
     :param only_canonical: if True, filter to canonical transcripts only
+    :param output_format: output format ('csv' or 'parquet'). If None, inferred from file extension
     :return: DataFrame with NMD results
     """
 
@@ -99,8 +100,36 @@ def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=Fal
     # Write output if output directory is specified
     if output is not None:
         vcf_base = os.path.splitext(os.path.basename(vcf_path))[0]
-        output_file = os.path.join(output, f"{vcf_base}_nmdscanner.csv")
-        logger.info(f"Writing results to {output_file}")
-        nmd_results.to_csv(output_file, index=False)
+        
+        # Determine output format
+        if output_format is None:
+            # Infer from output path
+            if output.endswith('.parquet'):
+                output_format = 'parquet'
+                output_file = output
+            elif output.endswith('.csv'):
+                output_format = 'csv'
+                output_file = output
+            else:
+                # Assume output is a directory, default to CSV
+                output_format = 'csv'
+                output_file = os.path.join(output, f"{vcf_base}_nmdscanner.csv")
+        else:
+            # Format specified explicitly
+            output_format = output_format.lower()
+            if os.path.isdir(output):
+                # Output is a directory
+                ext = 'parquet' if output_format == 'parquet' else 'csv'
+                output_file = os.path.join(output, f"{vcf_base}_nmdscanner.{ext}")
+            else:
+                # Output is a file path
+                output_file = output
+        
+        logger.info(f"Writing results to {output_file} in {output_format} format")
+        
+        if output_format == 'parquet':
+            nmd_results.to_parquet(output_file, index=False)
+        else:
+            nmd_results.to_csv(output_file, index=False)
     
     return nmd_results
