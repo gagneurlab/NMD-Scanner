@@ -1,6 +1,4 @@
 import nmd_scanner
-import pandas as pd
-import pytest
 
 def test_annotate_nmd_minimal(vcf_path, gtf_path, fasta_path, tmp_path):
     """Test minimal output mode with just IDs and NMD predictions"""

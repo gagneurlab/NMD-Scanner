@@ -1,10 +1,12 @@
 # Import dependencies
+import logging
 import os
-from warnings import deprecated
 import pandas as pd
 import pyranges as pr
 from pyfaidx import Fasta
 from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "read_vcf", "read_gtf", "read_fasta"
@@ -49,9 +51,9 @@ def read_gtf(gtf_path, reassign_exons=False):
 
     if reassign_exons:
         # Adjust exon number in GTF (need this for the (old) hg19 version)
-        print("Adjust exon numbers")
+        logger.info("Adjusting exon numbers")
         gtf = compute_exon_numbers(gtf)
-        print("Exon numbers adjusted.")
+        logger.info("Exon numbers adjusted")
     return gtf
 
 

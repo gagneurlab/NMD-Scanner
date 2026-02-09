@@ -1,14 +1,15 @@
 # Import dependencies
+import logging
 import os
 import pandas as pd
 from dataclasses import asdict
 from tqdm import tqdm
 from nmd_scanner.io import read_vcf, read_gtf, read_fasta
-from .annotation import annotate_nmd as annotate_cds
-from .annotation import calculate_transcript_features, evaluate_nmd_escape
+from .annotation import calculate_transcript_features, evaluate_nmd_escape, annotate_cds
+
+logger = logging.getLogger(__name__)
 
 def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=False, detailed=False):
-
     """
     Main function for NMD scanner
 
@@ -31,19 +32,19 @@ def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=Fal
     """
 
     # read VCF file (variants)
-    print(f"Reading VCF file: {vcf_path}")
+    logger.info(f"Reading VCF file: {vcf_path}")
     vcf = read_vcf(vcf_path)
-    print(f"VCF shape: {vcf.df.shape}")
+    logger.info(f"VCF shape: {vcf.df.shape}")
 
     # read GTF file (gene annotation)
-    print(f"Reading GTF file: {gtf_path}")
+    logger.info(f"Reading GTF file: {gtf_path}")
     gtf = read_gtf(gtf_path, reassign_exons=reassign_exons)
-    print(f"GTF File shape: {gtf.df.shape}")
+    logger.info(f"GTF File shape: {gtf.df.shape}")
 
     # read FASTA file (genome sequence)
-    print(f"Reading FASTA file: {fasta_path}")
+    logger.info(f"Reading FASTA file: {fasta_path}")
     fasta = read_fasta(fasta_path)
-    print(f"FASTA file loaded with {len(fasta)} sequences.")
+    logger.info(f"FASTA file loaded with {len(fasta)} sequences.")
 
     # extract CDS regions from the GTF file
     cds = gtf[gtf.Feature == "CDS"]
@@ -56,11 +57,11 @@ def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=Fal
     exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
     # Step 1: Annotate CDS
-    print("Annotating CDS...")
+    logger.info("Annotating CDS")
     cds_annotations = annotate_cds(cds_df, vcf, fasta, exons_df)
     
     # Step 2: Calculate transcript features and evaluate NMD for each
-    print("Calculating transcript features and evaluating NMD escape rules...")
+    logger.info("Calculating transcript features and evaluating NMD escape rules")
     results = []
     for cds in tqdm(cds_annotations, desc="Processing variants"):
         # Calculate transcript features
@@ -98,9 +99,8 @@ def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=Fal
     # Write output if output directory is specified
     if output is not None:
         vcf_base = os.path.splitext(os.path.basename(vcf_path))[0]
-        suffix = "_detailed" if detailed else "_minimal"
-        output_file = os.path.join(output, f"{vcf_base}_nmd_results{suffix}.csv")
-        print(f"Writing results to {output_file}")
+        output_file = os.path.join(output, f"{vcf_base}_nmdscanner.csv")
+        logger.info(f"Writing results to {output_file}")
         nmd_results.to_csv(output_file, index=False)
     
     return nmd_results

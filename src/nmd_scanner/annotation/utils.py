@@ -1,7 +1,10 @@
 # Import dependencies
+import logging
 import pandas as pd
 from Bio.Seq import Seq
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 # Functions used for extracting PTC:
@@ -346,7 +349,7 @@ def get_transcript_sequence(exons_df, fasta):
         strand = group.iloc[0]["Strand"]
 
         if strand not in ["+", "-"]:
-            print(f"Unknown strand for {transcript_id}")
+            logger.warning(f"Unknown strand for {transcript_id}")
             continue
 
         # Sort by exon start coordinate (strand not considered here yet)

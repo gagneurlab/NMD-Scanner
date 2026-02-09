@@ -1,14 +1,19 @@
+import logging
 import pandas as pd
 import pyranges as pr
+import numpy as np
 from tqdm import tqdm
 from ..io import extract_fasta_sequence
 from .models import CDSAnnotation, NMDPrediction, TranscriptFeatures
 from . import utils
+from .regressors import nmdeff_predict
 
-__all__ = ["annotate_nmd", "evaluate_nmd_escape"]
+logger = logging.getLogger(__name__)
+
+__all__ = ["annotate_cds", "evaluate_nmd_escape"]
 
 
-def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
+def annotate_cds(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
 
     """
     Main function for extracting reference coding sequence, alternative coding sequence by incorporating the variant, 
@@ -23,14 +28,14 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
 
     # Adjust the last 3 CDS positions to include stop codons
     cds_df_adj = utils.adjust_last_cds_for_stop_codon(cds_df)
-    print("Adjusting last CDS for stop codon: done.")
+    logger.info("Adjusted last CDS for stop codon")
 
     # adjust exon_number as int datatype
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
 
     # Intersect variants with CDS regions
     intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
-    print("Joining variants with cds entries: done.")
+    logger.info("Joined variants with CDS entries")
 
     ##########################################################################################
     # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
@@ -50,13 +55,13 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
     #]
 
     # Fetch reference CDS sequence for each variant region
-    print("Begin creating exon CDS sequence.")
+    logger.info("Creating exon CDS sequence")
     intersection_cds_vcf['Exon_CDS_seq'] = intersection_cds_vcf.apply(lambda row: extract_fasta_sequence(
         row["Chromosome"], row["Start"], row["End"], fasta), axis=1)
-    print("Creating exon CDS sequence: done.")
+    logger.info("Created exon CDS sequence")
 
     # Apply variant to CDS and compute alternative CDS sequence and lengths
-    print("Applying variants to CDS regions...")
+    logger.info("Applying variants to CDS regions")
     tqdm.pandas(desc="Processing variants")
     with tqdm(total=len(intersection_cds_vcf), desc="Applying variants to CDS") as pbar:
         results = []
@@ -64,15 +69,14 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
             results.append(utils.apply_variant_edge_aware_with_lengths(row))
             pbar.update(1)
         intersection_cds_vcf[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = pd.DataFrame(results, index=intersection_cds_vcf.index)
-    print("Creating exon CDS and alt CDS sequence: done.")
+    logger.info("Created exon CDS and alt CDS sequence")
 
     ##### New ######
     # Filter out Variants with a reference mismatch
     mismatched_rows = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].isna()]
-    print(f"\n[Warning] Skipping {len(mismatched_rows)} variants due to reference mismatches:")
+    logger.warning(f"Skipping {len(mismatched_rows)} variants due to reference mismatches")
     if not mismatched_rows.empty:
-        print(mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
-            index=False))
+        logger.debug(f"Mismatched variants:\n{mismatched_rows[['transcript_id', 'Chromosome', 'Start_variant', 'End_variant', 'Ref', 'Alt']].to_string(index=False)}")
     intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].notna()].copy()
     ################
 
@@ -97,7 +101,7 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
 
     # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
     results_df = utils.create_reference_cds(intersection_cds_vcf, cds_df_adj)
-    print("Create reference CDS: done.")
+    logger.info("Created reference CDS")
 
     # make intermediate output file of results_df
     #output_path = os.path.join(output, "3_create_reference_CDS.tsv")
@@ -107,7 +111,7 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
     exon_seqs = utils.get_transcript_sequence(exons_df, fasta)
-    print("Get transcript sequence: done.")
+    logger.info("Retrieved transcript sequences")
 
     # make output file of exon_seqs
     #output_path = os.path.join(output, "4_transcript_sequences.tsv")
@@ -130,7 +134,7 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
         # Check if CDS is a substring of the transcript
         return ref_cds_seq in transcript_seq
 
-    print("Validating CDS in transcript sequences...")
+    logger.info("Validating CDS in transcript sequences")
     with tqdm(total=len(results_df), desc="Validating CDS") as pbar:
         cds_checks = []
         for idx, row in results_df.iterrows():
@@ -141,12 +145,12 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
     # TODO: Analyze reference and alternative CDS for start / stop codons
     analysis_df = utils.analyze_sequence(results_df)
     loss_df = utils.start_stop_loss(analysis_df) # instead of loss_analysis_df (test for start stop loss)
-    print("Analyzing sequence: done.")
+    logger.info("Analyzed sequences")
 
 
     # Annotate transcript information (transcript start, end, sequence, length, exon info) in case of start or stop loss
     # transcript sequences are in: exon_seqs_subset
-    print("Annotating transcript information in case of start/stop loss.")
+    logger.info("Annotating transcript information for start/stop loss")
     transcript_starts = exon_seqs.set_index("transcript_id")["start"].to_dict()
     loss_df["transcript_start"] = loss_df["transcript_id"].map(transcript_starts)
     transcript_ends = exon_seqs.set_index("transcript_id")["end"].to_dict()
@@ -158,7 +162,7 @@ def annotate_nmd(cds_df, vcf, fasta, exons_df) -> list[CDSAnnotation]:
 
     # In case of start or stop loss:
     # Splice alternative CDS into reference transcript sequence to create alternative transcript sequence and measure new length
-    print("Splicing alternative CDS into transcripts...")
+    logger.info("Splicing alternative CDS into transcripts")
     with tqdm(total=len(loss_df), desc="Splicing alt CDS") as pbar:
         alt_seqs = []
         for idx, row in loss_df.iterrows():
@@ -275,7 +279,8 @@ def evaluate_nmd_escape(cds: CDSAnnotation, features: TranscriptFeatures) -> NMD
             nmd_long_exon_rule=False,
             nmd_start_proximal_rule=False,
             nmd_single_exon_rule=False,
-            nmd_escape=False
+            nmd_escape=False,
+            nmd_efficiency=None
         )
     
     # Extract relevant data from CDSAnnotation object
@@ -318,6 +323,28 @@ def evaluate_nmd_escape(cds: CDSAnnotation, features: TranscriptFeatures) -> NMD
     
     # NMD escape if any rule is true
     escape = rule_last_exon or rule_50nt_penultimate or rule_long_exon or rule_start_proximal or rule_single_exon
+
+    nmd_efficiency = nmdeff_predict(
+        np.array([int(cds.start_loss or 0)]),
+        np.array([int(cds.stop_loss or 0)]),
+        np.array([total_exon_count or 0]),
+        np.array([int(features.ptc_less_than_150nt_to_start or 0)]),
+        np.array([int(rule_long_exon)]),
+        np.array([int(rule_start_proximal)]),
+        np.array([int(rule_single_exon)]),
+        np.array([int(escape)]),
+        np.array([downstream_exon_count or 0]),
+        np.array([int(rule_last_exon)]),
+        np.array([features.ptc_to_start_codon or 0]),
+        np.array([features.stop_codon_distance or 0]),
+        np.array([ptc_exon_length or 0]),
+        np.array([features.ptc_to_intron or 0]),
+        np.array([features.upstream_exon_count or 0]),
+        np.array([int(rule_50nt_penultimate)]),
+        np.array([features.utr5_length or 0]),
+        np.array([features.utr3_length or 0]),
+        np.array([cds.transcript_length or 0])
+    )[0]  # Extract single prediction value
     
     return NMDPrediction(
         nmd_last_exon_rule=rule_last_exon,
@@ -325,5 +352,6 @@ def evaluate_nmd_escape(cds: CDSAnnotation, features: TranscriptFeatures) -> NMD
         nmd_long_exon_rule=rule_long_exon,
         nmd_start_proximal_rule=rule_start_proximal,
         nmd_single_exon_rule=rule_single_exon,
-        nmd_escape=escape
+        nmd_escape=escape,
+        nmd_efficiency= nmd_efficiency
     )

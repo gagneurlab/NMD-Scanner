@@ -3,7 +3,7 @@ Tests for the new modular annotation API
 """
 import pytest
 from nmd_scanner.annotation import (
-    annotate_nmd,
+    annotate_cds,
     calculate_transcript_features,
     evaluate_nmd_escape,
     CDSAnnotation,

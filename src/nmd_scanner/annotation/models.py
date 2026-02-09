@@ -87,3 +87,4 @@ class NMDPrediction:
     nmd_start_proximal_rule: bool = None
     nmd_single_exon_rule: bool = None
     nmd_escape: bool = None
+    nmd_efficiency: float = None
