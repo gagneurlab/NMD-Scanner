@@ -47,7 +47,7 @@ def read_gtf(gtf_path, reassign_exons=False, canonical_only=False):
     """
     if not os.path.exists(gtf_path):
         raise FileNotFoundError(f"GTF file not found: {gtf_path}")
-    gtf = pr.read_gtf(gtf_path)
+    gtf = pr.read_gtf(gtf_path, duplicate_attr=True)
 
     if reassign_exons:
         # Adjust exon number in GTF (need this for the (old) hg19 version)
@@ -60,6 +60,7 @@ def read_gtf(gtf_path, reassign_exons=False, canonical_only=False):
         # Filter to canonical transcripts only based on Ensembl_canonical tag
         # The tag is expected to be in the format: "Ensembl_canonical,other
         # check if Ensembl_canonical is in the set of tags
+        logger.debug(f"Original GTF shape: {gtf.df.shape}")
         gtf = gtf[gtf.tag.apply(lambda x: False if pd.isna(x) else ('Ensembl_canonical' in x.split(',')))]
         logger.debug(f"After filtering to canonical transcripts, GTF shape: {gtf.df.shape}")
 
