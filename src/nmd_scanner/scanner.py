@@ -9,7 +9,7 @@ from .annotation import calculate_transcript_features, evaluate_nmd_escape, anno
 
 logger = logging.getLogger(__name__)
 
-def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=False, detailed=False):
+def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=False, detailed=False, canonical_only=False):
     """
     Main function for NMD scanner
 
@@ -38,7 +38,7 @@ def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=Fal
 
     # read GTF file (gene annotation)
     logger.info(f"Reading GTF file: {gtf_path}")
-    gtf = read_gtf(gtf_path, reassign_exons=reassign_exons)
+    gtf = read_gtf(gtf_path, reassign_exons=reassign_exons, canonical_only=canonical_only)
     logger.info(f"GTF File shape: {gtf.df.shape}")
 
     # read FASTA file (genome sequence)

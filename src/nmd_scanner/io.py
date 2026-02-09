@@ -41,7 +41,7 @@ def read_vcf(vcf_path):
     return gr
 
 
-def read_gtf(gtf_path, reassign_exons=False):
+def read_gtf(gtf_path, reassign_exons=False, canonical_only=False):
     """
     Reads a GTF file into a PyRanges object.
     """
@@ -54,6 +54,11 @@ def read_gtf(gtf_path, reassign_exons=False):
         logger.info("Adjusting exon numbers")
         gtf = compute_exon_numbers(gtf)
         logger.info("Exon numbers adjusted")
+    
+    if canonical_only:
+        # check if Ensembl_canonical is in the set of tags
+        gtf = gtf[gtf.tag.apply(lambda x: False if pd.isna(x) else ('Ensembl_canonical' in x.split(',')))]
+
     return gtf
 
 

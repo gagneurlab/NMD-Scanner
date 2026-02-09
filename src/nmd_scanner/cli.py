@@ -27,9 +27,11 @@ def is_valid_output_path(path):
               help='Path to output file or output directory')
 @click.option('--reassign-exons', is_flag=True,
               help='Recompute exon numbers (recommended for hg19; may be slow)')
+@click.option('--canonical-only', is_flag=True,
+              help='Filter to Ensembl canonical transcripts only')
 @click.option('-v', '--verbose', count=True,
               help='Increase verbosity (-v for INFO, -vv for DEBUG)')
-def cli(vcf, gtf, fasta, output, reassign_exons, verbose):
+def cli(vcf, gtf, fasta, output, reassign_exons, canonical_only, verbose):
     """Run NMD pipeline to analyze variants for nonsense-mediated decay."""
     
     # Setup logging based on verbosity
@@ -41,7 +43,7 @@ def cli(vcf, gtf, fasta, output, reassign_exons, verbose):
 
     # Run the main pipeline
     click.echo("Starting NMD annotation...")
-    scanner.annotate_nmd(vcf, gtf, fasta, output, reassign_exons=reassign_exons)
+    scanner.annotate_nmd(vcf, gtf, fasta, output, reassign_exons=reassign_exons, canonical_only=canonical_only)
     click.echo(f"NMD annotation completed. Results saved to: {output}")
 
 

@@ -122,3 +122,38 @@ def test_compute_exon_numbers():
     # TODO: maybe add the edge case if:
     # 1. CDS does not overlap any exon --> should not crash but exon_number should stay missing
     # 2. CDS overlaps two exons --> should it inherit the exon_number with the maximum overlap??
+
+
+def test_canonical_only(tmp_path):
+    """Test that canonical_only filters to only canonical transcripts"""
+    # Create a temporary GTF file with canonical and non-canonical transcripts
+    gtf_content = """chr1\ttest\texon\t100\t200\t.\t+\t.\tgene_id "GENE1"; transcript_id "TX1"; tag "Ensembl_canonical";
+chr1\ttest\texon\t300\t400\t.\t+\t.\tgene_id "GENE1"; transcript_id "TX1"; tag "Ensembl_canonical";
+chr1\ttest\texon\t100\t200\t.\t+\t.\tgene_id "GENE1"; transcript_id "TX2";
+chr1\ttest\texon\t300\t450\t.\t+\t.\tgene_id "GENE1"; transcript_id "TX2";
+chr1\ttest\texon\t500\t600\t.\t+\t.\tgene_id "GENE2"; transcript_id "TX3"; tag "Ensembl_canonical,basic";
+chr1\ttest\texon\t700\t800\t.\t+\t.\tgene_id "GENE2"; transcript_id "TX3"; tag "Ensembl_canonical,basic";
+"""
+    
+    gtf_file = tmp_path / "test.gtf"
+    gtf_file.write_text(gtf_content)
+    
+    # Test with canonical_only=False (default) - should get all transcripts
+    gtf_all = io.read_gtf(str(gtf_file), canonical_only=False)
+    all_transcripts = set(gtf_all.df["transcript_id"].unique())
+    assert len(all_transcripts) == 3
+    assert "TX1" in all_transcripts
+    assert "TX2" in all_transcripts
+    assert "TX3" in all_transcripts
+    
+    # Test with canonical_only=True - should only get canonical transcripts
+    gtf_canonical = io.read_gtf(str(gtf_file), canonical_only=True)
+    canonical_transcripts = set(gtf_canonical.df["transcript_id"].unique())
+    assert len(canonical_transcripts) == 2
+    assert "TX1" in canonical_transcripts
+    assert "TX3" in canonical_transcripts
+    assert "TX2" not in canonical_transcripts
+    
+    # Verify the number of rows
+    assert len(gtf_all.df) == 6  # All 6 exons
+    assert len(gtf_canonical.df) == 4  # Only 4 exons from canonical transcripts
