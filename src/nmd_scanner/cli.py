@@ -41,7 +41,7 @@ def cli(vcf, gtf, fasta, output, reassign_exons, canonical_only, output_format, 
     
     # Check that the output path is valid
     if not is_valid_output_path(output):
-        raise click.BadParameter(f"Invalid output path: {output}")
+        raise click.BadParameter(f"Output path does not exist: {output}")
 
     # Run the main pipeline
     click.echo("Starting NMD annotation...")

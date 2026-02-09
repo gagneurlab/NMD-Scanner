@@ -56,8 +56,12 @@ def read_gtf(gtf_path, reassign_exons=False, canonical_only=False):
         logger.info("Exon numbers adjusted")
     
     if canonical_only:
+        logger.info("Filtering to Ensembl canonical transcripts only")
+        # Filter to canonical transcripts only based on Ensembl_canonical tag
+        # The tag is expected to be in the format: "Ensembl_canonical,other
         # check if Ensembl_canonical is in the set of tags
         gtf = gtf[gtf.tag.apply(lambda x: False if pd.isna(x) else ('Ensembl_canonical' in x.split(',')))]
+        logger.info(f"After filtering to canonical transcripts, GTF shape: {gtf.df.shape}")
 
     return gtf
 
