@@ -45,7 +45,7 @@ def annotate_nmd(vcf_path, gtf_path, fasta_path, output=None, reassign_exons=Fal
     # read FASTA file (genome sequence)
     logger.info(f"Reading FASTA file: {fasta_path}")
     fasta = read_fasta(fasta_path)
-    logger.info(f"FASTA file loaded with {len(fasta)} sequences.")
+    logger.info(f"FASTA file loaded with {len(fasta)} sequences")
 
     # extract CDS regions from the GTF file
     cds = gtf[gtf.Feature == "CDS"]
