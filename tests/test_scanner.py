@@ -5,7 +5,7 @@ import os
 def test_annotate_nmd_minimal(vcf_path, gtf_path, fasta_path, tmp_path):
     """Test minimal output mode with just IDs and NMD predictions"""
     output = str(tmp_path)
-    df = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, output, detailed=False)
+    df = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, output)
     
     # Check DataFrame structure
     assert df is not None
@@ -24,22 +24,22 @@ def test_annotate_nmd_minimal(vcf_path, gtf_path, fasta_path, tmp_path):
     assert 'nmd_start_proximal_rule' in df.columns
     assert 'nmd_single_exon_rule' in df.columns
     
-    # Check that transcript features ARE present in minimal mode
+    # Check that transcript features are present
     assert 'utr5_length' in df.columns
     assert 'utr3_length' in df.columns
     assert 'total_exon_count' in df.columns
     
-    # Check that detailed CDS columns are NOT present
-    assert 'ref_cds_seq' not in df.columns
-    assert 'alt_cds_seq' not in df.columns
+    # Check that all CDS columns are now present (no more simplified mode)
+    assert 'ref_cds_seq' in df.columns
+    assert 'alt_cds_seq' in df.columns
     
-    print(f"Minimal output shape: {df.shape}")
+    print(f"Output shape: {df.shape}")
     print(df.head())
 
 def test_annotate_nmd_detailed(vcf_path, gtf_path, fasta_path, tmp_path):
     """Test detailed output mode with all CDS, transcript, and NMD fields"""
     output = str(tmp_path)
-    df = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, output, detailed=True)
+    df = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, output)
     
     # Check DataFrame structure
     assert df is not None
@@ -61,7 +61,7 @@ def test_annotate_nmd_detailed(vcf_path, gtf_path, fasta_path, tmp_path):
 
 def test_nmd_escape_logic(vcf_path, gtf_path, fasta_path):
     """Test that NMD escape logic produces boolean values"""
-    df = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, detailed=False)
+    df = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path)
     
     # Check that NMD escape columns have boolean values
     assert df['nmd_escape'].dtype == bool or df['nmd_escape'].dtype == 'object'
@@ -77,29 +77,35 @@ def test_nmd_escape_logic(vcf_path, gtf_path, fasta_path):
 def test_output_format_csv(vcf_path, gtf_path, fasta_path, tmp_path):
     """Test CSV output format"""
     output_file = tmp_path / "test_output.csv"
-    df = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, str(output_file), output_format='csv')
+    df = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, str(output_file), output_format='csv')
     
     # Check that file was created
     assert output_file.exists()
     
-    # Read back and verify
+    # Read back and verify structure (output file contains filtered results)
     df_read = pd.read_csv(output_file)
-    assert df_read.shape == df.shape
-    assert list(df_read.columns) == list(df.columns)
+    assert df_read.shape[0] > 0  # Has some rows
+    assert 'variant_id' in df_read.columns
+    assert 'nmd_escape' in df_read.columns
+    # Output file should only contain alt_is_premature=True variants
+    assert df_read['alt_is_premature'].all()
 
 
 def test_output_format_parquet(vcf_path, gtf_path, fasta_path, tmp_path):
     """Test parquet output format"""
     output_file = tmp_path / "test_output.parquet"
-    df = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, str(output_file), output_format='parquet')
+    df = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, str(output_file), output_format='parquet')
     
     # Check that file was created
     assert output_file.exists()
     
-    # Read back and verify
+    # Read back and verify structure (output file contains filtered results)
     df_read = pd.read_parquet(output_file)
-    assert df_read.shape == df.shape
-    assert list(df_read.columns) == list(df.columns)
+    assert df_read.shape[0] > 0  # Has some rows
+    assert 'variant_id' in df_read.columns
+    assert 'nmd_escape' in df_read.columns
+    # Output file should only contain alt_is_premature=True variants
+    assert df_read['alt_is_premature'].all()
 
 
 def test_parquet_format_simple(tmp_path):
@@ -127,22 +133,24 @@ def test_output_format_inferred_from_extension(vcf_path, gtf_path, fasta_path, t
     """Test that output format is inferred from file extension"""
     # Test parquet inference
     parquet_file = tmp_path / "test_inferred.parquet"
-    df1 = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, str(parquet_file))
+    df1 = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, str(parquet_file))
     assert parquet_file.exists()
     df_parquet = pd.read_parquet(parquet_file)
-    assert df_parquet.shape == df1.shape
+    assert df_parquet.shape[0] > 0
+    assert 'variant_id' in df_parquet.columns
     
     # Test csv inference
     csv_file = tmp_path / "test_inferred.csv"
-    df2 = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, str(csv_file))
+    df2 = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, str(csv_file))
     assert csv_file.exists()
     df_csv = pd.read_csv(csv_file)
-    assert df_csv.shape == df2.shape
+    assert df_csv.shape[0] > 0
+    assert 'variant_id' in df_csv.columns
 
 
 def test_output_format_directory_default_csv(vcf_path, gtf_path, fasta_path, tmp_path):
     """Test that directory output defaults to CSV"""
-    df = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, str(tmp_path))
+    df = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, str(tmp_path))
     
     # Should create CSV file in directory
     csv_files = list(tmp_path.glob("*.csv"))
@@ -152,7 +160,7 @@ def test_output_format_directory_default_csv(vcf_path, gtf_path, fasta_path, tmp
 
 def test_output_format_directory_with_format_option(vcf_path, gtf_path, fasta_path, tmp_path):
     """Test specifying format when output is a directory"""
-    df = nmd_scanner.annotate_nmd(vcf_path, gtf_path, fasta_path, str(tmp_path), output_format='parquet')
+    df = nmd_scanner.annotate_nmd_pandas(vcf_path, gtf_path, fasta_path, str(tmp_path), output_format='parquet')
     
     # Should create parquet file in directory
     parquet_files = list(tmp_path.glob("*.parquet"))

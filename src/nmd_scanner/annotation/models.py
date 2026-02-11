@@ -1,5 +1,5 @@
-
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict, fields
+import pandas as pd
 
 @dataclass
 class CDSAnnotation:
@@ -88,3 +88,20 @@ class NMDPrediction:
     nmd_single_exon_rule: bool = None
     nmd_escape: bool = None
     nmd_efficiency: float = None
+
+@dataclass
+class NMDResult():
+    """Combined result for a single variant-transcript pair, including core annotation, transcript features, and NMD evaluation"""
+    cds_annotation: CDSAnnotation = None
+    transcript_features: TranscriptFeatures = None
+    nmd_prediction: NMDPrediction = None
+    
+    @classmethod
+    def from_annotation(cls, annotation: CDSAnnotation, features: TranscriptFeatures, prediction: NMDPrediction):
+        """Create an NMDResult from a CDSAnnotation, TranscriptFeatures, and NMDPrediction"""
+        return cls(cds_annotation=annotation, transcript_features=features, nmd_prediction=prediction)
+
+    @staticmethod
+    def to_dataframe(results: list['NMDResult']) -> pd.DataFrame:
+        df = pd.DataFrame([{**asdict(r.cds_annotation), **asdict(r.transcript_features), **asdict(r.nmd_prediction)} for r in results])
+        return df

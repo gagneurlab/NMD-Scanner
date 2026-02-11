@@ -1,6 +1,6 @@
 from .nmd import annotate_cds, evaluate_nmd_escape
 from .transcript import calculate_transcript_features
-from .models import CDSAnnotation, TranscriptFeatures, NMDPrediction
+from .models import CDSAnnotation, TranscriptFeatures, NMDPrediction, NMDResult
 
 __all__ = [
     "annotate_cds",
@@ -8,5 +8,6 @@ __all__ = [
     "calculate_transcript_features",
     "CDSAnnotation",
     "TranscriptFeatures",
-    "NMDPrediction"
+    "NMDPrediction",
+    "NMDResult",
 ]

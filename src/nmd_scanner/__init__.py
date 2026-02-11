@@ -1,7 +1,14 @@
 import logging
 from .scanner import (
-    annotate_nmd
+    annotate_nmd, annotate_nmd_pandas
 )
+
+__all__ = [
+    "annotate_nmd",
+    "annotate_nmd_pandas",
+    "setup_logging"
+]
+
 
 def setup_logging(verbosity=0):
     """
@@ -15,15 +22,15 @@ def setup_logging(verbosity=0):
         level = logging.INFO
     else:
         level = logging.DEBUG
-    
+
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
+
     # Get the package logger
     logger = logging.getLogger('nmd_scanner')
     logger.setLevel(level)
-    
+
     return logger
