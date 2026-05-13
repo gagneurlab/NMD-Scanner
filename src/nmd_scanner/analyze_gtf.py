@@ -39,7 +39,11 @@ def merge_exon_counts(exons_df: pd.DataFrame, exon_counts_df: pd.DataFrame) -> p
     Merge exon counts back onto the exons_df, filling missing with 0.
     """
     merged = exons_df.merge(exon_counts_df, on="transcript_id", how="left")
-    merged["num_exons_per_transcript"] = merged["num_exons_per_transcript"].fillna(0).astype(int)
+    merged["num_exons_per_transcript"] = (
+        merged["num_exons_per_transcript"]
+        .fillna(0)
+        .astype(int)
+    )  # fmt: skip
     return merged
 
 
@@ -50,4 +54,9 @@ def run_gtf_analysis(gtf_path, chromosomes=None):
     exons_with_len = annotate_exon_lengths(exons_df)
     exon_counts = count_exons_per_transcript(exons_with_len)
     merged = merge_exon_counts(exons_with_len, exon_counts)
-    return {"exons": exons_df, "exon_lengths": exons_with_len, "exon_counts": exon_counts, "merged": merged}
+    return {
+        "exons": exons_df,
+        "exon_lengths": exons_with_len,
+        "exon_counts": exon_counts,
+        "merged": merged,
+    }

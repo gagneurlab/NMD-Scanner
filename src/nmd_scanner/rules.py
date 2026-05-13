@@ -160,7 +160,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
         ),
         axis=1,
     )
-    loss_df["alt_transcript_length"] = loss_df["alt_transcript_seq"].apply(lambda x: len(x) if pd.notnull(x) else None)
+    loss_df["alt_transcript_length"] = loss_df["alt_transcript_seq"].apply(
+        lambda x: len(x) if pd.notnull(x) else None
+    )  # fmt: skip
 
     # Add exon information to dataframe
     transcript_exon_info = exon_seqs.set_index("transcript_id")["transcript_exon_info"].to_dict()
@@ -639,14 +641,18 @@ def start_stop_loss(df):
     df = df.copy()
 
     # Start codon loss: reference sequence has a start codon, alternative sequence does not or the position is changed
-    df["start_loss"] = ((df["ref_start_codon_pos"].notna()) & df["alt_start_codon_pos"].isna()) | (
+    df["start_loss"] = (
+        (df["ref_start_codon_pos"].notna()) & df["alt_start_codon_pos"].isna()
+    ) | (
         df["ref_start_codon_pos"] != df["alt_start_codon_pos"]
-    )
+    )  # fmt: skip
 
     # Stop codon loss: reference sequence had a valid stop codon, the alternative sequence does not or the position is changed
-    df["stop_loss"] = ((df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)) | (
+    df["stop_loss"] = (
+        (df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)
+    ) | (
         df["ref_last_codon"] != df["alt_last_codon"]  # Or take this out?
-    )
+    )  # fmt: skip
 
     return df
 
@@ -673,7 +679,11 @@ def splice_alt_cds_into_transcript(row, transcript_seq):
     ref_end_idx = ref_start_idx + len(ref_cds_seq)
 
     # Replace the reference CDS with the variant-modified / alternative one
-    new_transcript_seq = transcript_seq[:ref_start_idx] + alt_cds_seq + transcript_seq[ref_end_idx:]
+    new_transcript_seq = (
+        transcript_seq[:ref_start_idx]
+        + alt_cds_seq
+        + transcript_seq[ref_end_idx:]
+    )  # fmt: skip
 
     return new_transcript_seq
 
