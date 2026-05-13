@@ -81,7 +81,7 @@ cds_df = gtf_df[gtf_df["Feature"] == "CDS"]
 exons_df = gtf_df[gtf_df["Feature"] == "exon"].copy()
 exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
-results = extract_ptc(cds_df, vcf, fasta, exons_df, output="tmp/")
+results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 ```
 
 Add NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:

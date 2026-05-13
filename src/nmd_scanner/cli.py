@@ -61,12 +61,7 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
 
     # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
     print("Creating sequences and analyzing...")
-    results = extract_ptc(cds_df, vcf, fasta, exons_df, output)
-
-    # Save intermediate NMD rule output
-    # output_path = os.path.join(output, "6_nmd_rules.tsv")
-    # results.to_csv(output_path, sep="\t", index=False)
-    # print(f"Save nmd rules results in: {output_path}.")
+    results = extract_ptc(cds_df, vcf, fasta, exons_df)
 
     # Add additional features (inspired by NMD efficiency benchmark dataset)
     extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
