@@ -7,6 +7,7 @@ of the premature termination codon (PTC).
 :return: A dictionary with additional NMD related features.
 """
 
+
 def add_nmd_features(row):
 
     # 5' and 3' UTR lengths
@@ -23,9 +24,7 @@ def add_nmd_features(row):
     # Distance between PTC to start codon
     ptc_to_start_codon = calculate_ptc_to_start_distance(row)
     # PTC location < 150nt to start codon
-    ptc_less_than_150nt_to_start = (
-            ptc_to_start_codon is not None and ptc_to_start_codon < 150
-    )
+    ptc_less_than_150nt_to_start = ptc_to_start_codon is not None and ptc_to_start_codon < 150
 
     # PTC exon length
     ptc_exon_length = calculate_ptc_exon_length(row)
@@ -39,7 +38,6 @@ def add_nmd_features(row):
     # Add likely_misannotated flag
     likely_misannotated = add_likely_misannotated_flag(row)
 
-
     return {
         "utr3_length": utr3_length,
         "utr5_length": utr5_length,
@@ -52,8 +50,9 @@ def add_nmd_features(row):
         "ptc_exon_length": ptc_exon_length,
         "stop_codon_distance": stop_codon_distance,
         "ptc_to_intron": ptc_to_intron,
-        "likely_misannotated": likely_misannotated
+        "likely_misannotated": likely_misannotated,
     }
+
 
 def calculate_utr_lengths(row):
 
@@ -125,8 +124,8 @@ def calculate_utr_lengths(row):
     utr3 = utr3 if utr3 >= 0 else None
     return {"utr5_length": utr5, "utr3_length": utr3}
 
-def calculate_exon_features(row):
 
+def calculate_exon_features(row):
     """
     Calculate exon-related features:
     - total_exon_count: always computed if transcript_exon_info is available
@@ -142,7 +141,7 @@ def calculate_exon_features(row):
         return {
             "total_exon_count": total_exons if total_exons > 0 else None,
             "upstream_exon_count": None,
-            "downstream_exon_count": None
+            "downstream_exon_count": None,
         }
 
     # Take the PTC exon closest to CDS start
@@ -153,11 +152,7 @@ def calculate_exon_features(row):
 
     # If the PTC exon is not in transcript → cannot compute
     if ptc_exon not in exon_numbers:
-        return {
-            "total_exon_count": int(total_exons),
-            "upstream_exon_count": None,
-            "downstream_exon_count": None
-        }
+        return {"total_exon_count": int(total_exons), "upstream_exon_count": None, "downstream_exon_count": None}
 
     upstream = sum(1 for e in exon_numbers if e < ptc_exon)
     downstream = sum(1 for e in exon_numbers if e > ptc_exon)
@@ -165,8 +160,9 @@ def calculate_exon_features(row):
     return {
         "total_exon_count": int(total_exons),
         "upstream_exon_count": int(upstream),
-        "downstream_exon_count": int(downstream)
+        "downstream_exon_count": int(downstream),
     }
+
 
 def calculate_ptc_to_start_distance(row):
 
@@ -180,13 +176,14 @@ def calculate_ptc_to_start_distance(row):
         return None
 
     # PTC codon position: is PTC_to_start_codon / 3 --> leave it out
-    #offset = stop - start
-    #return offset // 3 if offset >= 0 else None
+    # offset = stop - start
+    # return offset // 3 if offset >= 0 else None
 
     if stop <= start:
         return None
 
-    return stop-start # distance between the PTC to start codon in nt
+    return stop - start  # distance between the PTC to start codon in nt
+
 
 def calculate_ptc_exon_length(row):
     """
@@ -208,8 +205,8 @@ def calculate_ptc_exon_length(row):
     exon_dict = {int(e): int(length) for e, length in exon_info}
     return exon_dict.get(ptc_exon)
 
-def calculate_stop_codon_dist(row):
 
+def calculate_stop_codon_dist(row):
     """
     Calculate the distance between the reference stop codon and the alternative stop codon.
     Positive means the PTC is upstream of the reference stop codon.
@@ -223,8 +220,8 @@ def calculate_stop_codon_dist(row):
 
     return ref_stop - alt_stop
 
-def evaluate_nmd_escape_rules(row):
 
+def evaluate_nmd_escape_rules(row):
     """
     Evaluate whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on
     established biological rules. This function applies five NMD escape rules to determine if a premature termination
@@ -250,7 +247,7 @@ def evaluate_nmd_escape_rules(row):
             "nmd_long_exon_rule": False,
             "nmd_start_proximal_rule": False,
             "nmd_single_exon_rule": False,
-            "nmd_escape": False
+            "nmd_escape": False,
         }
 
     # Extract relevant data
@@ -277,10 +274,10 @@ def evaluate_nmd_escape_rules(row):
     rule_single_exon = total_exons == 1
 
     # Last exon rule
-    #if not rule_single_exon:
+    # if not rule_single_exon:
     #    last_exon = sorted_exons[-1][0] if sorted_exons else None
     #    rule_last_exon = bool(stop_exons and max(stop_exons) == last_exon)
-    #else: rule_last_exon = False
+    # else: rule_last_exon = False
     rule_last_exon = downstream_exons == 0 if downstream_exons is not None else False
 
     # 50nt from penultimate exon end
@@ -296,7 +293,9 @@ def evaluate_nmd_escape_rules(row):
     rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
 
     # Start-proximal rule (closer than 150nt from the start codon)
-    rule_start_proximal = start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
+    rule_start_proximal = (
+        start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
+    )
 
     # NMD escape if any rule is true
     escape = rule_last_exon or rule_50nt_penultimate or rule_long_exon or rule_start_proximal or rule_single_exon
@@ -307,8 +306,9 @@ def evaluate_nmd_escape_rules(row):
         "nmd_long_exon_rule": rule_long_exon,
         "nmd_start_proximal_rule": rule_start_proximal,
         "nmd_single_exon_rule": rule_single_exon,
-        "nmd_escape": escape
+        "nmd_escape": escape,
     }
+
 
 def calculate_ptc_to_downstream_ej(row):
     """
@@ -323,8 +323,9 @@ def calculate_ptc_to_downstream_ej(row):
     stop_exons = row.get("alt_stop_codon_exons") or []
 
     # exon_info = row.get("transcript_exon_info") or []
-    exon_info = row.get(
-        "alt_cds_info") or []  # Assuming that the PTC cannot be outside the CDS, since it needs to come before the original stop codon
+    exon_info = (
+        row.get("alt_cds_info") or []
+    )  # Assuming that the PTC cannot be outside the CDS, since it needs to come before the original stop codon
 
     ptc_pos = row.get("alt_first_stop_pos")
 
@@ -345,8 +346,8 @@ def calculate_ptc_to_downstream_ej(row):
     distance = cumulative_length - ptc_pos
     return distance
 
-def add_likely_misannotated_flag(row):
 
+def add_likely_misannotated_flag(row):
     """
     Flag rows that look inconsistent between CDS and transcript annotations and might be likely misannotated.
     A row is flagged as likely misannotated if any of these conditions apply:
@@ -371,17 +372,15 @@ def add_likely_misannotated_flag(row):
         return True
 
     flag = (
-        (cds_in_transcript is False) or
-        ((ref_start_codon_pos is not None) and (ref_start_codon_pos != 0)) or
-        (ref_valid_stop is False)
+        (cds_in_transcript is False)
+        or ((ref_start_codon_pos is not None) and (ref_start_codon_pos != 0))
+        or (ref_valid_stop is False)
     )
 
-    return(flag)
-
+    return flag
 
 
 def calculate_ptc_to_downstream_ej_old(row):
-
     """
     Calculate distance from PTC to the downstream exon junction (next exon start/end depending on strand).
     Returns None if not applicable.
@@ -412,8 +411,8 @@ def calculate_ptc_to_downstream_ej_old(row):
     distance = cumulative_length - ptc_pos
     return distance
 
-def calculate_exon_features_old(row):
 
+def calculate_exon_features_old(row):
     """
     Calculate exon-related features:
     - total_exon_count: always computed if transcript_exon_info is available
@@ -427,20 +426,15 @@ def calculate_exon_features_old(row):
     # Total exon count
     total_exons = len(exon_info)
 
-
     if not row.get("alt_is_premature") or not stop_exons:
         return {
             "total_exon_count": total_exons if total_exons > 0 else None,
             "upstream_exon_count": None,
-            "downstream_exon_count": None
+            "downstream_exon_count": None,
         }
 
     if not exon_info:
-        return {
-            "total_exon_count": None,
-            "upstream_exon_count": None,
-            "downstream_exon_count": None
-        }
+        return {"total_exon_count": None, "upstream_exon_count": None, "downstream_exon_count": None}
 
     # Order exons based on strand
     sorted_exons = sorted(exon_info, key=lambda x: int(x[0]), reverse=(strand == "-"))
@@ -449,18 +443,10 @@ def calculate_exon_features_old(row):
     ptc_exon = int(stop_exons[0])  # Take first exon containing PTC
 
     if ptc_exon not in exon_order:
-        return {
-            "total_exon_count": total_exons,
-            "upstream_exon_count": None,
-            "downstream_exon_count": None
-        }
+        return {"total_exon_count": total_exons, "upstream_exon_count": None, "downstream_exon_count": None}
 
     ptc_index = exon_order.index(ptc_exon)
     upstream = ptc_index
     downstream = len(exon_order) - ptc_index - 1
 
-    return {
-        "total_exon_count": total_exons,
-        "upstream_exon_count": upstream,
-        "downstream_exon_count": downstream
-    }
+    return {"total_exon_count": total_exons, "upstream_exon_count": upstream, "downstream_exon_count": downstream}

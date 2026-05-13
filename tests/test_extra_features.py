@@ -1,12 +1,21 @@
 from nmd_scanner.extra_features import *
 
+
 def test_calculate_utr_lengths():
     # Example 1: - strand, CDS spans exon 8 to 1
     row1 = {
         "strand": "-",
         "ref_cds_info": [(8, 30), (7, 105), (6, 173), (5, 70), (4, 123), (3, 174), (2, 97), (1, 98)],
-        "transcript_exon_info": [('1', 250), ('2', 97), ('3', 174), ('4', 123), ('5', 70),
-                                 ('6', 173), ('7', 105), ('8', 5848)],
+        "transcript_exon_info": [
+            ("1", 250),
+            ("2", 97),
+            ("3", 174),
+            ("4", 123),
+            ("5", 70),
+            ("6", 173),
+            ("7", 105),
+            ("8", 5848),
+        ],
         "ref_cds_start": 70925000,
         "ref_cds_stop": 70929273,
         "transcript_start": 70920000,
@@ -22,7 +31,7 @@ def test_calculate_utr_lengths():
     row2 = {
         "strand": "+",
         "ref_cds_info": [(3, 50), (4, 120), (5, 80)],
-        "transcript_exon_info": [('1', 200), ('2', 150), ('3', 100), ('4', 120), ('5', 80), ('6', 300)],
+        "transcript_exon_info": [("1", 200), ("2", 150), ("3", 100), ("4", 120), ("5", 80), ("6", 300)],
         "ref_cds_start": 100500,
         "ref_cds_stop": 102000,
         "transcript_start": 100000,
@@ -41,7 +50,7 @@ def test_calculate_utr_lengths():
     row3 = {
         "strand": "+",
         "ref_cds_info": [(2, 60)],
-        "transcript_exon_info": [('2', 150)],
+        "transcript_exon_info": [("2", 150)],
         "ref_cds_start": 5000,
         "ref_cds_stop": 5060,
         "transcript_start": 4950,
@@ -57,7 +66,7 @@ def test_calculate_utr_lengths():
     row = {
         "strand": "-",
         "ref_cds_info": [(1, 60)],
-        "transcript_exon_info": [('1', 150)],
+        "transcript_exon_info": [("1", 150)],
         "ref_cds_start": 5060,
         "ref_cds_stop": 5000,
         "transcript_start": 4950,
@@ -71,7 +80,7 @@ def test_calculate_utr_lengths():
     # Example 5.1: missing ref_cds_info
     row = {
         "strand": "+",
-        "transcript_exon_info": [('1', 200), ('2', 300)],
+        "transcript_exon_info": [("1", 200), ("2", 300)],
     }
     result = calculate_utr_lengths(row)
     assert result["utr5_length"] is None
@@ -89,7 +98,7 @@ def test_calculate_utr_lengths():
     row = {
         "strand": "+",
         "ref_cds_info": [(1, 60), (3, 80), (5, 100)],
-        "transcript_exon_info": [('1', 100), ('2', 100), ('3', 100), ('4', 100), ('5', 100)],
+        "transcript_exon_info": [("1", 100), ("2", 100), ("3", 100), ("4", 100), ("5", 100)],
         "ref_cds_start": 5000,
         "ref_cds_stop": 5340,
         "transcript_start": 4800,
@@ -102,17 +111,24 @@ def test_calculate_utr_lengths():
     assert result["utr5_length"] == 40
     assert result["utr3_length"] == 0
 
+
 def test_calculate_exon_features():
 
     # Example from tcga
     row = {
-        "alt_is_premature" : True,
+        "alt_is_premature": True,
         "strand": "+",
         "alt_stop_codon_exons": [1, 1],
         "transcript_exon_info": [
-            ('1', 250), ('2', 97), ('3', 174), ('4', 123),
-            ('5', 70), ('6', 173), ('7', 105), ('8', 5848)
-        ]
+            ("1", 250),
+            ("2", 97),
+            ("3", 174),
+            ("4", 123),
+            ("5", 70),
+            ("6", 173),
+            ("7", 105),
+            ("8", 5848),
+        ],
     }
 
     result = calculate_exon_features(row)
@@ -124,127 +140,86 @@ def test_calculate_exon_features():
     row1 = {
         "alt_is_premature": True,
         "strand": "+",
-        "transcript_exon_info": [('1', 100), ('2', 150), ('3', 120), ('4', 110)],
-        "alt_stop_codon_exons": [2]
+        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120), ("4", 110)],
+        "alt_stop_codon_exons": [2],
     }
     result1 = calculate_exon_features(row1)
-    assert result1 == {
-        "total_exon_count": 4,
-        "upstream_exon_count": 1,
-        "downstream_exon_count": 2
-    }
+    assert result1 == {"total_exon_count": 4, "upstream_exon_count": 1, "downstream_exon_count": 2}
 
     # Example 2: - strand, PTC in exon 2 (which is second in reverse)
     row2 = {
         "alt_is_premature": True,
         "strand": "-",
-        "transcript_exon_info": [('1', 100), ('2', 150), ('3', 120), ('4', 110)],
-        "alt_stop_codon_exons": [2]
+        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120), ("4", 110)],
+        "alt_stop_codon_exons": [2],
     }
     result2 = calculate_exon_features(row2)
     assert result2 == {
         "total_exon_count": 4,
-        "upstream_exon_count": 1,   # reversed: [4,3,2,1] → index 1
-        "downstream_exon_count": 2
+        "upstream_exon_count": 1,  # reversed: [4,3,2,1] → index 1
+        "downstream_exon_count": 2,
     }
 
     # Example 3: PTC in first exon on + strand
     row3 = {
         "alt_is_premature": True,
         "strand": "+",
-        "transcript_exon_info": [('1', 100), ('2', 150), ('3', 120)],
-        "alt_stop_codon_exons": [1]
+        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120)],
+        "alt_stop_codon_exons": [1],
     }
     result3 = calculate_exon_features(row3)
-    assert result3 == {
-        "total_exon_count": 3,
-        "upstream_exon_count": 0,
-        "downstream_exon_count": 2
-    }
+    assert result3 == {"total_exon_count": 3, "upstream_exon_count": 0, "downstream_exon_count": 2}
 
     # Example 4: PTC in last exon on - strand
     row4 = {
         "alt_is_premature": True,
         "strand": "-",
-        "transcript_exon_info": [('1', 100), ('2', 150), ('3', 120)],
-        "alt_stop_codon_exons": [1]
+        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120)],
+        "alt_stop_codon_exons": [1],
     }
     result4 = calculate_exon_features(row4)
-    assert result4 == {
-        "total_exon_count": 3,
-        "upstream_exon_count": 0,
-        "downstream_exon_count": 2
-    }
+    assert result4 == {"total_exon_count": 3, "upstream_exon_count": 0, "downstream_exon_count": 2}
 
     # Example 5: Single exon transcript
-    row5 = {
-        "alt_is_premature": True,
-        "strand": "+",
-        "transcript_exon_info": [('1', 500)],
-        "alt_stop_codon_exons": [1]
-    }
+    row5 = {"alt_is_premature": True, "strand": "+", "transcript_exon_info": [("1", 500)], "alt_stop_codon_exons": [1]}
     result5 = calculate_exon_features(row5)
-    assert result5 == {
-        "total_exon_count": 1,
-        "upstream_exon_count": 0,
-        "downstream_exon_count": 0
-    }
+    assert result5 == {"total_exon_count": 1, "upstream_exon_count": 0, "downstream_exon_count": 0}
 
     # Example 7: PTC exon not present in transcript
     row6 = {
         "alt_is_premature": True,
         "strand": "-",
-        "transcript_exon_info": [('1', 100), ('2', 200)],
-        "alt_stop_codon_exons": [99]
+        "transcript_exon_info": [("1", 100), ("2", 200)],
+        "alt_stop_codon_exons": [99],
     }
     result6 = calculate_exon_features(row6)
-    assert result6 == {
-        "total_exon_count": 2,
-        "upstream_exon_count": None,
-        "downstream_exon_count": None
-    }
+    assert result6 == {"total_exon_count": 2, "upstream_exon_count": None, "downstream_exon_count": None}
 
     # Example 7: Missing stop codon exons
     row7 = {
         "alt_is_premature": True,
         "strand": "+",
-        "transcript_exon_info": [('1', 100), ('2', 200)],
-        "alt_stop_codon_exons": []
+        "transcript_exon_info": [("1", 100), ("2", 200)],
+        "alt_stop_codon_exons": [],
     }
     result7 = calculate_exon_features(row7)
-    assert result7 == {
-        "total_exon_count": 2,
-        "upstream_exon_count": None,
-        "downstream_exon_count": None
-    }
+    assert result7 == {"total_exon_count": 2, "upstream_exon_count": None, "downstream_exon_count": None}
 
     # Example 8: is not PTC
     row8 = {
         "alt_is_premature": False,
         "strand": "-",
-        "transcript_exon_info": [('1', 100), ('2', 200)],
-        "alt_stop_codon_exons": [99]
+        "transcript_exon_info": [("1", 100), ("2", 200)],
+        "alt_stop_codon_exons": [99],
     }
     result8 = calculate_exon_features(row8)
-    assert result8 == {
-        "total_exon_count": 2,
-        "upstream_exon_count": None,
-        "downstream_exon_count": None
-    }
+    assert result8 == {"total_exon_count": 2, "upstream_exon_count": None, "downstream_exon_count": None}
 
     # Example 9: Transcript with no exons
-    row9 = {
-        "alt_is_premature": False,
-        "strand": "+",
-        "transcript_exon_info": [],
-        "alt_stop_codon_exons": []
-    }
+    row9 = {"alt_is_premature": False, "strand": "+", "transcript_exon_info": [], "alt_stop_codon_exons": []}
     result9 = calculate_exon_features(row9)
-    assert result9 == {
-        "total_exon_count": None,
-        "upstream_exon_count": None,
-        "downstream_exon_count": None
-    }
+    assert result9 == {"total_exon_count": None, "upstream_exon_count": None, "downstream_exon_count": None}
+
 
 def test_calculate_ptc_to_start_distance():
     row = {
@@ -296,78 +271,94 @@ def test_calculate_ptc_to_start_distance():
     row7 = {}
     assert calculate_ptc_to_start_distance(row7) is None
 
+
 def test_calculate_ptc_exon_length():
     row = {
         "alt_is_premature": True,
-        "alt_stop_codon_exons" : [1, 1],
-        "transcript_exon_info": [('1', 250), ('2', 97), ('3', 174), ('4', 123), ('5', 70), ('6', 173), ('7', 105), ('8', 5848)],
+        "alt_stop_codon_exons": [1, 1],
+        "transcript_exon_info": [
+            ("1", 250),
+            ("2", 97),
+            ("3", 174),
+            ("4", 123),
+            ("5", 70),
+            ("6", 173),
+            ("7", 105),
+            ("8", 5848),
+        ],
     }
     assert calculate_ptc_exon_length(row) == 250
 
     row2 = {
         "alt_is_premature": True,
         "alt_stop_codon_exons": [2, 3, 4],
-        "transcript_exon_info": [('1', 250), ('2', 97), ('3', 174), ('4', 123), ('5', 70), ('6', 173), ('7', 105),
-                                 ('8', 5848)],
+        "transcript_exon_info": [
+            ("1", 250),
+            ("2", 97),
+            ("3", 174),
+            ("4", 123),
+            ("5", 70),
+            ("6", 173),
+            ("7", 105),
+            ("8", 5848),
+        ],
     }
     assert calculate_ptc_exon_length(row2) == 97
 
     row3 = {
         "alt_is_premature": False,
         "alt_stop_codon_exons": [2, 3, 4],
-        "transcript_exon_info": [('1', 250), ('2', 97), ('3', 174), ('4', 123), ('5', 70), ('6', 173), ('7', 105),
-                                 ('8', 5848)],
+        "transcript_exon_info": [
+            ("1", 250),
+            ("2", 97),
+            ("3", 174),
+            ("4", 123),
+            ("5", 70),
+            ("6", 173),
+            ("7", 105),
+            ("8", 5848),
+        ],
     }
     assert calculate_ptc_exon_length(row3) is None
 
     row4 = {
         "alt_is_premature": True,
         "alt_stop_codon_exons": [],
-        "transcript_exon_info": [('1', 250), ('2', 97), ('3', 174), ('4', 123), ('5', 70), ('6', 173), ('7', 105),
-                                 ('8', 5848)],
+        "transcript_exon_info": [
+            ("1", 250),
+            ("2", 97),
+            ("3", 174),
+            ("4", 123),
+            ("5", 70),
+            ("6", 173),
+            ("7", 105),
+            ("8", 5848),
+        ],
     }
     assert calculate_ptc_exon_length(row4) is None
 
+
 def test_calculate_stop_codon_dist():
     # Case 1: PTC upstream of reference stop
-    row1 = {
-        "ref_first_stop_pos": 1000,
-        "alt_first_stop_pos": 800,
-        "alt_is_premature": True
-    }
+    row1 = {"ref_first_stop_pos": 1000, "alt_first_stop_pos": 800, "alt_is_premature": True}
     assert calculate_stop_codon_dist(row1) == 200
 
     # Case 2: PTC downstream of reference stop (rare, negative distance)
-    row2 = {
-        "ref_first_stop_pos": 800,
-        "alt_first_stop_pos": 1000,
-        "alt_is_premature": True
-    }
+    row2 = {"ref_first_stop_pos": 800, "alt_first_stop_pos": 1000, "alt_is_premature": True}
     assert calculate_stop_codon_dist(row2) == -200
 
     # Case 3: PTC exactly at reference stop
-    row3 = {
-        "ref_first_stop_pos": 900,
-        "alt_first_stop_pos": 900,
-        "alt_is_premature": True
-    }
+    row3 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": 900, "alt_is_premature": True}
     assert calculate_stop_codon_dist(row3) == 0
 
     # Case 4: Missing alt stop codon
-    row4 = {
-        "ref_first_stop_pos": 900,
-        "alt_first_stop_pos": None,
-        "alt_is_premature": True
-    }
+    row4 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": None, "alt_is_premature": True}
     assert calculate_stop_codon_dist(row4) is None
 
     # Case 5: Missing ref stop codon
-    row5 = {
-        "ref_first_stop_pos": None,
-        "alt_first_stop_pos": 750,
-        "alt_is_premature": True
-    }
+    row5 = {"ref_first_stop_pos": None, "alt_first_stop_pos": 750, "alt_is_premature": True}
     assert calculate_stop_codon_dist(row5) is None
+
 
 def test_evaluate_nmd_escape_rules():
 
@@ -380,7 +371,7 @@ def test_evaluate_nmd_escape_rules():
         "transcript_exon_info": [(1, 100)],
         "total_exon_count": 1,
         "downstream_exon_count": 0,
-        "ptc_exon_length": 100
+        "ptc_exon_length": 100,
     }
 
     result = evaluate_nmd_escape_rules(row2)
@@ -400,7 +391,7 @@ def test_evaluate_nmd_escape_rules():
         "transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
         "total_exon_count": 3,
         "downstream_exon_count": 0,
-        "ptc_exon_length": 100
+        "ptc_exon_length": 100,
     }
 
     result = evaluate_nmd_escape_rules(row)
@@ -420,7 +411,7 @@ def test_evaluate_nmd_escape_rules():
         "transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
         "total_exon_count": 3,
         "downstream_exon_count": 1,
-        "ptc_exon_length": 100
+        "ptc_exon_length": 100,
     }
 
     result = evaluate_nmd_escape_rules(row)
@@ -440,7 +431,7 @@ def test_evaluate_nmd_escape_rules():
         "transcript_exon_info": [(1, 100), (2, 500), (3, 100)],
         "total_exon_count": 3,
         "downstream_exon_count": 1,
-        "ptc_exon_length": 500
+        "ptc_exon_length": 500,
     }
 
     result = evaluate_nmd_escape_rules(row)
@@ -460,7 +451,7 @@ def test_evaluate_nmd_escape_rules():
         "transcript_exon_info": [(1, 100), (2, 100)],
         "total_exon_count": 2,
         "downstream_exon_count": 0,
-        "ptc_exon_length": 100
+        "ptc_exon_length": 100,
     }
 
     result = evaluate_nmd_escape_rules(row)
@@ -480,7 +471,7 @@ def test_evaluate_nmd_escape_rules():
         "transcript_exon_info": [(1, 100), (2, 100), (3, 500)],
         "total_exon_count": 3,
         "downstream_exon_count": 0,
-        "ptc_exon_length": 500
+        "ptc_exon_length": 500,
     }
 
     result = evaluate_nmd_escape_rules(row)
@@ -500,7 +491,7 @@ def test_evaluate_nmd_escape_rules():
         "transcript_exon_info": [(1, 100), (2, 100)],
         "total_exon_count": 2,
         "downstream_exon_count": 1,
-        "ptc_exon_length": 100
+        "ptc_exon_length": 100,
     }
 
     result = evaluate_nmd_escape_rules(row3)
@@ -511,17 +502,14 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_start_proximal_rule"] == False
     assert result["nmd_escape"] == False
 
+
 def test_calculate_ptc_to_downstream_ej():
     # Case 1: PTC in exon 2, simple transcript
     row1 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 250,  # PTC position
         "alt_stop_codon_exons": [2],
-        "alt_cds_info": [
-            (1, 100),
-            (2, 200),
-            (3, 150)
-        ]
+        "alt_cds_info": [(1, 100), (2, 200), (3, 150)],
     }
     # End of exon 2: 100 + 200 = 300, distance = 300 - 250 = 50
     assert calculate_ptc_to_downstream_ej(row1) == 50
@@ -531,11 +519,7 @@ def test_calculate_ptc_to_downstream_ej():
         "alt_is_premature": True,
         "alt_first_stop_pos": 60,
         "alt_stop_codon_exons": [1],
-        "alt_cds_info": [
-            (1, 100),
-            (2, 200),
-            (3, 150)
-        ]
+        "alt_cds_info": [(1, 100), (2, 200), (3, 150)],
     }
     # End of exon 1: 100, distance = 100 - 60 = 40
     assert calculate_ptc_to_downstream_ej(row2) == 40
@@ -545,11 +529,7 @@ def test_calculate_ptc_to_downstream_ej():
         "alt_is_premature": True,
         "alt_first_stop_pos": 430,
         "alt_stop_codon_exons": [3],
-        "alt_cds_info": [
-            (1, 100),
-            (2, 200),
-            (3, 200)
-        ]
+        "alt_cds_info": [(1, 100), (2, 200), (3, 200)],
     }
     # End of exon 3: 100+200+200=500, distance = 500 - 430 = 70
     assert calculate_ptc_to_downstream_ej(row3) == 70
@@ -559,11 +539,7 @@ def test_calculate_ptc_to_downstream_ej():
         "alt_is_premature": True,
         "alt_first_stop_pos": 350,
         "alt_stop_codon_exons": [2, 3],
-        "alt_cds_info": [
-            (1, 100),
-            (2, 200),
-            (3, 200)
-        ]
+        "alt_cds_info": [(1, 100), (2, 200), (3, 200)],
     }
     # Smallest exon = 2, end of exon 2: 100+200=300, distance = 300 - 350 = -50 (PTC past exon end)
     assert calculate_ptc_to_downstream_ej(row4) == -50
@@ -573,10 +549,7 @@ def test_calculate_ptc_to_downstream_ej():
         "alt_is_premature": False,
         "alt_first_stop_pos": 250,
         "alt_stop_codon_exons": [2],
-        "alt_cds_info": [
-            (1, 100),
-            (2, 200)
-        ]
+        "alt_cds_info": [(1, 100), (2, 200)],
     }
     assert calculate_ptc_to_downstream_ej(row5) is None
 
@@ -585,53 +558,35 @@ def test_calculate_ptc_to_downstream_ej():
         "alt_is_premature": True,
         "alt_first_stop_pos": None,
         "alt_stop_codon_exons": [2],
-        "alt_cds_info": [
-            (1, 100),
-            (2, 200)
-        ]
+        "alt_cds_info": [(1, 100), (2, 200)],
     }
     assert calculate_ptc_to_downstream_ej(row6) is None
+
 
 def test_add_likely_misannotated_flag():
 
     # Baseline: "good" annotation, not misannotated
-    row0 = {
-        "cds_in_transcript": True,
-        "ref_start_codon_pos": 0,
-        "ref_valid_stop": True
-    }
+    row0 = {"cds_in_transcript": True, "ref_start_codon_pos": 0, "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row0) is False
 
     # CDS not in transcript
-    row1 = {
-        "cds_in_transcript": False,
-        "ref_start_codon_pos": 0,
-        "ref_valid_stop": True
-    }
+    row1 = {"cds_in_transcript": False, "ref_start_codon_pos": 0, "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row1) is True
 
     # Start position of CDS not at position 0
     row2 = {
         "cds_in_transcript": True,
-        "ref_start_codon_pos": 14, # start codon is not at beginning of CDS
-        "ref_valid_stop": True
+        "ref_start_codon_pos": 14,  # start codon is not at beginning of CDS
+        "ref_valid_stop": True,
     }
     assert add_likely_misannotated_flag(row2) is True
 
     # No valid stop codon at the end of the CDS sequence
-    row3 = {
-        "cds_in_transcript": True,
-        "ref_start_codon_pos": 0,
-        "ref_valid_stop": False
-    }
+    row3 = {"cds_in_transcript": True, "ref_start_codon_pos": 0, "ref_valid_stop": False}
     assert add_likely_misannotated_flag(row3) is True
 
     # Multiple conditions that point to a likely misannotation
-    row4 = {
-        "cds_in_transcript": True,
-        "ref_start_codon_pos": 13,
-        "ref_valid_stop": False
-    }
+    row4 = {"cds_in_transcript": True, "ref_start_codon_pos": 13, "ref_valid_stop": False}
     assert add_likely_misannotated_flag(row4) is True
 
     # Missing information
@@ -639,13 +594,8 @@ def test_add_likely_misannotated_flag():
     assert add_likely_misannotated_flag(row5) is True
 
     # No start codon position
-    row5 = {
-        "cds_in_transcript": True,
-        "ref_start_codon_pos": None,
-        "ref_valid_stop": True
-    }
+    row5 = {"cds_in_transcript": True, "ref_start_codon_pos": None, "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row5) is True
-
 
 
 # def test_calculate_ptc_to_downstream_ej_old():

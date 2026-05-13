@@ -1,13 +1,14 @@
 # Import dependencies
 import os
+
 import pandas as pd
 import pyranges as pr
 from pyfaidx import Fasta
 
 # Create the functions used for reading in the files (VCF, GTF, FASTA)
 
-def read_vcf(vcf_path):
 
+def read_vcf(vcf_path):
     # TODO: adjust this function to also get structural variants and then also adjust downstream analysis
     #  (especially the inclusion of the Variants into the reference CDS sequence to create the alternative CDS)
 
@@ -16,19 +17,20 @@ def read_vcf(vcf_path):
     """
     df = pd.read_csv(
         vcf_path,
-        comment='#',
-        sep='\t',
+        comment="#",
+        sep="\t",
         header=None,
-        names=['Chromosome', 'Start', 'ID', 'Ref', 'Alt', 'Qual', 'Filter', 'Info']
+        names=["Chromosome", "Start", "ID", "Ref", "Alt", "Qual", "Filter", "Info"],
     )
 
     # Adjust coordinates to 0-based
-    df['Start'] = df['Start'] - 1
-    df['End'] = df['Start'] + df['Ref'].str.len()
+    df["Start"] = df["Start"] - 1
+    df["End"] = df["Start"] + df["Ref"].str.len()
 
     # Keep only relevant columns
-    gr = pr.PyRanges(df[['Chromosome', 'Start', 'End', 'ID', 'Ref', 'Alt', 'Qual', 'Filter', 'Info']])
+    gr = pr.PyRanges(df[["Chromosome", "Start", "End", "ID", "Ref", "Alt", "Qual", "Filter", "Info"]])
     return gr
+
 
 def read_gtf(gtf_path):
     """
@@ -38,6 +40,7 @@ def read_gtf(gtf_path):
         raise FileNotFoundError(f"GTF file not found: {gtf_path}")
     return pr.read_gtf(gtf_path)
 
+
 def read_fasta(fasta_path):
     """
     Reads a genome FASTA file using pyfaidx.Fasta and returns a pyfaidx.Fasta object.
@@ -45,6 +48,7 @@ def read_fasta(fasta_path):
     if not os.path.exists(fasta_path):
         raise FileNotFoundError(f"FASTA file not found: {fasta_path}")
     return Fasta(fasta_path)
+
 
 def compute_exon_numbers(gtf):
     """
@@ -79,7 +83,9 @@ def compute_exon_numbers(gtf):
             overlaps = exon_group[(exon_group["Start"] <= cds_row["End"]) & (exon_group["End"] >= cds_row["Start"])]
             if not overlaps.empty:
                 # choose exon with maximum overlap
-                overlap_idx = overlaps.apply(lambda row: min(row["End"], cds_row["End"]) - max(row["Start"], cds_row["Start"]), axis=1).idxmax()
+                overlap_idx = overlaps.apply(
+                    lambda row: min(row["End"], cds_row["End"]) - max(row["Start"], cds_row["Start"]), axis=1
+                ).idxmax()
                 gtf_df.loc[idx, "exon_number"] = exon_group.loc[overlap_idx, "exon_number"]
 
     # Step 3: Update exon features
@@ -122,9 +128,9 @@ def compute_exon_numbers_slow(gtf):
             if not overlaps.empty:
                 # choose exon with maximum overlap
                 overlap_idx = overlaps.apply(
-                    lambda row: min(row["End"], cds_row["End"]) - max(row["Start"], cds_row["Start"]), axis=1).idxmax()
+                    lambda row: min(row["End"], cds_row["End"]) - max(row["Start"], cds_row["Start"]), axis=1
+                ).idxmax()
                 gtf_df.loc[idx, "exon_number"] = group.loc[overlap_idx, "exon_number"]
-
 
     # Step 3: Update exon features
     gtf_df.loc[exons.index, "exon_number"] = exons["exon_number"]

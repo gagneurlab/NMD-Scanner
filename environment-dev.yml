@@ -1,0 +1,8 @@
+name: nmd_scanner
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python >=3.13
+  - uv =0.11

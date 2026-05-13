@@ -1,14 +1,16 @@
 # Import dependencies
 import argparse
 import os
+
 import pandas as pd
-from nmd_scanner.scan import read_vcf, read_gtf, compute_exon_numbers
-from nmd_scanner.rules import extract_ptc
-from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from pyfaidx import Fasta
 
-def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
+from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
+from nmd_scanner.rules import extract_ptc
+from nmd_scanner.scan import compute_exon_numbers, read_gtf, read_vcf
 
+
+def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     """
     Main function for NMD scanner
 
@@ -41,18 +43,15 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     print(f"Reading FASTA file: {fasta_path}")
     fasta = Fasta(fasta_path)
 
-
     # Adjust exon number in GTF (need this for the (old) hg19 version)
     if reassign_exons:
         print("Adjust exon numbers")
         gtf = compute_exon_numbers(gtf)
         print("Exon numbers adjusted.")
 
-
     # extract CDS regions from the GTF file
     cds = gtf[gtf.Feature == "CDS"]
     cds_df = cds.df
-
 
     # extract exon regions from the GTF file and compute exon related metrics:
     # exon length & number of exons contained in each transcript
@@ -60,23 +59,21 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     exons_df = exons.df
     exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
-
     # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
     print("Creating sequences and analyzing...")
     results = extract_ptc(cds_df, vcf, fasta, exons_df, output)
 
-
     # Save intermediate NMD rule output
-    #output_path = os.path.join(output, "6_nmd_rules.tsv")
-    #results.to_csv(output_path, sep="\t", index=False)
-    #print(f"Save nmd rules results in: {output_path}.")
+    # output_path = os.path.join(output, "6_nmd_rules.tsv")
+    # results.to_csv(output_path, sep="\t", index=False)
+    # print(f"Save nmd rules results in: {output_path}.")
 
     # Add additional features (inspired by NMD efficiency benchmark dataset)
-    extra_features = results.apply(add_nmd_features, axis=1, result_type='expand')
+    extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
     results = pd.concat([results, extra_features], axis=1)
 
     # Compute NMD-rules as last step
-    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type='expand')
+    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
     results = pd.concat([results, nmd_results], axis=1)
 
     # # adjust datatypes --> TODO: adjust in code, not afterwards
@@ -159,7 +156,6 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     #     if col in results.columns:
     #         results[col] = results[col].astype(dtype)
 
-
     # Write output
     vcf_base = os.path.splitext(os.path.basename(vcf_path))[0]
     output_file = os.path.join(output, f"{vcf_base}_final_nmd_results.csv")
@@ -168,8 +164,8 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
 
     return results
 
-def is_valid_output_path(path):
 
+def is_valid_output_path(path):
     """
     Validate if the output path exists or is creatable.
     Allows a file path (where the parent directory must exist) or a directory.
@@ -180,17 +176,19 @@ def is_valid_output_path(path):
     parent = os.path.dirname(path)
     return os.path.isdir(parent) if parent else False
 
-if __name__ == '__main__':
 
+if __name__ == "__main__":
     # CLI argument parser
     parser = argparse.ArgumentParser(description="Run NMD pipeline")
-    parser.add_argument('--vcf', required=True, help='Path to VCF file')
-    parser.add_argument('--gtf', required=True, help='Path to GTF file')
-    parser.add_argument('--fasta', required=True, help='Path to FASTA file')
-    parser.add_argument('--output', required=True, help='Path to output file or output directory')
+    parser.add_argument("--vcf", required=True, help="Path to VCF file")
+    parser.add_argument("--gtf", required=True, help="Path to GTF file")
+    parser.add_argument("--fasta", required=True, help="Path to FASTA file")
+    parser.add_argument("--output", required=True, help="Path to output file or output directory")
 
     # If user adds flag, reassign exon numbers
-    parser.add_argument('--reassign_exons', action='store_true', help='Recompute exon numbers (recommended for hg19; may be slow)')
+    parser.add_argument(
+        "--reassign_exons", action="store_true", help="Recompute exon numbers (recommended for hg19; may be slow)"
+    )
 
     args = parser.parse_args()
 
@@ -200,4 +198,3 @@ if __name__ == '__main__':
 
     # Run the main pipeline
     main(args.vcf, args.gtf, args.fasta, args.output, reassign_exons=args.reassign_exons)
-
