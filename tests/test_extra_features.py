@@ -369,6 +369,7 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [1],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100)],
+        "alt_cds_info": [(1, 100)],
         "total_exon_count": 1,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -389,6 +390,7 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [3],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
+        "alt_cds_info": [(1, 100), (2, 100), (3, 100)],
         "total_exon_count": 3,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -409,6 +411,7 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
+        "alt_cds_info": [(1, 100), (2, 100), (3, 100)],
         "total_exon_count": 3,
         "downstream_exon_count": 1,
         "ptc_exon_length": 100,
@@ -429,6 +432,7 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 500), (3, 100)],
+        "alt_cds_info": [(1, 100), (2, 500), (3, 100)],
         "total_exon_count": 3,
         "downstream_exon_count": 1,
         "ptc_exon_length": 500,
@@ -449,6 +453,7 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100)],
+        "alt_cds_info": [(1, 100), (2, 100)],
         "total_exon_count": 2,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -469,6 +474,7 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [3],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100), (3, 500)],
+        "alt_cds_info": [(1, 100), (2, 100), (3, 500)],
         "total_exon_count": 3,
         "downstream_exon_count": 0,
         "ptc_exon_length": 500,
@@ -489,6 +495,7 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100)],
+        "alt_cds_info": [(1, 100), (2, 100)],
         "total_exon_count": 2,
         "downstream_exon_count": 1,
         "ptc_exon_length": 100,
@@ -501,6 +508,45 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_long_exon_rule"] == False
     assert result["nmd_start_proximal_rule"] == False
     assert result["nmd_escape"] == False
+
+    # Example 8: 50nt rule uses CDS-relative coordinates, not transcript-relative.
+    # Transcript has a 200nt 5'UTR in exon 1; CDS spans only part of exon 1 and all of exons 2,3.
+    # PTC at CDS pos 160 is in the last 50nt of the penultimate CDS exon (exon 2, CDS-end at 200).
+    # If the rule mistakenly used transcript_exon_info, pen_end would be 500 and the rule would not fire.
+    row_cds_offset = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 160,
+        "alt_stop_codon_exons": [2],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [(1, 300), (2, 100), (3, 200)],
+        "alt_cds_info": [(1, 100), (2, 100), (3, 200)],
+        "total_exon_count": 3,
+        "downstream_exon_count": 1,
+        "ptc_exon_length": 100,
+    }
+
+    result = evaluate_nmd_escape_rules(row_cds_offset)
+    assert result["nmd_50nt_penultimate_rule"] == True
+    assert result["nmd_escape"] == True
+
+    # Example 9: PTC sits at CDS pos that would falsely fire if transcript_exon_info were used.
+    # Transcript: exon1 300nt (200 UTR + 100 CDS), exon2 100nt CDS, exon3 200nt CDS.
+    # Transcript-relative pen_end would be 400; CDS pos 360 is in [350, 400) → false positive.
+    # CDS-relative pen_end is 200; CDS pos 360 is past it → rule must NOT fire.
+    row_false_positive_guard = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 360,
+        "alt_stop_codon_exons": [3],
+        "alt_start_codon_pos": 0,
+        "transcript_exon_info": [(1, 300), (2, 100), (3, 200)],
+        "alt_cds_info": [(1, 100), (2, 100), (3, 200)],
+        "total_exon_count": 3,
+        "downstream_exon_count": 0,
+        "ptc_exon_length": 200,
+    }
+
+    result = evaluate_nmd_escape_rules(row_false_positive_guard)
+    assert result["nmd_50nt_penultimate_rule"] == False
 
 
 def test_calculate_ptc_to_downstream_ej():
