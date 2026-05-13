@@ -33,25 +33,28 @@ pip install .
 ### Option 1: Annotating a VCF on the command line
 ```bash
 # if running the script directly
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/
+python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv
+
+# write Parquet instead of CSV (requires pyarrow)
+python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.parquet
 
 # option: fix exon numbering (recommended for hg19)
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/ --reassign_exons
+python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv --reassign_exons
 ```
 
 Arguments:
 - `--vcf`: Path to input VCF (SNVs / Indels supported; frameshifts handled)
 - `--gtf`: Path to gene annotation (GTF)
 - `--fasta`: Path to reference genome FASTA
-- `--output`: Path to an existing directory (or a file path whose parent exists)
+- `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (useful for hg19)
 
 Output:
-- A CSV named `<vcf_basename>_final_nmd_results.csv` saved to `--output`, containing:
-  - reconstructed reference / alternative CDS and transcript sequences(+ metadata)
+- The file specified by `--output`, containing:
+  - reconstructed reference / alternative CDS and transcript sequences (+ metadata)
   - PTC detection and start / stop-loss flags
   - NMD escape rules
-  - extra features such as UTR lengths, exon counts, distances, etc.)
+  - extra features such as UTR lengths, exon counts, distances, etc.
 
 ### Option 2: Import as a python moduele
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.

@@ -9,6 +9,8 @@ from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rul
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import compute_exon_numbers, read_gtf, read_vcf
 
+SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
+
 
 def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     """
@@ -25,8 +27,8 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     :param vcf_path: path to the input VCF file
     :param gtf_path: path to the input GTF annotation file
     :param fasta_path: path to the reference FASTA file
-    :param output: directory to save the results in
-    :return: CSV file summarizing all annotated variants
+    :param output: path to the output file (.csv, .parquet, or .pq)
+    :return: DataFrame summarizing all annotated variants
     """
 
     # read VCF file (variants)
@@ -71,105 +73,49 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
     results = pd.concat([results, nmd_results], axis=1)
 
-    # # adjust datatypes --> TODO: adjust in code, not afterwards
-    # dtype_mapping = {
-    #     "transcript_id": "object",
-    #     "variant_id": "object",
-    #     "ref_cds_start": "Int64",
-    #     "ref_cds_stop": "Int64",
-    #     "ref_cds_seq": "string",
-    #     "ref_cds_len": "Int64",
-    #     "alt_cds_start": "Int64",
-    #     "alt_cds_stop": "Int64",
-    #     "alt_cds_seq": "string",
-    #     "alt_cds_len": "Int64",
-    #     "chromosome": "object",
-    #     "gene_id": "object",
-    #     "strand": "object",
-    #     "ref": "object",
-    #     "alt": "object",
-    #     "start_variant": "Int64",
-    #     "end_variant": "Int64",
-    #     "ref_cds_info": "object",
-    #     "alt_cds_info": "object",
-    #     "cds_in_transcript": "boolean",
-    #     "ref_start_codon_pos": "Int64",
-    #     "ref_start_codon_exon": "Int64",
-    #     "ref_last_codon": "object",
-    #     "ref_valid_stop": "boolean",
-    #     "ref_first_stop_codon": "object",
-    #     "ref_first_stop_pos": "Int64",
-    #     "ref_num_stop_codons": "Int64",
-    #     "ref_all_stop_codons": "object",
-    #     "ref_stop_codon_exons": "object",
-    #     "ref_is_premature": "boolean",
-    #     "alt_start_codon_pos": "Int64",
-    #     "alt_start_codon_exon": "Int64",
-    #     "alt_last_codon": "object",
-    #     "alt_valid_stop": "boolean",
-    #     "alt_first_stop_codon": "object",
-    #     "alt_first_stop_pos": "Int64",
-    #     "alt_num_stop_codons": "Int64",
-    #     "alt_all_stop_codons": "object",
-    #     "alt_stop_codon_exons": "object",
-    #     "alt_is_premature": "boolean",
-    #     "start_loss": "boolean",
-    #     "stop_loss": "boolean",
-    #     "transcript_start": "Int64",
-    #     "transcript_end": "Int64",
-    #     "transcript_seq": "string",
-    #     "transcript_length": "Int64",
-    #     "alt_transcript_seq": "string",
-    #     "alt_transcript_length": "Int64",
-    #     "transcript_exon_info": "object",
-    #     "transcript_start_codon_pos": "Int64",
-    #     "transcript_start_codon_exon": "Int64",
-    #     "transcript_last_codon": "object",
-    #     "transcript_valid_stop": "boolean",
-    #     "transcript_first_stop_codon": "object",
-    #     "transcript_first_stop_pos": "Int64",
-    #     "transcript_num_stop_codons": "Int64",
-    #     "transcript_all_stop_codons": "object",
-    #     "transcript_stop_codon_exons": "object",
-    #     "nmd_last_exon_rule": "boolean",
-    #     "nmd_50nt_penultimate_rule": "boolean",
-    #     "nmd_long_exon_rule": "boolean",
-    #     "nmd_start_proximal_rule": "boolean",
-    #     "nmd_single_exon_rule": "boolean",
-    #     "nmd_escape": "boolean",
-    #     "utr3_length": "Int64",
-    #     "utr5_length": "Int64",
-    #     "total_exon_count": "Int64",
-    #     "upstream_exon_count": "Int64",
-    #     "downstream_exon_count": "Int64",
-    #     "ptc_to_start_codon": "Int64",
-    #     "ptc_less_than_150nt_to_start": "boolean",
-    #     "ptc_exon_length": "Int64",
-    #     "stop_codon_distance_nmd": "Int64"
-    # }
-    # for col, dtype in dtype_mapping.items():
-    #     if col in results.columns:
-    #         results[col] = results[col].astype(dtype)
-
     # Write output
-    vcf_base = os.path.splitext(os.path.basename(vcf_path))[0]
-    output_file = os.path.join(output, f"{vcf_base}_final_nmd_results.csv")
-    print(f"Writing results to {output_file}")
-    results.to_csv(output_file, index=False)
+    print(f"Writing results to {output}")
+    write_results(results, output)
 
     return results
 
 
-def is_valid_output_path(path):
+def write_results(results, output):
     """
-    Validate if the output path exists or is creatable.
-    Allows a file path (where the parent directory must exist) or a directory.
+    Write the results DataFrame to a CSV or Parquet file based on the output extension.
     """
 
-    if os.path.exists(path):
-        return True
-    parent = os.path.dirname(path)
-    return os.path.isdir(parent) if parent else False
+    ext = os.path.splitext(output)[1].lower()
+    if ext == ".csv":
+        results.to_csv(output, index=False)
+    elif ext in (".parquet", ".pq"):
+        try:
+            results.to_parquet(output, index=False)
+        except ImportError as e:
+            raise SystemExit(
+                f"Writing parquet requires pyarrow. Install it via: pip install pyarrow\nOriginal error: {e}"
+            ) from e
+    else:
+        raise ValueError(f"Unsupported output extension: {ext!r}. Supported: {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}")
+
+
+def is_valid_output_path(path):
+    """
+    Validate that ``path`` is a writable output file path.
+
+    Rules:
+    - Must not point at an existing directory (single-file output only).
+    - Parent directory must already exist (we do not create directories).
+    - Extension must be one of the supported formats.
+    """
+
+    if os.path.isdir(path):
+        return False
+    parent = os.path.dirname(path) or "."
+    if not os.path.isdir(parent):
+        return False
+    ext = os.path.splitext(path)[1].lower()
+    return ext in SUPPORTED_OUTPUT_EXTENSIONS
 
 
 if __name__ == "__main__":
@@ -178,7 +124,15 @@ if __name__ == "__main__":
     parser.add_argument("--vcf", required=True, help="Path to VCF file")
     parser.add_argument("--gtf", required=True, help="Path to GTF file")
     parser.add_argument("--fasta", required=True, help="Path to FASTA file")
-    parser.add_argument("--output", required=True, help="Path to output file or output directory")
+    parser.add_argument(
+        "--output",
+        required=True,
+        help=(
+            "Path to the output file. Extension determines format: "
+            ".csv for CSV, .parquet or .pq for Parquet (requires pyarrow). "
+            "Parent directory must exist; the file is overwritten if present."
+        ),
+    )
 
     # If user adds flag, reassign exon numbers
     parser.add_argument(
@@ -189,7 +143,12 @@ if __name__ == "__main__":
 
     # Check that the output path is valid
     if not is_valid_output_path(args.output):
-        raise ValueError(f"Invalid output path: {args.output}")
+        raise SystemExit(
+            f"Invalid output path: {args.output!r}. "
+            f"Must be a non-existing or overwritable file with one of these extensions: "
+            f"{', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}, "
+            f"and its parent directory must exist."
+        )
 
     # Run the main pipeline
     main(args.vcf, args.gtf, args.fasta, args.output, reassign_exons=args.reassign_exons)
