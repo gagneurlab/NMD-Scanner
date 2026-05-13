@@ -1,32 +1,104 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "nmd_scanner"
 version = "0.1.0"
 description = "A simple scanner package for NMD"
 authors = [
-    { name = "Your Name", email = "your.email@example.com" }
+    { name = "Carina Hui Schröder", email = "Carina2504@users.noreply.github.com" },
+    { name = "Florian R. Hölzlwimmer", email = "git.ich@frhoelzlwimmer.de" },
 ]
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+requires-python = ">=3.12"
 dependencies = [
-    # Add your runtime dependencies here, e.g.
-    # "requests >=2.25.1",
+    "pandas",
+    "numpy",
+    "pyfaidx",
+    "biopython",
+    "pyranges",
+    "pysam",
+    "tqdm>=4.66.5,<5",
+    "importlib-metadata",
 ]
 
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+[project.urls]
+"Homepage" = "https://github.com/gagneurlab/NMD-Scanner"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[dependency-groups]
+dev = [
+    "tox>=4",
+    "tox-uv",
+]
+test = [
+    "pytest>=8,<9",
+    "pytest-xdist",
+    "pytest-mock",
+    "pytest-cov",
+    "pytest-sugar",
+]
+lint = [
+    "ruff",
+    "mypy",
+    "pandas-stubs",
+]
 
-[project.optional-dependencies]
-dev = ["pytest >=7.0"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/nmd_scanner"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["scripts", "resources", "testdir"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",  # line-too-long
+    "E712",  # comparison-to-true (pandas idiom: df[col == True])
+    "F403",  # star imports used intentionally in package
+    "F405",  # may-be-undefined-from-star-import
+    "F841",  # local-variable-assigned-but-never-used
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "SIM", "PLR", "F811", "F841"]
+"__init__.py" = ["F401"]
+
+[tool.tox]
+requires = ["tox>=4", "tox-uv"]
+env_list = ["format-check", "lints", "typecheck", "py3.12", "py3.14"]
+isolated_build = true
+
+[tool.tox.env_run_base]
+runner = "uv-venv-lock-runner"
+description = "run unit tests"
+dependency_groups = ["test"]
+commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }]]
+
+[tool.tox.env."format-check"]
+runner = "uv-venv-lock-runner"
+skip_install = true
+dependency_groups = ["lint"]
+commands = [["ruff", "format", "--check", "."]]
+
+[tool.tox.env."lints"]
+runner = "uv-venv-lock-runner"
+skip_install = true
+dependency_groups = ["lint"]
+commands = [["ruff", "check", "."]]
+
+[tool.tox.env."typecheck"]
+runner = "uv-venv-lock-runner"
+dependency_groups = ["lint"]
+commands = [["mypy", "src/nmd_scanner"]]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = [
-    "tests"
-]
-addopts = [
-    "--import-mode=importlib",
-]
-
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]

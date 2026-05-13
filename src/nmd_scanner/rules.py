@@ -1,13 +1,14 @@
 # Import dependencies
+
 import pandas as pd
 import pyranges as pr
-import os
 from Bio.Seq import Seq
+
 from nmd_scanner import catch_sequence
+
 
 # Main extract PTC script:
 def extract_ptc(cds_df, vcf, fasta, exons_df, output):
-
     """
     Main function for extracting reference coding sequence, alternative coding sequence by incorporating the variant, analyzing for premature termination codons (PTCs),
     start and stop loss, and getting the transcript information.
@@ -34,29 +35,28 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     ##########################################################################################
     # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
     # Fix REF and ALT for minus-strand CDSs
-    #mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
-    #intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
+    # mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
+    # intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
     #   lambda seq: str(Seq(seq).reverse_complement()))
-    #intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
+    # intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
     #   lambda seq: str(Seq(seq).reverse_complement()))
     ##########################################################################################
 
     # intersection = intersection_test.copy()
     # df3["Exon_CDS_seq"] = df3.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    #intersection_cds_vcf["Exon_CDS_seq"] = [
+    # intersection_cds_vcf["Exon_CDS_seq"] = [
     #    fasta[chrom][start:end].seq.upper()
     #    for chrom, start, end in zip(intersection_cds_vcf["Chromosome"], intersection_cds_vcf["Start"], intersection_cds_vcf["End"])
-    #]
+    # ]
 
     # Fetch reference CDS sequence for each variant region
     print("Begin creating exon CDS sequence.")
-    intersection_cds_vcf = catch_sequence.add_exon_cds_sequence(intersection_cds_vcf, fasta) # for faster access
+    intersection_cds_vcf = catch_sequence.add_exon_cds_sequence(intersection_cds_vcf, fasta)  # for faster access
     print("Creating exon CDS sequence: done.")
 
     # Apply variant to CDS and compute alternative CDS sequence and lengths
     intersection_cds_vcf[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = intersection_cds_vcf.apply(
-        apply_variant_edge_aware_with_lengths,
-        axis=1
+        apply_variant_edge_aware_with_lengths, axis=1
     )
     print("Creating exon CDS and alt CDS sequence: done.")
 
@@ -65,43 +65,45 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     mismatched_rows = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].isna()]
     print(f"\n[Warning] Skipping {len(mismatched_rows)} variants due to reference mismatches:")
     if not mismatched_rows.empty:
-        print(mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
-            index=False))
+        print(
+            mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
+                index=False
+            )
+        )
     intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].notna()].copy()
     ################
 
     # Save exon-variant merge result
-    #output_path = os.path.join(output, "1_variant_exon_output.tsv")
-    #intersection_cds_vcf.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating {output_path}: done.")
+    # output_path = os.path.join(output, "1_variant_exon_output.tsv")
+    # intersection_cds_vcf.to_csv(output_path, sep="\t", index=False)
+    # print(f"Creating {output_path}: done.")
 
     # Limit to relevant transcript (to save time)
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
     cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
 
     # cds_df_adj["Exon_CDS_seq"] = cds_df_adj.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    #cds_df_adj["Exon_CDS_seq"] = [
+    # cds_df_adj["Exon_CDS_seq"] = [
     #    fasta[chrom][start:end].seq.upper()
     #    for chrom, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
-    #]
+    # ]
 
     # Fetch reference sequence for all CDS entries per (relevant) transcripts
-    cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta) # for faster access
+    cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta)  # for faster access
 
     # save preliminary result
-    #output_path = os.path.join(output, "2_cds_df_adj.tsv")
-    #cds_df_adj.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating exon CDS sequence for all exons for transcripts in df3: done. Saved in: {output_path}")
-
+    # output_path = os.path.join(output, "2_cds_df_adj.tsv")
+    # cds_df_adj.to_csv(output_path, sep="\t", index=False)
+    # print(f"Creating exon CDS sequence for all exons for transcripts in df3: done. Saved in: {output_path}")
 
     # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
     results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
     print("Create reference CDS: done.")
 
     # make intermediate output file of results_df
-    #output_path = os.path.join(output, "3_create_reference_CDS.tsv")
-    #results_df.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating {output_path}: done.")
+    # output_path = os.path.join(output, "3_create_reference_CDS.tsv")
+    # results_df.to_csv(output_path, sep="\t", index=False)
+    # print(f"Creating {output_path}: done.")
 
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
@@ -109,9 +111,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     print("Get transcript sequence: done.")
 
     # make output file of exon_seqs
-    #output_path = os.path.join(output, "4_transcript_sequences.tsv")
-    #exon_seqs.to_csv(output_path, sep="\t", index=False)
-    #print(f"Creating {output_path}: done.")
+    # output_path = os.path.join(output, "4_transcript_sequences.tsv")
+    # exon_seqs.to_csv(output_path, sep="\t", index=False)
+    # print(f"Creating {output_path}: done.")
 
     # Validate that the CDS is present inside the transcript sequence, to make sure the transcript sequence was computed correctly
     exon_seqs_indexed = exon_seqs.set_index("transcript_id")
@@ -133,9 +135,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
 
     # TODO: Analyze reference and alternative CDS for start / stop codons
     analysis_df = analyze_sequence(results_df)
-    loss_df = start_stop_loss(analysis_df) # instead of loss_analysis_df (test for start stop loss)
+    loss_df = start_stop_loss(analysis_df)  # instead of loss_analysis_df (test for start stop loss)
     print("Analyzing sequence: done.")
-
 
     # Annotate transcript information (transcript start, end, sequence, length, exon info) in case of start or stop loss
     # transcript sequences are in: exon_seqs_subset
@@ -144,7 +145,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     loss_df["transcript_start"] = loss_df["transcript_id"].map(transcript_starts)
     transcript_ends = exon_seqs.set_index("transcript_id")["end"].to_dict()
     loss_df["transcript_end"] = loss_df["transcript_id"].map(transcript_ends)
-    transcript_sequences = exon_seqs.set_index("transcript_id")["transcript_sequence"].to_dict()  # create map of transcript-id to transcript sequence
+    transcript_sequences = exon_seqs.set_index("transcript_id")[
+        "transcript_sequence"
+    ].to_dict()  # create map of transcript-id to transcript sequence
     loss_df["transcript_seq"] = loss_df["transcript_id"].map(transcript_sequences)
     transcript_lengths = exon_seqs.set_index("transcript_id")["transcript_length"].to_dict()
     loss_df["transcript_length"] = loss_df["transcript_id"].map(transcript_lengths)
@@ -152,36 +155,32 @@ def extract_ptc(cds_df, vcf, fasta, exons_df, output):
     # In case of start or stop loss:
     # Splice alternative CDS into reference transcript sequence to create alternative transcript sequence and measure new length
     loss_df["alt_transcript_seq"] = loss_df.apply(
-        lambda row: splice_alt_cds_into_transcript(row, row["transcript_seq"])
-        if pd.notnull(row["transcript_seq"]) else None,
-        axis=1
+        lambda row: (
+            splice_alt_cds_into_transcript(row, row["transcript_seq"]) if pd.notnull(row["transcript_seq"]) else None
+        ),
+        axis=1,
     )
-    loss_df["alt_transcript_length"] = loss_df["alt_transcript_seq"].apply(
-        lambda x: len(x) if pd.notnull(x) else None
-    )
-
+    loss_df["alt_transcript_length"] = loss_df["alt_transcript_seq"].apply(lambda x: len(x) if pd.notnull(x) else None)
 
     # Add exon information to dataframe
     transcript_exon_info = exon_seqs.set_index("transcript_id")["transcript_exon_info"].to_dict()
     loss_df["transcript_exon_info"] = loss_df["transcript_id"].map(transcript_exon_info)
 
-
     # Analyze transcript sequence (e.g., frame, length, stop codon position, etc.) in case of start or stop loss
     analyze_transcript_df = analyze_transcript(loss_df)
 
-
     # save result
-    #output_path = os.path.join(output, "5_final_ptc_analysis.tsv")
-    #analyze_transcript_df.to_csv(output_path, sep="\t", index=False)
-    #print(f"Save results in: {output_path}.")
+    # output_path = os.path.join(output, "5_final_ptc_analysis.tsv")
+    # analyze_transcript_df.to_csv(output_path, sep="\t", index=False)
+    # print(f"Save results in: {output_path}.")
 
     return analyze_transcript_df
 
 
 # Functions used for extracting PTC:
 
-def adjust_last_cds_for_stop_codon(df, transcript_col="transcript_id"):
 
+def adjust_last_cds_for_stop_codon(df, transcript_col="transcript_id"):
     """
     Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions,
     thus to include the stop codon.
@@ -212,8 +211,8 @@ def adjust_last_cds_for_stop_codon(df, transcript_col="transcript_id"):
 
     return df
 
-def apply_variant_edge_aware_with_lengths(row):
 
+def apply_variant_edge_aware_with_lengths(row):
     """
     Applies a variant to a CDS exon sequence, taking into account not only SNVs but also partial overlaps at exon
     boundaries and computing the alternative sequence.
@@ -245,11 +244,7 @@ def apply_variant_edge_aware_with_lengths(row):
 
         # If there is no overlap between the variant and this CDS region
         if overlap_start >= overlap_end:
-            return pd.Series({
-                "Exon_CDS_length": len(cds_seq),
-                "Exon_Alt_CDS_seq": None,
-                "Exon_Alt_CDS_length": None
-            })
+            return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
 
         cds_index_start = overlap_start - cds_start
         cds_index_end = overlap_end - cds_start
@@ -258,41 +253,32 @@ def apply_variant_edge_aware_with_lengths(row):
         alt_seq.extend(cds_seq[:cds_index_start])  # keep sequence before deletion
         alt_seq.extend(cds_seq[cds_index_end:])  # keep sequence after deletion
 
-        return pd.Series({
-            "Exon_CDS_length": len(cds_seq),
-            "Exon_Alt_CDS_seq": "".join(alt_seq),
-            "Exon_Alt_CDS_length": len(alt_seq)
-        })
+        return pd.Series(
+            {"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": "".join(alt_seq), "Exon_Alt_CDS_length": len(alt_seq)}
+        )
 
     # Special handling for duplications (Ref = N and Alt = <DUP>)
     if ref == "N" and alt == "<DUP>":
-
         # Determine the overlap between variant and this CDS region
         overlap_start = max(var_start, cds_start)
         overlap_end = min(var_end, cds_end)
 
         # If there is no overlap between the variant and this CDS region
         if overlap_start >= overlap_end:
-            return pd.Series({
-                "Exon_CDS_length": len(cds_seq),
-                "Exon_Alt_CDS_seq": None,
-                "Exon_Alt_CDS_length": None
-            })
+            return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
 
         cds_index_start = overlap_start - cds_start
         cds_index_end = overlap_end - cds_start
 
         alt_seq = []
         alt_seq.extend(cds_seq[:cds_index_start])  # sequence up to the end of the overlap
-        alt_seq.extend(cds_seq[cds_index_start:cds_index_end]) # overlap-region (original, in CDS)
+        alt_seq.extend(cds_seq[cds_index_start:cds_index_end])  # overlap-region (original, in CDS)
         alt_seq.extend(cds_seq[cds_index_start:cds_index_end])  # duplicate the overlapped region
         alt_seq.extend(cds_seq[cds_index_end:])  # keep sequence after duplication
 
-        return pd.Series({
-            "Exon_CDS_length": len(cds_seq),
-            "Exon_Alt_CDS_seq": "".join(alt_seq),
-            "Exon_Alt_CDS_length": len(alt_seq)
-        })
+        return pd.Series(
+            {"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": "".join(alt_seq), "Exon_Alt_CDS_length": len(alt_seq)}
+        )
 
     # Determine the overlap between variant and this CDS region
     overlap_start = max(var_start, cds_start)
@@ -300,11 +286,7 @@ def apply_variant_edge_aware_with_lengths(row):
 
     # If there is no overlap between the variant and this CDS region
     if overlap_start >= overlap_end:
-        return pd.Series({
-            "Exon_CDS_length": len(cds_seq),
-            "Exon_Alt_CDS_seq": None,
-            "Exon_Alt_CDS_length": None
-        })
+        return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
 
     # Position of overlap within the CDS
     cds_index = overlap_start - cds_start
@@ -312,8 +294,8 @@ def apply_variant_edge_aware_with_lengths(row):
 
     # Offset of the overlapping region within the variant
     ref_offset = overlap_start - var_start
-    ref_in_cds = ref[ref_offset:ref_offset + overlap_len]
-    alt_in_cds = alt[ref_offset:ref_offset + overlap_len]
+    ref_in_cds = ref[ref_offset : ref_offset + overlap_len]
+    alt_in_cds = alt[ref_offset : ref_offset + overlap_len]
 
     # Determine if there’s leftover alt outside CDS (insertions at end)
     extra_alt = ""
@@ -323,42 +305,36 @@ def apply_variant_edge_aware_with_lengths(row):
         if var_end > cds_end:
             # Only include alt bases that map to CDS
             remaining_cds_len = cds_end - overlap_end
-            extra_alt = alt[extra_start:extra_start + remaining_cds_len]
+            extra_alt = alt[extra_start : extra_start + remaining_cds_len]
         else:
             extra_alt = alt[extra_start:]
 
     # Confirm that the reference matches
-    cds_ref_part = "".join(cds_seq[cds_index:cds_index + overlap_len])
-    if cds_ref_part != ref_in_cds.upper(): # reference mismatch
-        return pd.Series({
-            "Exon_CDS_length": len(cds_seq),
-            "Exon_Alt_CDS_seq": None,
-            "Exon_Alt_CDS_length": None
-        })
+    cds_ref_part = "".join(cds_seq[cds_index : cds_index + overlap_len])
+    if cds_ref_part != ref_in_cds.upper():  # reference mismatch
+        return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
 
     # Build alternative sequence
     alt_seq = []
-    alt_seq.extend(cds_seq[:cds_index]) # Copy the CDS up to the variant position
+    alt_seq.extend(cds_seq[:cds_index])  # Copy the CDS up to the variant position
 
-    if len(ref) == len(alt): # Substitution
+    if len(ref) == len(alt):  # Substitution
         alt_seq.extend(list(alt_in_cds))
-    elif len(alt) > len(ref): # Insertion
+    elif len(alt) > len(ref):  # Insertion
         alt_seq.extend(list(alt_in_cds))
         alt_seq.extend(list(extra_alt))
-    elif len(ref) > len(alt): # Deletion
+    elif len(ref) > len(alt):  # Deletion
         alt_seq.extend(list(alt_in_cds))
 
     # Add remaining CDS sequence after variant
-    alt_seq.extend(cds_seq[cds_index + overlap_len:])
+    alt_seq.extend(cds_seq[cds_index + overlap_len :])
 
-    return pd.Series({
-        "Exon_CDS_length": len(cds_seq),
-        "Exon_Alt_CDS_seq": "".join(alt_seq),
-        "Exon_Alt_CDS_length": len(alt_seq)
-    })
+    return pd.Series(
+        {"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": "".join(alt_seq), "Exon_Alt_CDS_length": len(alt_seq)}
+    )
+
 
 def create_reference_cds(intersection_cds_vcf, cds_df_test):
-
     """
     Constructs the whole CDS sequence (multiple exons) for transcripts affected by a variant, both in their reference
     and alternative form.
@@ -373,7 +349,6 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     results = []
 
     for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id"):  # Only transcripts with a variant
-
         # 1. Get reference exons
         ref_exons = cds_df_test[cds_df_test["transcript_id"] == transcript_id].copy()
         ref_exons = ref_exons.sort_values("Start")
@@ -388,8 +363,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         ######
         # Since I sometimes get errors in the following code snippet because of NaN values,
         # we print them but leave them in our dataframe for now
-        #nan_rows = ref_exons[ref_exons["Exon_CDS_seq"].isna()]
-        #if not nan_rows.empty:
+        # nan_rows = ref_exons[ref_exons["Exon_CDS_seq"].isna()]
+        # if not nan_rows.empty:
         #    print(f"\n[Warning] Found {len(nan_rows)} NaN Exon_CDS_seq entries in transcript: {transcript_id}")
         #    print(nan_rows.to_string(index=False))
 
@@ -403,19 +378,18 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         # ]
 
         ## new option:
-        ref_cds_info = sorted([
-            (row["exon_number"], len(row["Exon_CDS_seq"]))
-            for _, row in ref_exons.iterrows()
-        ], key=lambda x: x[0])
+        ref_cds_info = sorted(
+            [(row["exon_number"], len(row["Exon_CDS_seq"])) for _, row in ref_exons.iterrows()], key=lambda x: x[0]
+        )
 
         ######
 
         # Get strand info (all should be the same within transcript)
         strand = ref_exons["Strand"].iloc[0]
 
-        for variant, cds_df in var_df.groupby(["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"],
-                                              observed=True):
-
+        for variant, cds_df in var_df.groupby(
+            ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"], observed=True
+        ):
             # Sort variant exons
             cds_df = cds_df.sort_values("Start")
 
@@ -433,8 +407,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             ######
             # Since I sometimes get errors in the following code snippet because of NaN values,
             # we print them but leave them in our dataframe for now (same as before)
-            #nan_alt_rows = alt_exons[alt_exons["Exon_CDS_seq"].isna()]
-            #if not nan_alt_rows.empty:
+            # nan_alt_rows = alt_exons[alt_exons["Exon_CDS_seq"].isna()]
+            # if not nan_alt_rows.empty:
             #    print(f"\n[Warning] NaN Exon_CDS_seq values found in alt_exons for variant in transcript: {transcript_id}")
             #    print(nan_alt_rows.to_string(index=False))
 
@@ -447,10 +421,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             # ]
 
             ## new option:
-            alt_cds_info = sorted([
-                (row["exon_number"], len(row["Exon_CDS_seq"]))
-                for _, row in alt_exons.iterrows()
-            ], key=lambda x: x[0])
+            alt_cds_info = sorted(
+                [(row["exon_number"], len(row["Exon_CDS_seq"])) for _, row in alt_exons.iterrows()], key=lambda x: x[0]
+            )
             ######
 
             # Get alternative CDS sequence start and stop position for finding position in transcript sequence
@@ -468,40 +441,37 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                 alt_seq_final = alt_seq
 
             # Append to results
-            results.append({
-                "transcript_id": transcript_id,
-                "variant_id": var_row["ID"],
-
-                "ref_cds_start": ref_cds_start,
-                "ref_cds_stop": ref_cds_stop,
-                "ref_cds_seq": ref_seq_final,
-                "ref_cds_len": len(ref_seq_final),
-
-                "alt_cds_start": alt_cds_start,
-                "alt_cds_stop": alt_cds_stop,
-                "alt_cds_seq": alt_seq_final,
-                "alt_cds_len": len(alt_seq_final),
-
-                "chromosome": var_row["Chromosome"],
-                "gene_id": var_row["gene_id"],
-                "strand": strand,
-                "ref": var_row["Ref"],
-                "alt": var_row["Alt"],
-                "start_variant": var_row["Start_variant"],
-                "end_variant": var_row["End_variant"],
-
-                "ref_cds_info": ref_cds_info,
-                "alt_cds_info": alt_cds_info,
-
-                # "ref_cds_lengths": [length for exon_num, length in ref_cds_info],
-                # "alt_cds_lengths": [length for exon_num, length in alt_cds_info]
-            })
+            results.append(
+                {
+                    "transcript_id": transcript_id,
+                    "variant_id": var_row["ID"],
+                    "ref_cds_start": ref_cds_start,
+                    "ref_cds_stop": ref_cds_stop,
+                    "ref_cds_seq": ref_seq_final,
+                    "ref_cds_len": len(ref_seq_final),
+                    "alt_cds_start": alt_cds_start,
+                    "alt_cds_stop": alt_cds_stop,
+                    "alt_cds_seq": alt_seq_final,
+                    "alt_cds_len": len(alt_seq_final),
+                    "chromosome": var_row["Chromosome"],
+                    "gene_id": var_row["gene_id"],
+                    "strand": strand,
+                    "ref": var_row["Ref"],
+                    "alt": var_row["Alt"],
+                    "start_variant": var_row["Start_variant"],
+                    "end_variant": var_row["End_variant"],
+                    "ref_cds_info": ref_cds_info,
+                    "alt_cds_info": alt_cds_info,
+                    # "ref_cds_lengths": [length for exon_num, length in ref_cds_info],
+                    # "alt_cds_lengths": [length for exon_num, length in alt_cds_info]
+                }
+            )
 
     results_df = pd.DataFrame(results)
-    return(results_df)
+    return results_df
+
 
 def get_transcript_sequence(exons_df, fasta):
-
     """
     Construct full transcript sequences by concatenating the exon sequences from the FASTA genome reference, grouped by transcript.
     Get transcript length and transcript information as well.
@@ -525,10 +495,10 @@ def get_transcript_sequence(exons_df, fasta):
         # Sort by exon start coordinate (strand not considered here yet)
         group_sorted = group.sort_values(by="Start").copy()
 
-        seq_parts = [] # to accumulate exon sequences
-        starts = [] # for overall transcript start
-        ends = [] # for overall transcript end
-        exon_info = [] # for tracking exon_number and length
+        seq_parts = []  # to accumulate exon sequences
+        starts = []  # for overall transcript start
+        ends = []  # for overall transcript end
+        exon_info = []  # for tracking exon_number and length
 
         # fetch exon sequence and metadata
         for _, row in group_sorted.iterrows():
@@ -541,7 +511,7 @@ def get_transcript_sequence(exons_df, fasta):
             ends.append(end)
 
             # Fetch exon sequence from fasta reference genome
-            exon_seq = fasta[chrom][start:end] #.seq
+            exon_seq = fasta[chrom][start:end]  # .seq
             exon_seq_str = str(exon_seq).upper()
             seq_parts.append(exon_seq_str)
 
@@ -555,19 +525,22 @@ def get_transcript_sequence(exons_df, fasta):
             joined_seq = str(Seq(joined_seq).reverse_complement())
             exon_info = exon_info[::-1]
 
-        exon_data.append({
-            "Chromosome": chrom,
-            "transcript_id": transcript_id,
-            "start": min(starts),
-            "end": max(ends),
-            "strand": strand,
-            "transcript_sequence": joined_seq,
-            "transcript_length": len(joined_seq),
-            "transcript_exon_info": exon_info
-        })
+        exon_data.append(
+            {
+                "Chromosome": chrom,
+                "transcript_id": transcript_id,
+                "start": min(starts),
+                "end": max(ends),
+                "strand": strand,
+                "transcript_sequence": joined_seq,
+                "transcript_length": len(joined_seq),
+                "transcript_exon_info": exon_info,
+            }
+        )
 
     exon_seqs = pd.DataFrame(exon_data)
-    return(exon_seqs)
+    return exon_seqs
+
 
 def get_exon(cds_pos, exon_info):
     """
@@ -581,8 +554,8 @@ def get_exon(cds_pos, exon_info):
         pos_counter += exon_length
     return exon_info[-1][0]  # fallback
 
-def analyze_sequence(results_df):
 
+def analyze_sequence(results_df):
     """
     Analyzes reference and alternative CDS for start and stop codons, their positions, and potential premature termination codons (PTCs)
 
@@ -627,10 +600,10 @@ def analyze_sequence(results_df):
 
             # Scan in codons (step=3)
             for i in range(0, len(seq) - 2, 3):
-                codon = seq[i:i + 3]
-                if codon == start_codon and start_pos is None: # first start codon position
+                codon = seq[i : i + 3]
+                if codon == start_codon and start_pos is None:  # first start codon position
                     start_pos = i
-                if codon in valid_stop_codons: # record all stop codons with their positions and exons
+                if codon in valid_stop_codons:  # record all stop codons with their positions and exons
                     stop_codons.append((i, codon))
                     stop_exons.append(get_exon(i, exon_info))  # for exon number
 
@@ -655,8 +628,8 @@ def analyze_sequence(results_df):
 
     return df
 
-def start_stop_loss(df):
 
+def start_stop_loss(df):
     """
     Annotates whether a variant caused a start or stop codon loss
     :param df: DataFrame with start & stop codon analysis columns
@@ -666,23 +639,19 @@ def start_stop_loss(df):
     df = df.copy()
 
     # Start codon loss: reference sequence has a start codon, alternative sequence does not or the position is changed
-    df["start_loss"] = (
-                               (df["ref_start_codon_pos"].notna()) & df["alt_start_codon_pos"].isna()
-                       ) | (
-                               df["ref_start_codon_pos"] != df["alt_start_codon_pos"]
-                       )
+    df["start_loss"] = ((df["ref_start_codon_pos"].notna()) & df["alt_start_codon_pos"].isna()) | (
+        df["ref_start_codon_pos"] != df["alt_start_codon_pos"]
+    )
 
     # Stop codon loss: reference sequence had a valid stop codon, the alternative sequence does not or the position is changed
-    df["stop_loss"] = (
-                              (df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)
-                      ) | (
-                              df["ref_last_codon"] != df["alt_last_codon"]  # Or take this out?
-                      )
+    df["stop_loss"] = ((df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)) | (
+        df["ref_last_codon"] != df["alt_last_codon"]  # Or take this out?
+    )
 
     return df
 
-def splice_alt_cds_into_transcript(row, transcript_seq):
 
+def splice_alt_cds_into_transcript(row, transcript_seq):
     """
     Splice the alternative CDS sequence into the full transcript sequence to create the alternative transcript
     :param row: A pd.Series row containing "ref_cds_seq" (Reference CDS) and "alt_cds_seq" (Alternative / Variant-modified CDS)
@@ -704,16 +673,12 @@ def splice_alt_cds_into_transcript(row, transcript_seq):
     ref_end_idx = ref_start_idx + len(ref_cds_seq)
 
     # Replace the reference CDS with the variant-modified / alternative one
-    new_transcript_seq = (
-        transcript_seq[:ref_start_idx] +
-        alt_cds_seq +
-        transcript_seq[ref_end_idx:]
-    )
+    new_transcript_seq = transcript_seq[:ref_start_idx] + alt_cds_seq + transcript_seq[ref_end_idx:]
 
     return new_transcript_seq
 
-def analyze_transcript(results_df):
 
+def analyze_transcript(results_df):
     """
     Analyze the alternative transcript sequence in cases of start or stop codons loss due to mutations.
     Scan for new in-frame start or stop codons in the alternative transcript sequence.
@@ -762,7 +727,7 @@ def analyze_transcript(results_df):
         if row["start_loss"]:
             # Walk through sequence starting at CDS start with +1 positions until start codon is found
             for i in range(cds_start, len(seq) - 2):
-                codon = seq[i:i + 3]
+                codon = seq[i : i + 3]
                 if codon == start_codon:
                     start_pos = i
 
@@ -770,7 +735,7 @@ def analyze_transcript(results_df):
 
                     # From new start codon, scan codons in frame
                     for j in range(i, len(seq) - 2, 3):
-                        codon2 = seq[j:j + 3]
+                        codon2 = seq[j : j + 3]
                         if codon2 in valid_stop_codons:
                             stop_codons.append((j, codon2))
                             stop_exons.append(get_exon(j, exon_info))  # for exon number
@@ -781,7 +746,7 @@ def analyze_transcript(results_df):
         elif row["stop_loss"]:
             # Start at cds_start, scan codons in frame to end --> lets start at cds start so we are in frame
             for i in range(cds_start, len(seq) - 2, 3):
-                codon = seq[i:i + 3]
+                codon = seq[i : i + 3]
                 if codon == start_codon and start_pos is None:
                     start_pos = i
                     start_exon = get_exon(start_pos, exon_info)  # for exon number
@@ -809,9 +774,7 @@ def analyze_transcript(results_df):
     return df
 
 
-
 def evaluate_nmd_escape_rules_old(row):
-
     """
     Evaluate whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on
     established biological rules. This function applies five NMD escape rules to determine if a premature termination
@@ -837,7 +800,7 @@ def evaluate_nmd_escape_rules_old(row):
             "nmd_long_exon_rule": False,
             "nmd_start_proximal_rule": False,
             "nmd_single_exon_rule": False,
-            "nmd_escape": False
+            "nmd_escape": False,
         }
 
     # Extract relevant data
@@ -877,7 +840,9 @@ def evaluate_nmd_escape_rules_old(row):
     rule_long_exon = any(exon_length_map.get(exon, 0) > 407 for exon in stop_exons)
 
     # Start-proximal rule (closer than 150nt from the start codon)
-    rule_start_proximal = start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
+    rule_start_proximal = (
+        start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
+    )
 
     # NMD escape if any rule is true
     escape = rule_last_exon or rule_50nt_penultimate or rule_long_exon or rule_start_proximal or rule_single_exon
@@ -888,11 +853,11 @@ def evaluate_nmd_escape_rules_old(row):
         "nmd_long_exon_rule": rule_long_exon,
         "nmd_start_proximal_rule": rule_start_proximal,
         "nmd_single_exon_rule": rule_single_exon,
-        "nmd_escape": escape
+        "nmd_escape": escape,
     }
 
-def adjust_last_cds_for_stop_codon_old(df, exon_col="exon_number", transcript_col="transcript_id"):
 
+def adjust_last_cds_for_stop_codon_old(df, exon_col="exon_number", transcript_col="transcript_id"):
     """
     Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions, thus to include the stop codon.
     :param df: Dataframe containing CDS annotation

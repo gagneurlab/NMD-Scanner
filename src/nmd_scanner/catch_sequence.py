@@ -7,12 +7,14 @@ Returns original DataFrame with an additional column containing the extracted se
 from functools import lru_cache
 
 # Global cache to map id --> actual fasta object
-_fasta_cache = {}
+_fasta_cache: dict = {}
+
 
 @lru_cache(maxsize=None)
 def fetch_seq_cached(chrom, start, end, fasta_id):
     fasta = _fasta_cache[fasta_id]  # lookup the actual fasta object
     return fasta[chrom][start:end].seq.upper()
+
 
 def add_exon_cds_sequence(df, fasta, chrom_col="Chromosome", start_col="Start", end_col="End", new_col="Exon_CDS_seq"):
     fasta_id = id(fasta)
