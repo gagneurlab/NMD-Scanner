@@ -118,8 +118,9 @@ def is_valid_output_path(path):
     return ext in SUPPORTED_OUTPUT_EXTENSIONS
 
 
-if __name__ == "__main__":
-    # CLI argument parser
+def main_cli():
+    """Console-script entry point: parse arguments and run the pipeline."""
+
     parser = argparse.ArgumentParser(description="Run NMD pipeline")
     parser.add_argument("--vcf", required=True, help="Path to VCF file")
     parser.add_argument("--gtf", required=True, help="Path to GTF file")
@@ -152,3 +153,7 @@ if __name__ == "__main__":
 
     # Run the main pipeline
     main(args.vcf, args.gtf, args.fasta, args.output, reassign_exons=args.reassign_exons)
+
+
+if __name__ == "__main__":
+    main_cli()

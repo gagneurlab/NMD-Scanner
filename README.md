@@ -31,16 +31,19 @@ pip install .
 ## Usage
 
 ### Option 1: Annotating a VCF on the command line
+
+After `pip install .` the `nmd-scanner` command is available:
 ```bash
-# if running the script directly
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv
+nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv
 
 # write Parquet instead of CSV (requires pyarrow)
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.parquet
+nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.parquet
 
 # option: fix exon numbering (recommended for hg19)
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv --reassign_exons
+nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv --reassign_exons
 ```
+
+The equivalent `python -m nmd_scanner.cli ...` invocation also works without installing the console script.
 
 Arguments:
 - `--vcf`: Path to input VCF (SNVs / Indels supported; frameshifts handled)
