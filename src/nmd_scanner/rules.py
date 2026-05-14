@@ -228,7 +228,6 @@ def apply_variant_edge_aware_with_lengths(row):
     """
 
     cds_seq = list(row["Exon_CDS_seq"])
-    strand = row["Strand"]
     ref = row["Ref"]
     alt = row["Alt"]
     cds_start = int(row["Start"])
