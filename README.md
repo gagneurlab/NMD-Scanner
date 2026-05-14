@@ -22,11 +22,14 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
 - Outputs all annotations as a structured DataFrame (CSV)
 
 ## Installation
+Requires Python >= 3.12.
+
+From [PyPI](https://pypi.org/project/nmd-scanner/):
 ```bash
-git clone https://github.com/gagneurlab/NMD-Scanner.git
-cd NMD-Scanner
-pip install .
+pip install nmd-scanner
 ```
+
+Writing Parquet output additionally requires `pyarrow` (`pip install pyarrow`); it is not pulled in by default.
 
 ## Usage
 
@@ -70,7 +73,6 @@ This is useful if you want to
 For reconstructing reference and alternative coding and transcript sequences, PTC detection and start / stop-loss information:
 ```python
 import pandas as pd
-import pyranges as pr
 from pyfaidx import Fasta
 
 import nmd_scanner
@@ -90,16 +92,16 @@ exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 ```
 
+Add extra NMD-related features (utr lengths, exon counts, ptc-related features) to the above computed results. Run this **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced here.
+```python
+extra_features = results.apply(nmd_scanner.add_nmd_features, axis=1, result_type='expand')
+results = pd.concat([results, extra_features], axis=1)
+```
+
 Add NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:
 ```python
 nmd_results = results.apply(nmd_scanner.evaluate_nmd_escape_rules, axis=1, result_type='expand')
 results = pd.concat([results, nmd_results], axis=1)
-```
-
-Add extra NMD-related features (utr lengths, exon counts, ptc-related features) to above computed results:
-```python
-extra_features = results.apply(nmd_scanner.add_nmd_features, axis=1, result_type='expand')
-results = pd.concat([results, extra_features], axis=1)
 ```
 
 ## License
