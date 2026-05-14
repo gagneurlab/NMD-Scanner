@@ -252,38 +252,31 @@ def evaluate_nmd_escape_rules(row):
 
     # Extract relevant data
     stop_pos = row.get("alt_first_stop_pos")
-    stop_exons = row.get("alt_stop_codon_exons") or []
-    exon_info = row.get("transcript_exon_info") or []
     start_pos = row.get("alt_start_codon_pos")
+    cds_exon_info = row.get("alt_cds_info") or []
 
     total_exons = row.get("total_exon_count")
     downstream_exons = row.get("downstream_exon_count")
     ptc_exon_length = row.get("ptc_exon_length")
 
-    # Preprocess exon info
-    sorted_exons = sorted(exon_info, key=lambda x: x[0])
-    exon_length_map = {exon_num: length for exon_num, length in sorted_exons}
-    exon_offsets = {}
+    # Build CDS-relative offsets per exon (alt_first_stop_pos is also CDS-relative)
+    sorted_cds_exons = sorted(cds_exon_info, key=lambda x: x[0])
+    cds_exon_offsets = {}
     offset = 0
-    for exon_num, length in sorted_exons:
-        exon_offsets[exon_num] = (offset, offset + length)
+    for exon_num, length in sorted_cds_exons:
+        cds_exon_offsets[exon_num] = (offset, offset + length)
         offset += length
 
     # Single exon rule
-    # rule_single_exon = len(sorted_exons) == 1 # old code
     rule_single_exon = total_exons == 1
 
     # Last exon rule
-    # if not rule_single_exon:
-    #    last_exon = sorted_exons[-1][0] if sorted_exons else None
-    #    rule_last_exon = bool(stop_exons and max(stop_exons) == last_exon)
-    # else: rule_last_exon = False
     rule_last_exon = downstream_exons == 0 if downstream_exons is not None else False
 
-    # 50nt from penultimate exon end
-    if len(sorted_exons) >= 2:
-        penultimate_exon_num, penultimate_len = sorted_exons[-2]
-        pen_start, pen_end = exon_offsets.get(penultimate_exon_num, (None, None))
+    # 50nt from penultimate CDS-containing exon end (CDS-relative, matching stop_pos)
+    if len(sorted_cds_exons) >= 2 and stop_pos is not None:
+        penultimate_exon_num, _ = sorted_cds_exons[-2]
+        _, pen_end = cds_exon_offsets.get(penultimate_exon_num, (None, None))
         rule_50nt_penultimate = pen_end is not None and (stop_pos >= pen_end - 50) and (stop_pos < pen_end)
     else:
         rule_50nt_penultimate = False

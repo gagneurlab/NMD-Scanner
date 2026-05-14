@@ -53,7 +53,7 @@ Output:
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.)
 
-### Option 2: Import as a python moduele
+### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
 This is useful if you want to 
 - only reconstruct transcript / CDS sequences
