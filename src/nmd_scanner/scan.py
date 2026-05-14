@@ -14,6 +14,11 @@ def read_vcf(vcf_path):
 
     """
     Read a single VCF file into a PyRanges object with adjusted coordinates.
+
+    The VCF must be left-normalized and single-allelic (one ALT allele per
+    record), e.g. produced by ``bcftools norm -m- -f reference.fa``.
+    Multi-allelic records (comma-separated ALT) are rejected because the
+    downstream variant application assumes exactly one ALT allele per row.
     """
     df = pd.read_csv(
         vcf_path,
@@ -22,6 +27,17 @@ def read_vcf(vcf_path):
         header=None,
         names=["Chromosome", "Start", "ID", "Ref", "Alt", "Qual", "Filter", "Info"],
     )
+
+    # Reject multi-allelic records: the VCF spec allows comma-separated ALT,
+    # but the rest of the pipeline assumes one ALT allele per row.
+    multiallelic = df["Alt"].astype(str).str.contains(",")
+    if multiallelic.any():
+        n_multiallelic = int(multiallelic.sum())
+        raise ValueError(
+            f"{n_multiallelic} multi-allelic record(s) found in {vcf_path}. "
+            "NMD-Scanner requires a left-normalized, single-allelic VCF. "
+            "Split and normalize first, e.g. `bcftools norm -m- -f reference.fa`."
+        )
 
     # Adjust coordinates to 0-based
     df["Start"] = df["Start"] - 1
