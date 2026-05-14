@@ -31,27 +31,33 @@ pip install .
 ## Usage
 
 ### Option 1: Annotating a VCF on the command line
+
+After `pip install .` the `nmd-scanner` command is available:
 ```bash
-# if running the script directly
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/
+nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv
+
+# write Parquet instead of CSV (requires pyarrow)
+nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.parquet
 
 # option: fix exon numbering (recommended for hg19)
-python -m nmd_scanner.cli --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/ --reassign_exons
+nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv --reassign_exons
 ```
+
+The equivalent `python -m nmd_scanner.cli ...` invocation also works without installing the console script.
 
 Arguments:
 - `--vcf`: Path to input VCF (SNVs / Indels supported; frameshifts handled)
 - `--gtf`: Path to gene annotation (GTF)
 - `--fasta`: Path to reference genome FASTA
-- `--output`: Path to an existing directory (or a file path whose parent exists)
+- `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (useful for hg19)
 
 Output:
-- A CSV named `<vcf_basename>_final_nmd_results.csv` saved to `--output`, containing:
-  - reconstructed reference / alternative CDS and transcript sequences(+ metadata)
+- The file specified by `--output`, containing:
+  - reconstructed reference / alternative CDS and transcript sequences (+ metadata)
   - PTC detection and start / stop-loss flags
   - NMD escape rules
-  - extra features such as UTR lengths, exon counts, distances, etc.)
+  - extra features such as UTR lengths, exon counts, distances, etc.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
@@ -81,7 +87,7 @@ cds_df = gtf_df[gtf_df["Feature"] == "CDS"]
 exons_df = gtf_df[gtf_df["Feature"] == "exon"].copy()
 exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
-results = extract_ptc(cds_df, vcf, fasta, exons_df, output="tmp/")
+results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 ```
 
 Add NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:

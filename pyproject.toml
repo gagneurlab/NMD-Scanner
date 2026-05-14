@@ -27,6 +27,9 @@ dependencies = [
 [project.urls]
 "Homepage" = "https://github.com/gagneurlab/NMD-Scanner"
 
+[project.scripts]
+nmd-scanner = "nmd_scanner.cli:main_cli"
+
 [dependency-groups]
 dev = [
     "tox>=4",
