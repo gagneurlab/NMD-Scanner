@@ -1,5 +1,17 @@
 # Import dependencies
-from nmd_scanner.rules import *
+import pandas as pd
+
+from nmd_scanner.rules import (
+    adjust_last_cds_for_stop_codon,
+    analyze_sequence,
+    analyze_transcript,
+    apply_variant_edge_aware_with_lengths,
+    create_reference_cds,
+    get_exon,
+    get_transcript_sequence,
+    splice_alt_cds_into_transcript,
+    start_stop_loss,
+)
 
 
 def test_adjust_last_cds_for_stop_codon():

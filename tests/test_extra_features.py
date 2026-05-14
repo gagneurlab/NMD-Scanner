@@ -1,4 +1,13 @@
-from nmd_scanner.extra_features import *
+from nmd_scanner.extra_features import (
+    add_likely_misannotated_flag,
+    calculate_exon_features,
+    calculate_ptc_exon_length,
+    calculate_ptc_to_downstream_ej,
+    calculate_ptc_to_start_distance,
+    calculate_stop_codon_dist,
+    calculate_utr_lengths,
+    evaluate_nmd_escape_rules,
+)
 
 
 def test_calculate_utr_lengths():
