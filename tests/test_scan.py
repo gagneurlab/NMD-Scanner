@@ -61,7 +61,7 @@ def test_read_fasta_file(fasta_path):
     assert len(keys) > 0
 
 
-def compute_exon_numbers():
+def test_compute_exon_numbers():
 
     # On + Strand: Smallest exon number is the Start, Largest exon number is the End.
     df1 = pd.DataFrame(
@@ -72,7 +72,7 @@ def compute_exon_numbers():
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
-    out1 = compute_exon_numbers(pr.PyRanges(df1)).df
+    out1 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df1)).df
 
     tx1_exons = out1[(out1.Feature == "exon") & (out1.transcript_id == "TX1")].sort_values("Start")
     assert list(tx1_exons["exon_number"]) == [1, 2]
@@ -89,7 +89,7 @@ def compute_exon_numbers():
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
 
-    out2 = compute_exon_numbers(pr.PyRanges(df2)).df
+    out2 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df2)).df
 
     tx2_exons = out2[(out2.Feature == "exon") & (out2.transcript_id == "TX2")].sort_values("Start")
     assert list(tx2_exons["exon_number"]) == [2, 1]
@@ -111,16 +111,16 @@ def compute_exon_numbers():
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
-    out4 = compute_exon_numbers(pr.PyRanges(df4)).df
+    out4 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df4)).df
 
     # check exons exon-numbers
     tx2b_exons = out4[(out4.Feature == "exon") & (out4.transcript_id == "TX2b")].sort_values("Start")
     assert list(tx2b_exons["exon_number"]) == [4, 3, 2, 1]
 
-    # check CDS exon-numbers
+    # check CDS exon-numbers (coordinates must match the input rows)
     assert (
         int(
-            out4[(out4.Feature == "CDS") & (out4.transcript_id == "TX2b") & (out4.Start == 520) & (out4.End == 590)][
+            out4[(out4.Feature == "CDS") & (out4.transcript_id == "TX2b") & (out4.Start == 500) & (out4.End == 590)][
                 "exon_number"
             ].iloc[0]
         )
@@ -128,7 +128,7 @@ def compute_exon_numbers():
     )
     assert (
         int(
-            out4[(out4.Feature == "CDS") & (out4.transcript_id == "TX2b") & (out4.Start == 310) & (out4.End == 340)][
+            out4[(out4.Feature == "CDS") & (out4.transcript_id == "TX2b") & (out4.Start == 300) & (out4.End == 350)][
                 "exon_number"
             ].iloc[0]
         )
@@ -136,19 +136,11 @@ def compute_exon_numbers():
     )
     assert (
         int(
-            out4[(out4.Feature == "CDS") & (out4.transcript_id == "TX2b") & (out4.Start == 130) & (out4.End == 180)][
+            out4[(out4.Feature == "CDS") & (out4.transcript_id == "TX2b") & (out4.Start == 130) & (out4.End == 200)][
                 "exon_number"
             ].iloc[0]
         )
         == 3
-    )
-    assert (
-        int(
-            out4[(out4.Feature == "CDS") & (out4.transcript_id == "TX2b") & (out4.Start == 270) & (out4.End == 330)][
-                "exon_number"
-            ].iloc[0]
-        )
-        == 2
     )
 
     # two different transripts (should be numbered independently)
@@ -164,7 +156,7 @@ def compute_exon_numbers():
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
-    out3 = compute_exon_numbers(pr.PyRanges(df3)).df
+    out3 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df3)).df
 
     ex_txA = out3[(out3.Feature == "exon") & (out3.transcript_id == "TXA")].sort_values("Start")
     ex_txB = out3[(out3.Feature == "exon") & (out3.transcript_id == "TXB")].sort_values("Start")
