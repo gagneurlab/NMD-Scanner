@@ -392,6 +392,12 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         for variant, cds_df in var_df.groupby(
             ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"], observed=True
         ):
+            # Variant-identifying fields come straight from the group key;
+            # ID and gene_id are constant within the group, so read them once.
+            chromosome, start_variant, end_variant, ref_allele, alt_allele = variant
+            variant_id = cds_df["ID"].iloc[0]
+            gene_id = cds_df["gene_id"].iloc[0]
+
             # Sort variant exons
             cds_df = cds_df.sort_values("Start")
 
@@ -446,7 +452,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             results.append(
                 {
                     "transcript_id": transcript_id,
-                    "variant_id": var_row["ID"],
+                    "variant_id": variant_id,
                     "ref_cds_start": ref_cds_start,
                     "ref_cds_stop": ref_cds_stop,
                     "ref_cds_seq": ref_seq_final,
@@ -455,17 +461,15 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                     "alt_cds_stop": alt_cds_stop,
                     "alt_cds_seq": alt_seq_final,
                     "alt_cds_len": len(alt_seq_final),
-                    "chromosome": var_row["Chromosome"],
-                    "gene_id": var_row["gene_id"],
+                    "chromosome": chromosome,
+                    "gene_id": gene_id,
                     "strand": strand,
-                    "ref": var_row["Ref"],
-                    "alt": var_row["Alt"],
-                    "start_variant": var_row["Start_variant"],
-                    "end_variant": var_row["End_variant"],
+                    "ref": ref_allele,
+                    "alt": alt_allele,
+                    "start_variant": start_variant,
+                    "end_variant": end_variant,
                     "ref_cds_info": ref_cds_info,
                     "alt_cds_info": alt_cds_info,
-                    # "ref_cds_lengths": [length for exon_num, length in ref_cds_info],
-                    # "alt_cds_lengths": [length for exon_num, length in alt_cds_info]
                 }
             )
 
