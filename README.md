@@ -97,7 +97,7 @@ results = pd.concat([results, extra_features], axis=1)
 ```
 
 ## License
-All source code in this repository is licensed under the [MIT License](./License).
+All source code in this repository is licensed under the [MIT License](./LICENSE).
 
 ## Citation 
 Schröder, C.H. (2025). *Enhanced Aberrant Gene Expression Prediction across Human Tissues*.
