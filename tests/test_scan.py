@@ -40,6 +40,30 @@ def test_read_vcf_file(vcf_path):
     print(gr.df.shape)
 
 
+def test_read_vcf_rejects_multiallelic(tmp_path):
+    vcf = tmp_path / "multiallelic.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\tv1\tA\tT\t.\t.\t.\n"
+        "chr1\t200\tv2\tC\tG,GT\t.\t.\t.\n"
+    )
+    with pytest.raises(ValueError, match="multi-allelic"):
+        nmd_scanner.scan.read_vcf(str(vcf))
+
+
+def test_read_vcf_accepts_single_allelic(tmp_path):
+    vcf = tmp_path / "single.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\tv1\tA\tT\t.\t.\t.\n"
+        "chr1\t200\tv2\tC\tG\t.\t.\t.\n"
+    )
+    gr = nmd_scanner.scan.read_vcf(str(vcf))
+    assert gr.df.shape[0] == 2
+
+
 # Test reading GTF file
 def test_read_gtf_file(gtf_path):
     gr = nmd_scanner.scan.read_gtf(gtf_path)
