@@ -1,14 +1,12 @@
-"""
-Compute additional features which might be relevant for analyzing nonsense-mediated decay (NMD) behavior,
-inspired by benchmark datasets from nmd_eff. These features include UTR lengths, exon structure and positional information
-of the premature termination codon (PTC).
-
-:param row: A DataFrame row with annotated transcript information
-:return: A dictionary with additional NMD related features.
-"""
-
-
 def add_nmd_features(row):
+    """
+    Compute additional features which might be relevant for analyzing nonsense-mediated decay (NMD) behavior,
+    inspired by benchmark datasets from nmd_eff. These features include UTR lengths, exon structure and positional information
+    of the premature termination codon (PTC).
+
+    :param row: A DataFrame row with annotated transcript information
+    :return: A dictionary with additional NMD related features.
+    """
 
     # 5' and 3' UTR lengths
     utr_lengths = calculate_utr_lengths(row)
