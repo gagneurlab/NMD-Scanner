@@ -1,5 +1,6 @@
 # Import dependencies
 import argparse
+import logging
 import os
 
 import pandas as pd
@@ -10,6 +11,8 @@ from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import compute_exon_numbers, read_gtf, read_vcf
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
+
+logger = logging.getLogger(__name__)
 
 
 def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
@@ -32,24 +35,24 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     """
 
     # read VCF file (variants)
-    print(f"Reading VCF file: {vcf_path}")
+    logger.info("Reading VCF file: %s", vcf_path)
     vcf = read_vcf(vcf_path)
-    print(f"VCF shape: {vcf.df.shape}")
+    logger.info("VCF shape: %s", vcf.df.shape)
 
     # read GTF file (gene annotation)
-    print(f"Reading GTF file: {gtf_path}")
+    logger.info("Reading GTF file: %s", gtf_path)
     gtf = read_gtf(gtf_path)
-    print(f"GTF File shape: {gtf.df.shape}")
+    logger.info("GTF File shape: %s", gtf.df.shape)
 
     # read FASTA file (genome sequence)
-    print(f"Reading FASTA file: {fasta_path}")
+    logger.info("Reading FASTA file: %s", fasta_path)
     fasta = Fasta(fasta_path)
 
     # Adjust exon number in GTF (need this for the (old) hg19 version)
     if reassign_exons:
-        print("Adjust exon numbers")
+        logger.info("Adjust exon numbers")
         gtf = compute_exon_numbers(gtf)
-        print("Exon numbers adjusted.")
+        logger.info("Exon numbers adjusted.")
 
     # extract CDS regions from the GTF file
     cds = gtf[gtf.Feature == "CDS"]
@@ -62,7 +65,7 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
     # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
-    print("Creating sequences and analyzing...")
+    logger.info("Creating sequences and analyzing...")
     results = extract_ptc(cds_df, vcf, fasta, exons_df)
 
     # Add additional features (inspired by NMD efficiency benchmark dataset)
@@ -74,7 +77,7 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     results = pd.concat([results, nmd_results], axis=1)
 
     # Write output
-    print(f"Writing results to {output}")
+    logger.info("Writing results to %s", output)
     write_results(results, output)
 
     return results
@@ -120,6 +123,8 @@ def is_valid_output_path(path):
 
 def main_cli():
     """Console-script entry point: parse arguments and run the pipeline."""
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     parser = argparse.ArgumentParser(description="Run NMD pipeline")
     parser.add_argument("--vcf", required=True, help="Path to VCF file")
