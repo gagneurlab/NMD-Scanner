@@ -60,7 +60,6 @@ ignore = [
     "E712",  # comparison-to-true (pandas idiom: df[col == True])
     "F403",  # star imports used intentionally in package
     "F405",  # may-be-undefined-from-star-import
-    "F841",  # local-variable-assigned-but-never-used
 ]
 
 [tool.ruff.lint.per-file-ignores]
