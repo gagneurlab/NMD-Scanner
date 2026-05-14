@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from nmd_scanner.cli import is_valid_output_path, write_results
+from nmd_scanner.cli import is_valid_output_path, main, write_results
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
@@ -59,3 +59,36 @@ def test_write_results_parquet_roundtrip(tmp_path):
     loaded = pd.read_parquet(out)
     assert list(loaded.columns) == ["transcript_id", "nmd_escape"]
     assert list(loaded["transcript_id"]) == ["t1", "t2"]
+
+
+def test_main_end_to_end_smoke(tmp_path):
+    """Run the full pipeline on the bundled chr18 test data and check the output file."""
+
+    out = tmp_path / "smoke_results.csv"
+    results = main(
+        vcf_path="resources/test_files/test_variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+
+    # Pipeline returns a non-empty DataFrame
+    assert isinstance(results, pd.DataFrame)
+    assert not results.empty
+
+    # Output file written and reloadable
+    assert out.exists()
+    loaded = pd.read_csv(out)
+    assert len(loaded) == len(results)
+
+    # Columns from each pipeline stage are present
+    for col in [
+        "transcript_id",
+        "variant_id",
+        "ref_cds_seq",
+        "alt_cds_seq",
+        "utr3_length",
+        "total_exon_count",
+        "nmd_escape",
+    ]:
+        assert col in results.columns, f"missing column: {col}"
