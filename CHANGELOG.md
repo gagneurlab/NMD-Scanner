@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/gagneurlab/NMD-Scanner/compare/v0.2.0...v0.2.1) (2026-08-18)
+
+
+### Documentation
+
+* fix README and CONTRIBUTING inaccuracies ([#20](https://github.com/gagneurlab/NMD-Scanner/issues/20)) ([86559d9](https://github.com/gagneurlab/NMD-Scanner/commit/86559d97f6b3082f7274c8db9e822140178bdf3f))
+
 ## [0.2.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.1.1...v0.2.0) (2026-05-14)
 
 
