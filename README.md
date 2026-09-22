@@ -5,6 +5,7 @@ It reconstructs reference and alternative coding sequences as well as transcript
 It can handle single-nucleotide variants, multiple base substitutions, long and short deletions and duplications as well as frameshift variants.
 
 ## Features
+- Reads gene annotations from GTF or GFF3 (GENCODE or Ensembl flavor), gzip-compressed or not
 - Reconstructs reference and alternative CDS, reference transcript sequence and (in some cases) the alternative transcript sequences with metadata
 - Detects start / stop-loss and premature termination codons (PTCs) with the exact position in the CDS and in which exon it lies
 - Computes different NMD-related features:
@@ -37,23 +38,33 @@ Writing Parquet output additionally requires `pyarrow`. Install it with the `par
 
 After `pip install .` the `nmd-scanner` command is available:
 ```bash
-nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv
+nmd-scanner --vcf input.vcf --annotation annotation.gtf --fasta reference.fa --output results/input.csv
+
+# GFF3 works the same way; the format is auto-detected from the file suffix
+nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.csv
 
 # write Parquet instead of CSV (requires the parquet extra)
-nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.parquet
+nmd-scanner --vcf input.vcf --annotation annotation.gtf --fasta reference.fa --output results/input.parquet
 
 # option: fix exon numbering (recommended for hg19)
-nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv --reassign_exons
+nmd-scanner --vcf input.vcf --annotation annotation.gtf --fasta reference.fa --output results/input.csv --reassign_exons
 ```
 
 The equivalent `python -m nmd_scanner.cli ...` invocation also works without installing the console script.
 
 Arguments:
 - `--vcf`: Path to input VCF (SNVs / Indels supported; frameshifts handled)
-- `--gtf`: Path to gene annotation (GTF)
-- `--fasta`: Path to reference genome FASTA
+- `--annotation`: Path to gene annotation file (GTF or GFF3, optionally gzip-compressed). The format is auto-detected from the file suffix (`.gtf`, `.gff3`, `.gff`). Both GENCODE and Ensembl GFF3 flavors are supported. `--gtf` is a deprecated alternative for GTF files only: it reads the file as a GTF whatever its name, and is kept for backward compatibility.
+- `--fasta`: Path to reference genome FASTA. For a GFF3 annotation, it also gives the stop codons.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (useful for hg19)
+
+The coding region of a transcript is the union of its CDS and `stop_codon` rows. A GTF CDS excludes the stop
+codon, a GFF3 CDS includes it. A GFF3 gets the coding regions and stop codons of the GTF of the same release,
+so GTF and GFF3 give the same results. Ensembl GFF3 has no `stop_codon` rows; they come from the last 3 CDS
+bases in the FASTA. Exception: Ensembl GFF3 has no `cds_end_NF` tag. So a `cds_end_NF` transcript whose CDS
+ends in stop codon bases gets a stop codon from an Ensembl GFF3, but none from the Ensembl GTF (13 transcripts
+in Ensembl 108, none on chr22).
 
 Output:
 - The file specified by `--output`, containing:
@@ -78,8 +89,11 @@ from pyfaidx import Fasta
 import nmd_scanner
 
 vcf = nmd_scanner.read_vcf("input.vcf")
-gtf_pr = nmd_scanner.read_gtf("annotation.gtf")
 fasta = Fasta("reference.fa")
+# also accepts a GFF3 path (auto-detected by suffix); a GFF3 takes its stop codons from the FASTA
+gtf_pr = nmd_scanner.read_annotation("annotation.gtf", fasta)
+# nmd_scanner.read_gtf("annotation.gtf") still works if you know the input is always a GTF
+# (read_annotation(path, fasta, fmt="gtf") reads a GTF with any file name)
 
 # Optional: fix exon numbering (recommended for hg19)
 gtf_pr = nmd_scanner.compute_exon_numbers(gtf_pr)

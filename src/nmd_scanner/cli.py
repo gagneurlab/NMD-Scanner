@@ -8,7 +8,7 @@ from pyfaidx import Fasta
 
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
-from nmd_scanner.scan import compute_exon_numbers, merge_stop_codons_into_cds, read_gtf, read_vcf
+from nmd_scanner.scan import compute_exon_numbers, merge_stop_codons_into_cds, read_annotation, read_gtf, read_vcf
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
@@ -25,12 +25,12 @@ STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_
 logger = logging.getLogger(__name__)
 
 
-def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
+def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False, annotation_path=None):
     """
     Main function for NMD scanner
 
     Steps:
-    1. Read input files (VCF, GTF, FASTA)
+    1. Read input files (VCF, FASTA, annotation)
     2. Assign exon numbers (optional, recommended for hg19)
     3. Parse and preprocess gene annotations (coding regions, i.e. CDS plus stop codon, and exons)
     4. Extract premature termination codons (PTCs) & Evaluate NMD escape rules
@@ -38,26 +38,36 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     6. Return and Save output results
 
     :param vcf_path: path to the input VCF file
-    :param gtf_path: path to the input GTF annotation file
+    :param gtf_path: path to the input GTF file (whatever its file name; optionally gzip-compressed).
+                      Give either this or ``annotation_path``, the other one as None.
     :param fasta_path: path to the reference FASTA file
     :param output: path to the output file (.csv, .parquet, or .pq)
+    :param reassign_exons: recompute the exon numbers of the annotation
+    :param annotation_path: path to the input gene annotation file (GTF or GFF3, optionally
+                      gzip-compressed; format is auto-detected from the file suffix), instead of gtf_path
     :return: DataFrame summarizing all annotated variants, with the columns and dtypes of OUTPUT_COLUMN_KINDS
              (see nmd_scanner.schema). It has zero rows if no variant gives a result.
     """
+
+    if (gtf_path is None) == (annotation_path is None):
+        raise ValueError("Give exactly one of gtf_path and annotation_path.")
 
     # read VCF file (variants)
     logger.info("Reading VCF file: %s", vcf_path)
     vcf = read_vcf(vcf_path)
     logger.info("VCF shape: %s", vcf.df.shape)
 
-    # read GTF file (gene annotation)
-    logger.info("Reading GTF file: %s", gtf_path)
-    gtf = read_gtf(gtf_path)
-    logger.info("GTF File shape: %s", gtf.df.shape)
-
     # read FASTA file (genome sequence)
     logger.info("Reading FASTA file: %s", fasta_path)
     fasta = Fasta(fasta_path)
+
+    # read gene annotation file (GTF or GFF3; a GFF3 takes its stop codons from the FASTA)
+    logger.info("Reading annotation file: %s", gtf_path if annotation_path is None else annotation_path)
+    if annotation_path is None:
+        gtf = read_gtf(gtf_path)
+    else:
+        gtf = read_annotation(annotation_path, fasta)
+    logger.info("Annotation file shape: %s", gtf.df.shape)
 
     # Adjust exon number in GTF (need this for the (old) hg19 version)
     if reassign_exons:
@@ -65,8 +75,8 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
         gtf = compute_exon_numbers(gtf)
         logger.info("Exon numbers adjusted.")
 
-    # the coding regions: the GTF CDS plus its stop_codon rows, merged per exon. The merge keys on
-    # exon_number, so it runs after the exon numbers are reassigned.
+    # the coding regions: the CDS plus the stop_codon rows (a GFF3 gets them from read_gff3), merged per exon.
+    # The merge keys on exon_number, so it runs after the exon numbers are reassigned.
     cds_df = merge_stop_codons_into_cds(gtf.df)
 
     # extract exon regions from the GTF file and compute exon related metrics:
@@ -186,8 +196,24 @@ def main_cli():
 
     parser = argparse.ArgumentParser(description="Run NMD pipeline")
     parser.add_argument("--vcf", required=True, help="Path to VCF file")
-    parser.add_argument("--gtf", required=True, help="Path to GTF file")
-    parser.add_argument("--fasta", required=True, help="Path to FASTA file")
+    annotation_group = parser.add_mutually_exclusive_group(required=True)
+    annotation_group.add_argument(
+        "--annotation",
+        help=(
+            "Path to gene annotation file (GTF or GFF3, optionally gzip-compressed). "
+            "Format is auto-detected from the file suffix. GENCODE and Ensembl GFF3 flavors "
+            "are supported."
+        ),
+    )
+    annotation_group.add_argument(
+        "--gtf",
+        help="Path to a GTF file, read as GTF whatever its file name. Deprecated: use --annotation.",
+    )
+    parser.add_argument(
+        "--fasta",
+        required=True,
+        help="Path to reference genome FASTA file. For a GFF3 annotation, it also gives the stop codons.",
+    )
     parser.add_argument(
         "--output",
         required=True,
@@ -205,6 +231,9 @@ def main_cli():
 
     args = parser.parse_args()
 
+    if args.annotation == "":
+        parser.error("argument --annotation: expected a path, got an empty string")
+
     # Check that the output path is valid
     if not is_valid_output_path(args.output):
         raise SystemExit(
@@ -215,7 +244,14 @@ def main_cli():
         )
 
     # Run the main pipeline
-    main(args.vcf, args.gtf, args.fasta, args.output, reassign_exons=args.reassign_exons)
+    main(
+        args.vcf,
+        args.gtf,
+        args.fasta,
+        args.output,
+        reassign_exons=args.reassign_exons,
+        annotation_path=args.annotation,
+    )
 
 
 if __name__ == "__main__":
