@@ -96,6 +96,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
+    # GTF attributes are parsed as strings; align with cds_df_adj so exon numbers are int
+    # everywhere they end up together in a tuple (e.g. transcript_exon_info, *_stop_codon_exons).
+    exons_df["exon_number"] = exons_df["exon_number"].astype(int)
     exon_seqs = get_transcript_sequence(exons_df, fasta)
     logger.info("Get transcript sequence: done.")
 

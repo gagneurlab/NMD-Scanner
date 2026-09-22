@@ -41,6 +41,7 @@ test = [
     "pytest-mock",
     "pytest-cov",
     "pytest-sugar",
+    "pyarrow>=25.0.1",
 ]
 lint = [
     "ruff",

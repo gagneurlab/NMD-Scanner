@@ -12,6 +12,15 @@ from nmd_scanner.scan import compute_exon_numbers, read_gtf, read_vcf
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
 
+# Columns that hold lists of (position, codon) tuples, e.g. (5442, "TGA"). pyarrow's
+# pandas conversion treats each tuple as a flat, homogeneously-typed sub-list rather
+# than a struct: it infers the element type from the tuple's first field (an int) and
+# then fails on the second, string field. Parquet output needs these turned into
+# {"position": ..., "codon": ...} records instead, so pyarrow can infer
+# list<struct<position: int64, codon: string>>. CSV output and the in-memory results
+# table are unaffected; only the parquet copy is rewritten.
+STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons")
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,13 +102,38 @@ def write_results(results, output):
         results.to_csv(output, index=False)
     elif ext in (".parquet", ".pq"):
         try:
-            results.to_parquet(output, index=False)
+            to_parquet_safe(results).to_parquet(output, index=False)
         except ImportError as e:
             raise SystemExit(
                 f"Writing parquet requires pyarrow. Install it via: pip install pyarrow\nOriginal error: {e}"
             ) from e
     else:
         raise ValueError(f"Unsupported output extension: {ext!r}. Supported: {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}")
+
+
+def to_parquet_safe(results):
+    """
+    Return a copy of ``results`` with the stop-codon columns given a parquet-friendly,
+    typed representation. See ``STOP_CODON_COLUMNS`` for why this is needed. Every other
+    column, and the ``results`` table passed in, is left untouched.
+    """
+
+    columns_present = [column for column in STOP_CODON_COLUMNS if column in results.columns]
+    if not columns_present:
+        return results
+
+    results = results.copy()
+    for column in columns_present:
+        results[column] = results[column].apply(_stop_codons_to_records)
+    return results
+
+
+def _stop_codons_to_records(stop_codons):
+    """Turn a list of (position, codon) tuples into {"position": ..., "codon": ...} records."""
+
+    if stop_codons is None:
+        return None
+    return [{"position": position, "codon": codon} for position, codon in stop_codons]
 
 
 def is_valid_output_path(path):
