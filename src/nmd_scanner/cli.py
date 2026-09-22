@@ -65,8 +65,8 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
         gtf = compute_exon_numbers(gtf)
         logger.info("Exon numbers adjusted.")
 
-    # extract CDS regions from the GTF file
-    cds = gtf[gtf.Feature == "CDS"]
+    # extract the coding regions from the GTF file: the CDS plus the stop codon
+    cds = gtf[gtf.Feature.isin(["CDS", "stop_codon"])]
     cds_df = cds.df
 
     # extract exon regions from the GTF file and compute exon related metrics:

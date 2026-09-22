@@ -85,7 +85,8 @@ fasta = Fasta("reference.fa")
 gtf_pr = nmd_scanner.compute_exon_numbers(gtf_pr)
 
 gtf_df = gtf_pr.df
-cds_df = gtf_df[gtf_df["Feature"] == "CDS"]
+# the coding region of a transcript is the union of its CDS and stop_codon rows
+cds_df = gtf_df[gtf_df["Feature"].isin(["CDS", "stop_codon"])]
 exons_df = gtf_df[gtf_df["Feature"] == "exon"].copy()
 exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 

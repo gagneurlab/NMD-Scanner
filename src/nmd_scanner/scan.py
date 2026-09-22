@@ -68,9 +68,9 @@ def read_fasta(fasta_path):
 
 def compute_exon_numbers(gtf):
     """
-    Compute exon numbers for the Features exon and CDS in a GTF PyRanges object.
+    Compute exon numbers for the Features exon, CDS and stop_codon in a GTF PyRanges object.
     Exon numbers are assigned based on genomic order per transcript and strand.
-    CDS features inherit the exon number of the exon they overlap.
+    CDS and stop_codon features inherit the exon number of the exon they overlap.
 
     On + Strand: Smallest exon number is the Start, Largest exon number is the End.
     On - Strand: Smallest exon number is the Start, Largest exon number is the End.
@@ -98,8 +98,8 @@ def compute_exon_numbers(gtf):
             sorted_group = group.sort_values("Start", ascending=False)
         exons.loc[sorted_group.index, "exon_number"] = range(1, len(sorted_group) + 1)
 
-    # Step 2: Assign exon numbers to CDS features
-    cds = gtf_df[gtf_df.Feature == "CDS"].copy()
+    # Step 2: Assign exon numbers to CDS and stop_codon features
+    cds = gtf_df[gtf_df.Feature.isin(["CDS", "stop_codon"])].copy()
     for tx, exon_group in exons.groupby("transcript_id"):
         cds_group = cds[cds.transcript_id == tx]
         for idx, cds_row in cds_group.iterrows():

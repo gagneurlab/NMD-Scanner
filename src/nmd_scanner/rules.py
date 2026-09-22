@@ -18,7 +18,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     Main function for extracting reference coding sequence, alternative coding sequence by incorporating the variant, analyzing for premature termination codons (PTCs),
     start and stop loss, and getting the transcript information.
 
-    :param cds_df: CDS entries from the GTF file (Dataframe)
+    :param cds_df: CDS and stop_codon entries of the annotation (DataFrame). The coding region of a transcript
+                   is the union of both; see ``merge_stop_codons_into_cds``.
     :param vcf: Parsed VCF variant entries (PyRanges object)
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: All exonic entries from the GTF file (DataFrame)
@@ -27,12 +28,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
              variant overlaps a CDS or every variant has a reference mismatch.
     """
 
-    # Adjust the last 3 CDS positions to include stop codons
-    cds_df_adj = adjust_last_cds_for_stop_codon(cds_df)
-    logger.info("Adjusting last CDS for stop codon: done.")
-
-    # adjust exon_number as int datatype
-    cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
+    # Coding region per transcript and exon: CDS plus stop codon (exon_number becomes int)
+    cds_df_adj = merge_stop_codons_into_cds(cds_df)
+    logger.info("Merging stop codons into CDS: done.")
 
     # Intersect variants with CDS regions
     intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
@@ -176,36 +174,59 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 # Functions used for extracting PTC:
 
 
-def adjust_last_cds_for_stop_codon(df, transcript_col="transcript_id"):
+def merge_stop_codons_into_cds(df, transcript_col="transcript_id"):
     """
-    Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions,
-    thus to include the stop codon.
-    Plus strand: extend last exon (largest start position) at the END (+3 to End)
-    Minus strand: extend last exon (smallest start position) at the START (-3 from Start)
-    :param df: Dataframe containing CDS annotation
-    :param exon_col: The name of the column that indicated the exon number, so we can find out which is the last CDS snippet
+    Returns the coding region of each transcript, one CDS row per exon: the union of its CDS and
+    stop_codon rows.
+
+    A GTF CDS excludes the stop codon, which has its own stop_codon rows. A stop codon split across an
+    intron has two of them, and the second one can lie in an exon without CDS. A GFF3 CDS already
+    includes the stop codon, so the union changes nothing there. A transcript without stop_codon rows,
+    e.g. one tagged cds_end_NF, keeps its CDS as it is.
+
+    :param df: CDS and stop_codon rows (DataFrame) with Feature, Start, End, exon_number and
+        ``transcript_col``. Rows of other features are ignored.
     :param transcript_col: The name of the column that indicates the transcript ID
-    :return: Modified pandas DataFrame where the last exon of each transcript is extended by 3 bases to include the stop codon.
+    :return: DataFrame with the CDS rows, each extended by the stop codon bases of its exon, plus one
+        CDS row for each exon that holds only stop codon bases.
+    :raises ValueError: if stop codon bases do not touch or overlap the CDS of their exon.
     """
+    df = df[df["Feature"].isin(["CDS", "stop_codon"])].copy()
+    df["exon_number"] = df["exon_number"].astype(int)
+    keys = [transcript_col, "exon_number"]
 
-    df = df.copy()
+    is_stop = df["Feature"] == "stop_codon"
+    stop_rows = df[is_stop]
+    stops = stop_rows.groupby(keys, observed=True).agg(stop_start=("Start", "min"), stop_end=("End", "max"))
 
-    adjusted_idx = []
-    for tx, group in df.groupby(transcript_col):
-        strand = group["Strand"].iloc[0]
+    cds = df[~is_stop].merge(stops, left_on=keys, right_index=True, how="left")
+    has_stop = cds["stop_start"].notna()
+    # coordinates are half-open, so touching intervals share one coordinate
+    gap = has_stop & ((cds["stop_start"] > cds["End"]) | (cds["stop_end"] < cds["Start"]))
+    if gap.any():
+        raise ValueError(
+            "stop_codon rows do not touch the CDS of their exon in transcripts: "
+            + ", ".join(sorted(cds.loc[gap, transcript_col].astype(str).unique()))
+        )
+    start_dtype, end_dtype = cds["Start"].dtype, cds["End"].dtype
+    cds["Start"] = cds[["Start", "stop_start"]].min(axis=1).astype(start_dtype)
+    cds["End"] = cds[["End", "stop_end"]].max(axis=1).astype(end_dtype)
+    cds = cds.drop(columns=["stop_start", "stop_end"])
 
-        if strand == "+":
-            # last exon has max Start position
-            idx = group["Start"].idxmax()
-            df.at[idx, "End"] += 3
-        elif strand == "-":
-            # last exon has min Start position
-            idx = group["Start"].idxmin()
-            df.at[idx, "Start"] -= 3
+    # exons with stop codon bases but no CDS row, e.g. the second part of a split stop codon
+    cds_keys = pd.MultiIndex.from_frame(cds[keys])
+    stop_only = stops[~stops.index.isin(cds_keys)]
+    extra = stop_rows.drop_duplicates(keys).set_index(keys).loc[stop_only.index].reset_index()
+    extra["Start"] = stop_only["stop_start"].to_numpy().astype(start_dtype)
+    extra["End"] = stop_only["stop_end"].to_numpy().astype(end_dtype)
+    extra["Feature"] = "CDS"
 
-        adjusted_idx.append(idx)
-
-    return df
+    logger.info(
+        "Stop codons from stop_codon rows: %d transcripts, %d of them with stop codon bases in an exon without CDS.",
+        stops.index.get_level_values(transcript_col).nunique(),
+        extra[transcript_col].nunique(),
+    )
+    return pd.concat([cds, extra[cds.columns]], ignore_index=True)
 
 
 def apply_variant_edge_aware_with_lengths(row):

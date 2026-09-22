@@ -1,103 +1,107 @@
 # Import dependencies
 import pandas as pd
+import pytest
+from Bio.Seq import Seq
+from pyfaidx import Fasta
 
 from nmd_scanner.rules import (
-    adjust_last_cds_for_stop_codon,
     analyze_sequence,
     analyze_transcript,
     apply_variant_edge_aware_with_lengths,
     create_reference_cds,
     get_exon,
     get_transcript_sequence,
+    merge_stop_codons_into_cds,
     splice_alt_cds_into_transcript,
     start_stop_loss,
 )
+from nmd_scanner.scan import read_gtf
 
 
-def test_adjust_last_cds_for_stop_codon():
-
-    # Since hg19 and hg38 exon numbers differ, lets only use start positions
-    # Plus strand: extend last exon  at the END (+3 to End)
-    # Minus strand: extend last exon at the START (-3 from Start)
-
-    # Multiple exons, plus strand
-
-    df_plus = pd.DataFrame(
-        {
-            "transcript_id": ["tx1", "tx1", "tx1"],
-            # "exon_number": [1, 2, 3],
-            "Start": [100, 200, 300],
-            "End": [150, 250, 350],
-            "Strand": ["+", "+", "+"],
-        }
+def _coding_rows(rows):
+    """CDS and stop_codon rows of one transcript: (Feature, exon_number, Start, End, Strand)."""
+    return pd.DataFrame(
+        [
+            {"transcript_id": "tx", "Feature": f, "exon_number": str(e), "Start": s, "End": en, "Strand": st}
+            for f, e, s, en, st in rows
+        ]
     )
 
-    adjusted = adjust_last_cds_for_stop_codon(df_plus)
 
-    # First 2 exons unchanged
-    assert (adjusted[(adjusted["Start"] == 100) & (adjusted["End"] == 150)].shape[0]) == 1
-    assert (adjusted[(adjusted["Start"] == 200) & (adjusted["End"] == 250)].shape[0]) == 1
-    # Last exon (+ strand): End extended
-    exon_last_plus = adjusted.loc[adjusted["Start"] == 300].iloc[0]
-    assert exon_last_plus["End"] == 353  # 350 + 3
+def _intervals(df):
+    return sorted(zip(df["exon_number"], df["Start"], df["End"], df["Feature"]))
 
-    # Multiple exons, minus strand
 
-    df_minus = pd.DataFrame(
-        {
-            "transcript_id": ["tx2", "tx2", "tx2"],
-            # "exon_number": [3, 2, 1],
-            "Start": [500, 800, 900],
-            "End": [550, 850, 950],
-            "Strand": ["-", "-", "-"],
-        }
+def test_merge_stop_codons_into_cds_gtf():
+    # GTF: the stop codon follows the last CDS on + strand, precedes it on - strand
+    plus = _coding_rows([("CDS", 1, 100, 150, "+"), ("CDS", 2, 200, 250, "+"), ("stop_codon", 2, 250, 253, "+")])
+    assert _intervals(merge_stop_codons_into_cds(plus)) == [(1, 100, 150, "CDS"), (2, 200, 253, "CDS")]
+
+    minus = _coding_rows([("CDS", 2, 500, 550, "-"), ("CDS", 1, 800, 850, "-"), ("stop_codon", 2, 497, 500, "-")])
+    assert _intervals(merge_stop_codons_into_cds(minus)) == [(1, 800, 850, "CDS"), (2, 497, 550, "CDS")]
+
+
+def test_merge_stop_codons_into_cds_without_stop_codon():
+    # cds_end_NF: no stop_codon row, so the CDS stays as it is
+    rows = _coding_rows([("CDS", 1, 100, 150, "+"), ("CDS", 2, 200, 250, "+")])
+    assert _intervals(merge_stop_codons_into_cds(rows)) == [(1, 100, 150, "CDS"), (2, 200, 250, "CDS")]
+
+
+def test_merge_stop_codons_into_cds_split_stop_codon():
+    # stop codon split across an intron: 2 bases at the end of exon 2, 1 base at the start of exon 3,
+    # which has no CDS row
+    rows = _coding_rows(
+        [
+            ("CDS", 1, 100, 150, "+"),
+            ("CDS", 2, 200, 248, "+"),
+            ("stop_codon", 2, 248, 250, "+"),
+            ("stop_codon", 3, 300, 301, "+"),
+        ]
     )
+    assert _intervals(merge_stop_codons_into_cds(rows)) == [
+        (1, 100, 150, "CDS"),
+        (2, 200, 250, "CDS"),
+        (3, 300, 301, "CDS"),
+    ]
 
-    adjusted = adjust_last_cds_for_stop_codon(df_minus)
 
-    # First 2 exons unchanged
-    assert (adjusted[(adjusted["Start"] == 800) & (adjusted["End"] == 850)].shape[0]) == 1
-    assert (adjusted[(adjusted["Start"] == 900) & (adjusted["End"] == 950)].shape[0]) == 1
-    # Last exon (- strand): Start shifted
-    last_exon_minus = adjusted.loc[adjusted["Start"].idxmin()]  # smallest Start is last exon
-    assert last_exon_minus["Start"] == 497  # 500 - 3
-    assert last_exon_minus["End"] == 550
+def test_merge_stop_codons_into_cds_gff3():
+    # GFF3: the CDS already includes the stop codon, so the union changes nothing
+    rows = _coding_rows([("CDS", 1, 100, 150, "+"), ("CDS", 2, 200, 253, "+"), ("stop_codon", 2, 250, 253, "+")])
+    assert _intervals(merge_stop_codons_into_cds(rows)) == [(1, 100, 150, "CDS"), (2, 200, 253, "CDS")]
 
-    # Single exon, plus strand:
 
-    df_single_plus = pd.DataFrame(
-        {
-            "transcript_id": ["tx_single_plus"],
-            # "exon_number": [1],
-            "Start": [1000],
-            "End": [1100],
-            "Strand": ["+"],
-        }
-    )
+def test_merge_stop_codons_into_cds_rejects_gap():
+    rows = _coding_rows([("CDS", 1, 100, 150, "+"), ("stop_codon", 1, 160, 163, "+")])
+    with pytest.raises(ValueError, match="tx"):
+        merge_stop_codons_into_cds(rows)
 
-    adjusted_single_plus = adjust_last_cds_for_stop_codon(df_single_plus)
 
-    exon = adjusted_single_plus.iloc[0]
-    assert exon["Start"] == 1000
-    assert exon["End"] == 1103  # extended at End
+def _coding_sequence(coding, fasta):
+    coding = coding.sort_values("Start")
+    seq = "".join(fasta[c][s:e].seq.upper() for c, s, e in zip(coding["Chromosome"], coding["Start"], coding["End"]))
+    return str(Seq(seq).reverse_complement()) if coding["Strand"].iloc[0] == "-" else seq
 
-    # Single exon, minus strand
 
-    df_single_minus = pd.DataFrame(
-        {
-            "transcript_id": ["tx_single_minus"],
-            # "exon_number": [1],
-            "Start": [2000],
-            "End": [2100],
-            "Strand": ["-"],
-        }
-    )
+def test_merge_stop_codons_into_cds_on_real_transcripts():
+    gtf_df = read_gtf("resources/chr18.gtf.gz").df
+    fasta = Fasta("resources/chr18.fa.gz")
+    rows = gtf_df[gtf_df["Feature"].isin(["CDS", "stop_codon"])]
 
-    adjusted_single_minus = adjust_last_cds_for_stop_codon(df_single_minus)
+    # ENST00000399496.8: stop codon split across an intron (two stop_codon rows)
+    split = rows[rows["transcript_id"] == "ENST00000399496.8"]
+    assert (split["Feature"] == "stop_codon").sum() == 2
+    seq = _coding_sequence(merge_stop_codons_into_cds(split), fasta)
+    assert len(seq) % 3 == 0
+    assert seq[-3:] in {"TAA", "TAG", "TGA"}
 
-    exon = adjusted_single_minus.iloc[0]
-    assert exon["Start"] == 1997  # extended at Start
-    assert exon["End"] == 2100
+    # a cds_end_NF transcript has no stop codon: its CDS rows stay as they are
+    cds_end_nf = gtf_df.loc[(gtf_df["Feature"] == "transcript") & gtf_df["tag"].str.contains("cds_end_NF", na=False)]
+    tx = cds_end_nf["transcript_id"].iloc[0]
+    cds = rows[rows["transcript_id"] == tx]
+    assert (cds["Feature"] == "stop_codon").sum() == 0
+    merged = merge_stop_codons_into_cds(cds)
+    assert sorted(zip(merged["Start"], merged["End"])) == sorted(zip(cds["Start"], cds["End"]))
 
 
 def test_apply_variant_edge_aware_with_lengths():
