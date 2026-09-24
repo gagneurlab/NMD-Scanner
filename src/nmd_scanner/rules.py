@@ -822,12 +822,9 @@ def start_stop_loss(df):
 
     df = df.copy()
 
-    # Start codon loss: reference sequence has a start codon, alternative sequence does not or the position is changed
-    df["start_loss"] = (
-        (df["ref_start_codon_pos"].notna()) & df["alt_start_codon_pos"].isna()
-    ) | (
-        df["ref_start_codon_pos"] != df["alt_start_codon_pos"]
-    )  # fmt: skip
+    # Start codon loss: the reference CDS starts with a start codon, the alternative CDS does not.
+    # A CDS without a leading ATG (e.g. cds_start_NF) has no start codon to lose.
+    df["start_loss"] = (df["ref_start_codon_pos"] == 0) & (df["alt_start_codon_pos"] != 0)
 
     # Stop codon loss: the annotated stop codon no longer encodes a stop in the alternative sequence. A swap to another
     # stop codon, e.g. TAA>TAG, is no loss. Without an annotated stop codon, ref_valid_stop is False: there is no stop
@@ -1109,7 +1106,8 @@ def analyze_transcript(results_df):
 
                     break
 
-        # STOP LOSS readthrough: the in-frame stop codons from the annotated start codon on
+        # STOP LOSS readthrough: the in-frame stop codons from the annotated start codon on. Only without a start
+        # loss: after a start loss, the scan above already reads on to the transcript end (3'UTR).
         else:
             start_pos = next((i for i, _ in in_frame_codons(seq, scan_start, {start_codon})), None)
             start_exon = get_exon(start_pos, exon_info) if start_pos is not None else None  # for exon number

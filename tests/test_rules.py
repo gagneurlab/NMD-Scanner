@@ -635,6 +635,63 @@ def test_start_stop_loss():
     assert result["stop_loss"].iloc[1] == False
 
 
+def test_start_loss_needs_a_leading_atg():
+    """
+    Only a CDS that starts with ATG can lose its start codon. A CDS without a leading ATG, e.g. of a cds_start_NF
+    transcript, keeps start_loss False, also if the variant removes, moves or adds an in-frame ATG.
+
+    ref CDS  ATG ... ATG ...    ref_start_codon_pos 0
+    alt CDS  ACG ... ATG ...    alt_start_codon_pos 12: the leading ATG is lost, the second row
+             0       12
+    """
+    df = pd.DataFrame(
+        {
+            # first in-frame ATG of the ref and the alt CDS
+            "ref_start_codon_pos": [0, 0, 0, None, 342, None],
+            "alt_start_codon_pos": [0, 12, None, None, 240, 0],
+            "ref_valid_stop": [True] * 6,
+            "alt_valid_stop": [True] * 6,
+        }
+    )
+
+    result = start_stop_loss(df)
+
+    assert result["start_loss"].tolist() == [False, True, True, False, False, False]
+
+
+def test_start_and_stop_loss_reads_from_the_next_atg_into_the_3utr():
+    """
+    A deletion removes the start codon and the stop codon of ATG AAA CCC TAA. Only the first base A of the CDS is left.
+    After the start loss, the scan takes the next ATG, at t4, and reads its frame on into the 3' UTR, to the TGA at t10.
+
+    ref tx  CC ATG AAA CCC TAA GATGCCCTGACC
+            0  2           11
+    alt tx  CC A G ATG CCC TGA CC
+            0  2   4       10
+    """
+    row = {
+        "transcript_seq": "CC" + "ATGAAACCCTAA" + "GATGCCCTGACC",
+        "alt_transcript_seq": "CC" + "A" + "GATGCCCTGACC",
+        "cds_start_in_transcript": 2,
+        "cds_end_in_transcript": 14,
+        "alt_cds_start_in_transcript": 2,
+        "has_stop_codon": True,
+        "ref_cds_seq": "ATGAAACCCTAA",
+        "alt_cds_seq": "A",
+        "transcript_exon_info": [(1, 15)],
+        "alt_is_premature": False,
+        "start_loss": True,
+        "stop_loss": True,
+    }
+
+    result = analyze_transcript(pd.DataFrame([row])).loc[0]
+
+    assert result["stop_loss"] == True
+    assert result["transcript_start_codon_pos"] == 4
+    assert result["transcript_first_stop_codon"] == "TGA"
+    assert result["transcript_first_stop_pos"] == 10
+
+
 def test_splice_alt_cds_into_transcript():
     # Single exon transcripts; the variant lies inside the CDS
     row = {
