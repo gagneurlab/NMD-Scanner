@@ -36,10 +36,11 @@ def test_calculate_utr_lengths():
         "transcript_end": 70950000,
     }
     result1 = calculate_utr_lengths(row1)
-    # Exon 1 has 250 - 98 = 152 nt of 3'UTR
-    # Exon 8 has 5848 - 30 = 5818 nt of 5'UTR (on reverse strand)
-    assert result1["utr5_length"] == 5818
-    assert result1["utr3_length"] == 152
+    # Exon numbers follow transcript order, so exon 1 is the 5' exon on the minus strand too
+    # Exon 1 has 250 - 98 = 152 nt of 5'UTR
+    # Exon 8 has 5848 - 30 = 5818 nt of 3'UTR
+    assert result1["utr5_length"] == 152
+    assert result1["utr3_length"] == 5818
 
     # Example 2: + strand, CDS starts in exon 3
     row2 = {
@@ -141,6 +142,26 @@ def test_calculate_utr_lengths():
     result = calculate_utr_lengths(row)
     assert result["utr5_length"] == 50
     assert result["utr3_length"] is None
+
+
+def test_calculate_utr_lengths_minus_strand_multi_exon():
+    # Minus strand, exon numbers in transcript order (exon 1 is the 5' exon), as in GENCODE
+    # and after compute_exon_numbers. transcript_exon_info is in transcript order, as from get_transcript_sequence.
+    row = {
+        "strand": "-",
+        "has_stop_codon": True,
+        "ref_cds_info": [(2, 50), (3, 60), (4, 40)],
+        "transcript_exon_info": [("1", 100), ("2", 80), ("3", 60), ("4", 90), ("5", 200)],
+        "ref_cds_start": 1000,
+        "ref_cds_stop": 2000,
+        "transcript_start": 500,
+        "transcript_end": 3000,
+    }
+    result = calculate_utr_lengths(row)
+    # 5'UTR: exon 1 (100) + exon 2 (80 - 50 = 30)
+    # 3'UTR: exon 4 (90 - 40 = 50) + exon 5 (200)
+    assert result["utr5_length"] == 130
+    assert result["utr3_length"] == 250
 
 
 def test_calculate_exon_features():
