@@ -732,6 +732,18 @@ def test_calculate_ptc_to_downstream_ej():
     }
     assert calculate_ptc_to_downstream_ej(row6) is None
 
+    # Case 7: PTC in the last CDS exon, followed by a UTR-only exon
+    row7 = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 280,
+        "alt_stop_codon_exons": [3, 3],
+        "transcript_exon_info": [("1", 200), ("2", 100), ("3", 60), ("4", 300)],
+        "ref_cds_info": [(1, 160), (2, 100), (3, 40)],
+        "alt_cds_info": [(1, 160), (2, 100), (3, 40)],
+    }
+    # The CDS ends at 300, and exon 3 goes on with 20 nt of 3'UTR: the junction is at 320, distance = 320 - 280 = 40
+    assert calculate_ptc_to_downstream_ej(row7) == 40
+
 
 def test_add_likely_misannotated_flag():
 

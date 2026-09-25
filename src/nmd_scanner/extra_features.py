@@ -368,7 +368,9 @@ def evaluate_nmd_escape_rules(row):
 
 def calculate_ptc_to_downstream_ej(row):
     """
-    Calculate distance from PTC to the downstream exon junction (next exon start/end depending on strand).
+    Calculate distance from PTC to the downstream exon junction, i.e. the 3' end of the PTC exon.
+    For a PTC in the last exon (no downstream junction), or without transcript_exon_info,
+    measure to the end of the CDS part of the PTC exon.
     Returns None if not applicable.
     """
 
@@ -390,6 +392,12 @@ def calculate_ptc_to_downstream_ej(row):
 
     # Choose the PTC exon (smallest number, closer to start)
     ptc_exon = min(stop_exons)
+
+    # The last CDS exon can go on with 3' UTR, so its junction lies past the CDS end
+    tx_exon_nums = [int(e) for e, _ in row.get("transcript_exon_info") or []]
+    if tx_exon_nums and ptc_exon < max(tx_exon_nums):
+        exon_end = exon_end_in_alt_cds(row, ptc_exon)
+        return exon_end - ptc_pos if exon_end is not None else None
 
     # Sum lengths of exons up to and including ptc_exon
     cumulative_length = 0
