@@ -3,6 +3,7 @@ import pytest
 
 from nmd_scanner.extra_features import (
     add_likely_misannotated_flag,
+    add_nmd_features,
     calculate_exon_features,
     calculate_ptc_exon_length,
     calculate_ptc_to_downstream_ej,
@@ -635,6 +636,41 @@ def test_evaluate_nmd_escape_rules():
 
     result = evaluate_nmd_escape_rules(row_false_positive_guard)
     assert result["nmd_50nt_penultimate_rule"] == False
+
+
+def test_nmd_rules_with_utr_only_last_exon():
+    # Exon numbers in transcript order. The CDS ends in exon 3; exon 4 holds only 3'UTR.
+    # Exon 1: 200 nt (40 5'UTR + 160 CDS), exon 2: 100 nt CDS, exon 3: 60 nt (40 CDS with the stop codon + 20 3'UTR),
+    # exon 4: 300 nt 3'UTR. In CDS coordinates, exon 2 ends at 260 and exon 3 ends at 320: the last exon junction.
+    transcript = {
+        "alt_is_premature": True,
+        "alt_start_codon_pos": 0,
+        "has_stop_codon": True,
+        "transcript_exon_info": [("1", 200), ("2", 100), ("3", 60), ("4", 300)],
+        "ref_cds_info": [(1, 160), (2, 100), (3, 40)],
+        "alt_cds_info": [(1, 160), (2, 100), (3, 40)],
+    }
+
+    def evaluate(stop_pos, stop_exons):
+        row = {**transcript, "alt_first_stop_pos": stop_pos, "alt_stop_codon_exons": stop_exons}
+        row.update(add_nmd_features(row))
+        return evaluate_nmd_escape_rules(row)
+
+    # PTC 30 nt before the end of exon 2, but 90 nt before the last exon junction: no escape
+    result = evaluate(230, [2, 3])
+    assert result["nmd_last_exon_rule"] == False
+    assert result["nmd_50nt_penultimate_rule"] == False
+    assert result["nmd_escape"] == False
+
+    # PTC in exon 3, 40 nt before the last exon junction: escape by the 50 nt rule, not by the last exon rule
+    result = evaluate(280, [3, 3])
+    assert result["nmd_last_exon_rule"] == False
+    assert result["nmd_50nt_penultimate_rule"] == True
+    assert result["nmd_escape"] == True
+
+    # The 50 nt rule includes its boundary: a PTC 50 nt before the last exon junction escapes, one 51 nt before it not
+    assert evaluate(270, [3])["nmd_50nt_penultimate_rule"] == True
+    assert evaluate(269, [3])["nmd_50nt_penultimate_rule"] == False
 
 
 def test_calculate_ptc_to_downstream_ej():
