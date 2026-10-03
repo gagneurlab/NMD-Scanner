@@ -162,13 +162,17 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     logger.info("Creating sequences and analyzing...")
     results = extract_ptc(cds_df, vcf, fasta, exons_df)
 
-    # Add additional features (inspired by NMD efficiency benchmark dataset)
-    extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
-    results = pd.concat([results, extra_features], axis=1)
+    if results.empty:
+        # No variant overlapped a CDS: write all columns with zero rows
+        results = pd.DataFrame(columns=list(OUTPUT_COLUMN_KINDS))
+    else:
+        # Add additional features (inspired by NMD efficiency benchmark dataset)
+        extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
+        results = pd.concat([results, extra_features], axis=1)
 
-    # Compute NMD-rules as last step
-    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
-    results = pd.concat([results, nmd_results], axis=1)
+        # Compute NMD-rules as last step
+        nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
+        results = pd.concat([results, nmd_results], axis=1)
 
     # Write output
     logger.info("Writing results to %s", output)

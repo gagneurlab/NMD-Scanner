@@ -1,7 +1,9 @@
+import logging
+
 import pandas as pd
 import pytest
 
-from nmd_scanner.cli import is_valid_output_path, main, to_parquet_safe, write_results
+from nmd_scanner.cli import OUTPUT_COLUMN_KINDS, is_valid_output_path, main, to_parquet_safe, write_results
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
@@ -288,3 +290,55 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
                 assert [list(x) if isinstance(x, tuple) else x for x in exp] == act, column
             else:
                 assert exp == act, column
+
+
+@pytest.fixture
+def intergenic_vcf(tmp_path):
+    """A VCF with one variant on chr18 outside every CDS."""
+
+    path = tmp_path / "intergenic.vcf"
+    path.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t1000\tintergenic\tA\tT\t.\t.\t.\n"
+    )
+    return str(path)
+
+
+def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, caplog):
+    out = tmp_path / "empty.csv"
+    with caplog.at_level(logging.INFO):
+        results = main(
+            vcf_path=intergenic_vcf,
+            gtf_path="resources/chr18.gtf.gz",
+            fasta_path="resources/chr18.fa.gz",
+            output=str(out),
+        )
+
+    assert results.empty
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+    loaded = pd.read_csv(out)
+    assert list(loaded.columns) == list(OUTPUT_COLUMN_KINDS)
+    assert len(loaded) == 0
+    assert "No variant overlapped a CDS" in caplog.text
+
+
+def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp_path, intergenic_vcf):
+    pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+
+    empty_out = tmp_path / "empty.parquet"
+    main(
+        vcf_path=intergenic_vcf,
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(empty_out),
+    )
+    full_out = tmp_path / "full.parquet"
+    main(
+        vcf_path="resources/test_files/variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(full_out),
+    )
+
+    assert pq.read_table(empty_out).num_rows == 0
+    assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))

@@ -21,7 +21,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     :param vcf: Parsed VCF variant entries (PyRanges object)
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: All exonic entries from the GTF file (DataFrame)
-    :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information
+    :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
+             An empty dataframe without columns if no variant overlaps a CDS.
     """
 
     # Adjust the last 3 CDS positions to include stop codons
@@ -34,6 +35,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # Intersect variants with CDS regions
     intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
     logger.info("Joining variants with cds entries: done.")
+
+    # Nothing to analyze: the steps below need at least one row
+    if intersection_cds_vcf.empty:
+        logger.info("No variant overlapped a CDS; there are no results to compute.")
+        return pd.DataFrame()
 
     ##########################################################################################
     # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
