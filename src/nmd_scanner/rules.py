@@ -199,6 +199,12 @@ def merge_stop_codons_into_cds(df, transcript_col="transcript_id"):
 
     is_stop = df["Feature"] == "stop_codon"
     stop_rows = df[is_stop]
+    if stop_rows.empty and not df.empty:
+        logger.warning(
+            "No stop_codon rows found next to the CDS rows: every transcript is treated as having no annotated "
+            "stop codon (no 3'UTR length, no stop codon distance, every in-frame stop is premature). "
+            "Pass the stop_codon rows together with the CDS rows."
+        )
     stops = stop_rows.groupby(keys, observed=True).agg(stop_start=("Start", "min"), stop_end=("End", "max"))
 
     cds = df[~is_stop].merge(stops, left_on=keys, right_index=True, how="left")

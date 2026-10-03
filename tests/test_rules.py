@@ -81,6 +81,20 @@ def test_merge_stop_codons_into_cds_has_stop_codon():
     assert merged.groupby("transcript_id")["has_stop_codon"].agg(set).to_dict() == {"tx": {True}, "tx_nf": {False}}
 
 
+def test_merge_stop_codons_into_cds_warns_without_stop_codon_rows(caplog):
+    rows = _coding_rows([("CDS", 1, 100, 150, "+"), ("CDS", 2, 200, 250, "+")])
+    with caplog.at_level("WARNING", logger="nmd_scanner.rules"):
+        merge_stop_codons_into_cds(rows)
+    assert "No stop_codon rows" in caplog.text
+    assert "stop_codon rows together with the CDS rows" in caplog.text
+
+    caplog.clear()
+    with_stop = _coding_rows([("CDS", 1, 100, 150, "+"), ("stop_codon", 1, 150, 153, "+")])
+    with caplog.at_level("WARNING", logger="nmd_scanner.rules"):
+        merge_stop_codons_into_cds(with_stop)
+    assert "No stop_codon rows" not in caplog.text
+
+
 def test_merge_stop_codons_into_cds_rejects_gap():
     rows = _coding_rows([("CDS", 1, 100, 150, "+"), ("stop_codon", 1, 160, 163, "+")])
     with pytest.raises(ValueError, match="tx"):
