@@ -81,6 +81,13 @@ def compute_exon_numbers(gtf):
     """
     gtf_df = gtf.df.copy()
 
+    # A GTF read from file has exon_number as str (pandas 3) with missing values on features
+    # without one. The computed numbers are ints, so hold the column as nullable integer.
+    if "exon_number" in gtf_df.columns:
+        gtf_df["exon_number"] = gtf_df["exon_number"].astype("Int64")
+    else:
+        gtf_df["exon_number"] = pd.Series(pd.NA, index=gtf_df.index, dtype="Int64")
+
     # Step 1: Compute exon numbers for exon features
     exons = gtf_df[gtf_df.Feature == "exon"].copy()
     for tx, group in exons.groupby("transcript_id"):

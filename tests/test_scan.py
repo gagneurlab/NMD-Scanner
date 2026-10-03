@@ -190,3 +190,31 @@ def test_compute_exon_numbers():
     # TODO: maybe add the edge case if:
     # 1. CDS does not overlap any exon --> should not crash but exon_number should stay missing
     # 2. CDS overlaps two exons --> should it inherit the exon_number with the maximum overlap??
+
+
+def test_compute_exon_numbers_with_str_exon_number_column():
+    """
+    A GTF read from file has a ``str`` exon_number column (pandas 3), with missing values on
+    features that have no exon number. Computed exon numbers must be ints, not written into
+    the str column.
+    """
+
+    df = pd.DataFrame(
+        [
+            ["chr1", 0, 500, "+", "gene", "TX1", "G1", None],
+            ["chr1", 100, 200, "+", "exon", "TX1", "G1", "7"],
+            ["chr1", 300, 400, "+", "exon", "TX1", "G1", "8"],
+            ["chr1", 320, 400, "+", "CDS", "TX1", "G1", "8"],
+        ],
+        columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id", "exon_number"],
+    )
+    df["exon_number"] = df["exon_number"].astype("str")
+    out = nmd_scanner.compute_exon_numbers(pr.PyRanges(df)).df
+
+    exons = out[out.Feature == "exon"].sort_values("Start")
+    assert list(exons["exon_number"]) == [1, 2]
+    cds = out[out.Feature == "CDS"].iloc[0]
+    assert cds["exon_number"] == 2
+    assert not isinstance(cds["exon_number"], str)
+    assert pd.isna(out[out.Feature == "gene"].iloc[0]["exon_number"])
+    assert pd.api.types.is_integer_dtype(out["exon_number"])
