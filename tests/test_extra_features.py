@@ -14,6 +14,7 @@ def test_calculate_utr_lengths():
     # Example 1: - strand, CDS spans exon 8 to 1
     row1 = {
         "strand": "-",
+        "has_stop_codon": True,
         "ref_cds_info": [(8, 30), (7, 105), (6, 173), (5, 70), (4, 123), (3, 174), (2, 97), (1, 98)],
         "transcript_exon_info": [
             ("1", 250),
@@ -39,6 +40,7 @@ def test_calculate_utr_lengths():
     # Example 2: + strand, CDS starts in exon 3
     row2 = {
         "strand": "+",
+        "has_stop_codon": True,
         "ref_cds_info": [(3, 50), (4, 120), (5, 80)],
         "transcript_exon_info": [("1", 200), ("2", 150), ("3", 100), ("4", 120), ("5", 80), ("6", 300)],
         "ref_cds_start": 100500,
@@ -58,6 +60,7 @@ def test_calculate_utr_lengths():
     # Example 3: single exon on plus strand, CDS fully inside it
     row3 = {
         "strand": "+",
+        "has_stop_codon": True,
         "ref_cds_info": [(2, 60)],
         "transcript_exon_info": [("2", 150)],
         "ref_cds_start": 5000,
@@ -74,6 +77,7 @@ def test_calculate_utr_lengths():
     # Example 4: single exon minus strand, CDS fully inside it
     row = {
         "strand": "-",
+        "has_stop_codon": True,
         "ref_cds_info": [(1, 60)],
         "transcript_exon_info": [("1", 150)],
         "ref_cds_start": 5060,
@@ -106,6 +110,7 @@ def test_calculate_utr_lengths():
     # Example 6: not continuous exons, plus strand
     row = {
         "strand": "+",
+        "has_stop_codon": True,
         "ref_cds_info": [(1, 60), (3, 80), (5, 100)],
         "transcript_exon_info": [("1", 100), ("2", 100), ("3", 100), ("4", 100), ("5", 100)],
         "ref_cds_start": 5000,
@@ -119,6 +124,17 @@ def test_calculate_utr_lengths():
     # 3'UTR = 100 (exon 5)
     assert result["utr5_length"] == 40
     assert result["utr3_length"] == 0
+
+    # Example 7: no annotated stop codon (cds_end_NF): the 3'UTR starts after the stop codon, so its length is unknown
+    row = {**row2, "has_stop_codon": False}
+    result = calculate_utr_lengths(row)
+    assert result["utr5_length"] == 400
+    assert result["utr3_length"] is None
+    # single exon
+    row = {**row3, "has_stop_codon": False}
+    result = calculate_utr_lengths(row)
+    assert result["utr5_length"] == 50
+    assert result["utr3_length"] is None
 
 
 def test_calculate_exon_features():
@@ -349,24 +365,28 @@ def test_calculate_ptc_exon_length():
 
 def test_calculate_stop_codon_dist():
     # Case 1: PTC upstream of reference stop
-    row1 = {"ref_first_stop_pos": 1000, "alt_first_stop_pos": 800, "alt_is_premature": True}
+    row1 = {"ref_first_stop_pos": 1000, "alt_first_stop_pos": 800, "alt_is_premature": True, "has_stop_codon": True}
     assert calculate_stop_codon_dist(row1) == 200
 
     # Case 2: PTC downstream of reference stop (rare, negative distance)
-    row2 = {"ref_first_stop_pos": 800, "alt_first_stop_pos": 1000, "alt_is_premature": True}
+    row2 = {"ref_first_stop_pos": 800, "alt_first_stop_pos": 1000, "alt_is_premature": True, "has_stop_codon": True}
     assert calculate_stop_codon_dist(row2) == -200
 
     # Case 3: PTC exactly at reference stop
-    row3 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": 900, "alt_is_premature": True}
+    row3 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": 900, "alt_is_premature": True, "has_stop_codon": True}
     assert calculate_stop_codon_dist(row3) == 0
 
     # Case 4: Missing alt stop codon
-    row4 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": None, "alt_is_premature": True}
+    row4 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": None, "alt_is_premature": True, "has_stop_codon": True}
     assert calculate_stop_codon_dist(row4) is None
 
     # Case 5: Missing ref stop codon
-    row5 = {"ref_first_stop_pos": None, "alt_first_stop_pos": 750, "alt_is_premature": True}
+    row5 = {"ref_first_stop_pos": None, "alt_first_stop_pos": 750, "alt_is_premature": True, "has_stop_codon": True}
     assert calculate_stop_codon_dist(row5) is None
+
+    # Case 6: no annotated stop codon (cds_end_NF): an in-frame stop in the reference is not the reference stop codon
+    row6 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": 600, "alt_is_premature": True, "has_stop_codon": False}
+    assert calculate_stop_codon_dist(row6) is None
 
 
 def test_evaluate_nmd_escape_rules():

@@ -36,6 +36,7 @@ PTC_COLUMN_KINDS = {
     "chromosome": "string",
     "gene_id": "string",
     "strand": "string",
+    "has_stop_codon": "bool",
     "ref": "string",
     "alt": "string",
     "start_variant": "int",

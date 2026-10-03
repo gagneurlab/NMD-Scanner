@@ -59,6 +59,7 @@ for ref_cds and alt_cds:
 - info: List of tuples (exon_number, exon_lengths)
 ————————————————————————————————————————————————————————————
 - cds_in_transcript: computed to check if the CDS sequence is in the transcript sequence
+- has_stop_codon: whether the coding region ends in an annotated stop codon, i.e. whether the transcript has stop_codon rows. Without one (e.g. cds_end_NF), valid_stop and stop loss are False, every in-frame stop codon is premature, and utr3_length and stop_codon_distance are empty
 ————————————————————————————————————————————————————————————
 analyzing ref_ and alt_  (CDS)
 - start_codon_pos
