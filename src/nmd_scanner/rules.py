@@ -25,9 +25,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     start and stop loss, and getting the transcript information.
 
     :param cds_df: Coding regions of the annotation (DataFrame): CDS rows that include the stop codon, one row per
-                   transcript and exon, with exon_number, Frame (the GFF3 phase) and the column has_stop_codon.
-                   has_stop_codon says whether the coding region of the transcript ends in an annotated stop codon.
-                   ``scan.read_annotation`` returns the coding regions as its CDS rows.
+                   transcript and exon, with exon_number, Frame (the GFF3 phase) and the columns has_start_codon and
+                   has_stop_codon. They say whether the coding region of the transcript starts with an annotated
+                   start codon and ends in an annotated stop codon. ``scan.read_annotation`` returns the coding
+                   regions as its CDS rows.
     :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them.
                 A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
@@ -39,13 +40,15 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
              ``variant_placement.place_in_transcript``). If the alt transcript is unknown, unknown_reason names why,
              and the alt columns are null. It has zero rows if no variant touches a coding region, or every variant
              is skipped or has a reference mismatch.
-    :raises ValueError: if cds_df has no has_stop_codon column, i.e. it does not hold the coding regions.
+    :raises ValueError: if cds_df has no has_start_codon or has_stop_codon column, i.e. it does not hold the coding
+                        regions.
     """
 
-    if "has_stop_codon" not in cds_df.columns:
+    missing = [column for column in ("has_start_codon", "has_stop_codon") if column not in cds_df.columns]
+    if missing:
         raise ValueError(
-            "cds_df has no has_stop_codon column. extract_ptc takes the coding regions: CDS rows that include the "
-            "stop codon, with has_stop_codon, as scan.read_annotation returns them."
+            f"cds_df has no {' and no '.join(missing)} column. extract_ptc takes the coding regions: CDS rows that "
+            "include the stop codon, with has_start_codon and has_stop_codon, as scan.read_annotation returns them."
         )
 
     cds_df_adj = cds_df.copy()
@@ -461,10 +464,11 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                                  includes: transcript_id, exon_number, Exon_Alt_CDS_seq, and optionally
                                  the UTR change columns and unknown_reason (see apply_variants)
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
-                        includes: transcript_id, exon_number, Start, End, Strand, Frame, Exon_CDS_seq, has_stop_codon
+                        includes: transcript_id, exon_number, Start, End, Strand, Frame, Exon_CDS_seq, has_start_codon,
+                        has_stop_codon
     :return: DataFrame with one row per variant-transcript pair, containing full reference and alternative CDS + lengths,
-             exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_stop_codon, cds_frame (the
-             Frame of the 5'-most CDS row: the number of bases before the first complete codon),
+             exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_start_codon, has_stop_codon,
+             cds_frame (the Frame of the 5'-most CDS row: the number of bases before the first complete codon),
              utr5_change and utr3_change (tuples (ref, alt), see TranscriptEffect) and unknown_reason. A pair with
              unknown_reason has None in the alt columns.
     """
@@ -493,7 +497,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         # Get strand info (all should be the same within transcript)
         strand = ref_exons["Strand"].iloc[0]
         ref_seq_final = str(Seq(ref_seq).reverse_complement()) if strand == "-" else ref_seq
-        # whether the coding region ends in an annotated stop codon (same within transcript)
+        # whether the coding region starts with an annotated start codon and ends in an annotated stop codon (same
+        # within transcript)
+        has_start_codon = bool(ref_exons["has_start_codon"].iloc[0])
         has_stop_codon = bool(ref_exons["has_stop_codon"].iloc[0])
         # The codons start after the Frame of the 5'-most CDS row, which is 1 or 2 if the CDS lacks its 5' end
         # (e.g. cds_start_NF). That row has the smallest Start on the plus strand and the largest on the minus strand.
@@ -526,6 +532,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                         "chromosome": chromosome,
                         "gene_id": gene_id,
                         "strand": strand,
+                        "has_start_codon": has_start_codon,
                         "has_stop_codon": has_stop_codon,
                         "cds_frame": cds_frame,
                         "ref": ref_allele,
@@ -584,6 +591,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                     "chromosome": chromosome,
                     "gene_id": gene_id,
                     "strand": strand,
+                    "has_start_codon": has_start_codon,
                     "has_stop_codon": has_stop_codon,
                     "cds_frame": cds_frame,
                     "ref": ref_allele,
@@ -825,15 +833,17 @@ def analyze_sequence(results_df):
 def start_stop_loss(df):
     """
     Annotates whether a variant caused a start or stop codon loss
-    :param df: DataFrame with start & stop codon analysis columns
+    :param df: DataFrame with start & stop codon analysis columns, reference and alternative CDS, and whether the
+               transcript has an annotated start codon (has_start_codon)
     :return: Original DataFrames with added columns for "start_loss" and "stop_loss"
     """
 
     df = df.copy()
 
-    # Start codon loss: the reference CDS starts with a start codon, the alternative CDS does not.
-    # A CDS without a leading ATG (e.g. cds_start_NF) has no start codon to lose.
-    df["start_loss"] = (df["ref_start_codon_pos"] == 0) & (df["alt_start_codon_pos"] != 0)
+    # Start codon loss: the variant changes the annotated start codon (start_codon rows of the GFF3), which forms the
+    # first 3 bases of the CDS and can be a non-ATG codon such as CTG. A CDS without an annotated start codon (e.g.
+    # cds_start_NF) has no start codon to lose.
+    df["start_loss"] = df["has_start_codon"].astype(bool) & (df["ref_cds_seq"].str[:3] != df["alt_cds_seq"].str[:3])
 
     # Stop codon loss: the annotated stop codon no longer encodes a stop in the alternative sequence. A swap to another
     # stop codon, e.g. TAA>TAG, is no loss. Without an annotated stop codon, ref_valid_stop is False: there is no stop

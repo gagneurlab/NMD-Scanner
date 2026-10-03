@@ -32,7 +32,7 @@ from nmd_scanner.rules import (
 )
 
 
-def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True):
+def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True, start_codon=True):
     """
     Run extract_ptc, add_nmd_features and evaluate_nmd_escape_rules on one synthetic transcript with one variant.
 
@@ -42,6 +42,8 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
     :param variant: (position, ref, alt) in transcript coordinates and orientation, within one exon
     :param stop_codon: Whether the coding region includes the 3 nt after the CDS as its stop codon. Without them, the
         transcript has no annotated stop codon, as one tagged cds_end_NF.
+    :param start_codon: Whether the first 3 nt of the CDS are an annotated start codon. Without one, the transcript is
+        like one tagged cds_start_NF.
     :return: The single result row as a dictionary
     """
 
@@ -108,7 +110,7 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
         ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
     vcf = pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
 
-    coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=stop_codon)
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=start_codon, has_stop_codon=stop_codon)
     results = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
     assert len(results) == 1
     row = results.iloc[0].to_dict()
@@ -123,7 +125,9 @@ def test_create_reference_cds_using_file():
 
     df3 = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
     cds_df_test = pd.read_csv("resources/test_output_files/cds_df_adj.tsv", sep="\t")
-    # the fixture has no has_stop_codon column, and its expected output gives every transcript a stop codon
+    # the fixture has no has_start_codon and has_stop_codon columns, and its expected output gives every transcript a
+    # start and a stop codon
+    cds_df_test["has_start_codon"] = True
     cds_df_test["has_stop_codon"] = True
 
     # Run the function
@@ -162,6 +166,7 @@ def test_create_reference_cds():
             "End": [150, 250, 350, 450, 550],
             "Strand": ["+" for _ in range(5)],
             "Exon_CDS_seq": ["AAA", "CCC", "GGG", "TTT", "AAA"],
+            "has_start_codon": [True] * 5,
             "has_stop_codon": [True] * 5,
             "Frame": ["0"] * 5,
         }
@@ -295,6 +300,7 @@ def test_create_reference_cds_carries_has_stop_codon():
             "End": [103, 206, 506],
             "Strand": ["+"] * 3,
             "Exon_CDS_seq": ["ATG", "AAATAA", "ATGAAA"],
+            "has_start_codon": [True] * 3,
             "has_stop_codon": [True, True, False],
             "Frame": ["0"] * 3,
         }
@@ -630,6 +636,7 @@ def test_analyze_sequence_reads_codons_in_the_cds_frame():
             ],
             "ref_cds_info": [[(1, 13)]] * 3,
             "alt_cds_info": [[(1, 13)]] * 3,
+            "has_start_codon": [False] * 3,
             "has_stop_codon": [True] * 3,
             "cds_frame": [1] * 3,
         }
@@ -652,8 +659,9 @@ def test_start_stop_loss():
     df = pd.DataFrame(
         [
             {
-                "ref_start_codon_pos": 0,
-                "alt_start_codon_pos": None,
+                "has_start_codon": True,
+                "ref_cds_seq": "ATGAAATAG",
+                "alt_cds_seq": "ACGAAAGGA",
                 "ref_valid_stop": True,
                 "alt_valid_stop": False,
                 "ref_last_codon": "TAG",
@@ -661,8 +669,9 @@ def test_start_stop_loss():
             },
             # stop codon swap: the last codon changes but still encodes a stop
             {
-                "ref_start_codon_pos": 0,
-                "alt_start_codon_pos": 0,
+                "has_start_codon": True,
+                "ref_cds_seq": "ATGAAATAA",
+                "alt_cds_seq": "ATGAAATAG",
                 "ref_valid_stop": True,
                 "alt_valid_stop": True,
                 "ref_last_codon": "TAA",
@@ -677,28 +686,35 @@ def test_start_stop_loss():
     assert result["stop_loss"].iloc[1] == False
 
 
-def test_start_loss_needs_a_leading_atg():
+def test_start_loss_judges_the_annotated_start_codon():
     """
-    Only a CDS that starts with ATG can lose its start codon. A CDS without a leading ATG, e.g. of a cds_start_NF
-    transcript, keeps start_loss False, also if the variant removes, moves or adds an in-frame ATG.
+    Only a variant that changes the annotated start codon, the first 3 nt of the CDS, causes a start loss. The start
+    codon can be a non-ATG codon such as CTG. A CDS without an annotated start codon, e.g. of a cds_start_NF
+    transcript, has no start codon to lose.
 
-    ref CDS  ATG ... ATG ...    ref_start_codon_pos 0
-    alt CDS  ACG ... ATG ...    alt_start_codon_pos 12: the leading ATG is lost, the second row
-             0       12
+    ref CDS  CTG AAA CCC TAA    annotated start codon CTG
+    alt CDS  CCG AAA CCC TAA    CTG>CCG: start loss, the first row
+             0   3   6   9
     """
     df = pd.DataFrame(
         {
-            # first in-frame ATG of the ref and the alt CDS
-            "ref_start_codon_pos": [0, 0, 0, None, 342, None],
-            "alt_start_codon_pos": [0, 12, None, None, 240, 0],
-            "ref_valid_stop": [True] * 6,
-            "alt_valid_stop": [True] * 6,
+            "has_start_codon": [True, True, True, True, False],
+            "ref_cds_seq": ["CTGAAACCCTAA"] * 2 + ["ATGAAACCCTAA"] * 3,
+            "alt_cds_seq": [
+                "CCGAAACCCTAA",  # CTG>CCG
+                "CTGAGACCCTAA",  # missense AAA>AGA after the start codon CTG
+                "ACGAAACCCTAA",  # ATG>ACG
+                "ATGCAAACCCTAA",  # insertion after the start codon
+                "GTGAAACCCTAA",  # A>G at the first base, without an annotated start codon
+            ],
+            "ref_valid_stop": [True] * 5,
+            "alt_valid_stop": [True] * 5,
         }
     )
 
     result = start_stop_loss(df)
 
-    assert result["start_loss"].tolist() == [False, True, True, False, False, False]
+    assert result["start_loss"].tolist() == [True, False, True, False, False]
 
 
 def test_start_and_stop_loss_reads_from_the_next_atg_into_the_3utr():
@@ -1327,10 +1343,11 @@ def test_stop_codon_after_frameshift_without_annotated_stop(tmp_path, strand, va
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
 def test_stop_loss_with_stop_codon_out_of_frame(tmp_path, strand):
-    # The CDS starts at t14, 1 nt after the ATG, as a cds_start_NF CDS can. Read from t14, the annotated stop codon at
-    # t40 is out of frame, and TGA at t26 is in frame. TAA>CAA keeps the stop loss that the CDS shows.
+    # The CDS starts at t14, 1 nt after the ATG, without an annotated start codon and with phase 0, as a misannotated
+    # cds_start_NF CDS can. Read from t14, the annotated stop codon at t40 is out of frame, and TGA at t26 is in frame.
+    # TAA>CAA keeps the stop loss that the CDS shows.
     exon_seqs = [_STOP_TRANSCRIPT[:25], _STOP_TRANSCRIPT[25:]]
-    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (14, 40), (40, "T", "C"))
+    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (14, 40), (40, "T", "C"), start_codon=False)
 
     assert row["stop_loss"] == True
 
@@ -1412,7 +1429,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
         [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
     )
     fasta = Fasta(str(tmp_path / "genome.fa"))
-    coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=has_stop_codon)
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=has_stop_codon)
     result = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
     return result.set_index("variant_id")
 

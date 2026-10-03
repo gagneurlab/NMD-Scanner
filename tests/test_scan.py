@@ -915,6 +915,86 @@ def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_rows(tmp_path, capl
     assert "No stop_codon rows" not in caplog.text
 
 
+def test_read_gff3_has_start_codon_from_gencode_start_codon_rows(tmp_path, caplog):
+    """
+    A GENCODE transcript has a start codon if it has start_codon rows. ENST001.1 (+ strand) gets a start codon at the
+    first 3 CDS bases 1051-1053, ENST002.1 (- strand) at 5297-5299. The other transcripts have none. The result has no
+    start_codon rows.
+
+                 1051                                5297
+    ENST001.1 +  [sss=====...   ENST002.1 -  ...=====sss]
+    """
+    attributes = "gene_type=protein_coding;transcript_type=protein_coding;exon_number=1"
+    start_codon_rows = [
+        f"chr1\tHAVANA\tstart_codon\t1051\t1053\t.\t+\t0\tID=start_codon:ENST001.1;Parent=ENST001.1;"
+        f"gene_id=ENSG001.1;transcript_id=ENST001.1;{attributes}\n",
+        f"chr1\tHAVANA\tstart_codon\t5297\t5299\t.\t-\t0\tID=start_codon:ENST002.1;Parent=ENST002.1;"
+        f"gene_id=ENSG002.1;transcript_id=ENST002.1;{attributes}\n",
+    ]
+    fasta = _fasta(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
+        df = nmd_scanner.scan.read_gff3(
+            _write(tmp_path, "start.gff3", _GENCODE_GFF3 + "".join(start_codon_rows)), fasta
+        )
+
+    assert set(df["Feature"]) == {"exon", "CDS"}
+    assert df.loc[df["Feature"] == "exon", "has_start_codon"].isna().all()
+    cds = df[df["Feature"] == "CDS"]
+    assert set(cds.loc[cds["has_start_codon"].astype(bool), "transcript_id"]) == {"ENST001.1", "ENST002.1"}
+    assert "No start_codon rows" not in caplog.text
+
+    # Without start_codon rows, no transcript has a start codon
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
+        df = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_start.gff3", _GENCODE_GFF3), fasta)
+    assert "No start_codon rows found next to the CDS rows" in caplog.text
+    assert not df["has_start_codon"].any()
+
+
+def test_read_gff3_start_codon_from_sequence(tmp_path):
+    """
+    An Ensembl GFF3 has no start_codon rows. A transcript has a start codon if its CDS starts with ATG and its 5'-most
+    CDS row has phase 0. MINUS_SPLIT reads its ATG across an intron on the minus strand: AT from the 5'-most CDS row,
+    at 761 and 760, and G from the next one, at 750. The drawing is in transcript orientation.
+
+                   exon 1      exon 2
+                   800-760     750-700
+    MINUS_SPLIT 5' [uuuuuAT]|[G=====uuuu] 3'
+    """
+    # transcript, transcript start, phase of the CDS row, first 3 CDS bases
+    cases = [("ATG", 100, 0, "ATG"), ("CTG", 300, 0, "CTG"), ("PHASE_1", 500, 1, "ATG")]
+    rows, bases = [], {}
+    for tx, start, phase, codon in cases:
+        rows += [
+            f"chr1\tensembl\tmRNA\t{start}\t{start + 100}\t.\t+\t.\tID=transcript:{tx};Parent=gene:G{tx};biotype=protein_coding",
+            f"chr1\tensembl\texon\t{start}\t{start + 100}\t.\t+\t.\tParent=transcript:{tx};rank=1",
+            f"chr1\tensembl\tCDS\t{start + 1}\t{start + 60}\t.\t+\t{phase}\tID=CDS:P{tx};Parent=transcript:{tx}",
+        ]
+        bases[("chr1", start + 1)] = codon
+    rows += [
+        "chr1\tensembl\tmRNA\t700\t800\t.\t-\t.\tID=transcript:MINUS_SPLIT;Parent=gene:GMINUS;biotype=protein_coding",
+        "chr1\tensembl\texon\t760\t800\t.\t-\t.\tParent=transcript:MINUS_SPLIT;rank=1",
+        "chr1\tensembl\texon\t700\t750\t.\t-\t.\tParent=transcript:MINUS_SPLIT;rank=2",
+        "chr1\tensembl\tCDS\t760\t761\t.\t-\t0\tID=CDS:PMINUS;Parent=transcript:MINUS_SPLIT",
+        "chr1\tensembl\tCDS\t720\t750\t.\t-\t1\tID=CDS:PMINUS;Parent=transcript:MINUS_SPLIT",
+    ]
+    # the plus strand bases AT at 760-761 and C at 750 read ATG on the minus strand
+    bases[("chr1", 760)] = "AT"
+    bases[("chr1", 750)] = "C"
+    gff3_path = _write(tmp_path, "ensembl.gff3", "##gff-version 3\n" + "\n".join(rows) + "\n")
+
+    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path, bases))
+
+    assert df.loc[df["Feature"] == "exon", "has_start_codon"].isna().all()
+    cds = df[df["Feature"] == "CDS"]
+    assert dict(zip(cds["transcript_id"], cds["has_start_codon"])) == {
+        "ATG": True,
+        "CTG": False,
+        "PHASE_1": False,
+        "MINUS_SPLIT": True,
+    }
+
+
 def test_read_gff3_raises_an_error_naming_the_file_if_polars_bio_cannot_read_it(tmp_path):
     path = tmp_path / "random.gff3"
     path.write_bytes(random.Random(0).randbytes(300))

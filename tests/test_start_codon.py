@@ -280,3 +280,63 @@ def test_stop_loss_reads_through_the_3utr_in_the_cds_frame(tmp_path, strand):
             "stop_codon_distance": -12,
         },
     )
+
+
+@pytest.mark.parametrize(
+    ("cds", "start_codon", "variant", "expected"),
+    [
+        (
+            "CTGAAACCCGAC",
+            True,
+            (4, "T", "C"),
+            {"ref_start_codon_pos": None, "alt_start_codon_pos": None, "start_loss": True, "scanned_stops": 0},
+        ),
+        (
+            "CTGAAACCCGAC",
+            True,
+            (10, "C", "G"),
+            {"ref_start_codon_pos": None, "alt_start_codon_pos": None, "start_loss": False, "scanned_stops": None},
+        ),
+        (
+            "ATGAAACCCGAC",
+            True,
+            (4, "T", "C"),
+            {"ref_start_codon_pos": 0, "alt_start_codon_pos": None, "start_loss": True, "scanned_stops": 0},
+        ),
+        (
+            "ATGAAACCCGAC",
+            False,
+            (4, "T", "C"),
+            {"ref_start_codon_pos": 0, "alt_start_codon_pos": None, "start_loss": False, "scanned_stops": None},
+        ),
+    ],
+    ids=["ctg_to_ccg", "missense_after_ctg", "atg_to_acg", "atg_to_acg_without_start_codon_rows"],
+)
+def test_start_loss_is_a_change_of_the_annotated_start_codon(tmp_path, strand, cds, start_codon, variant, expected):
+    """
+    The CDS starts with the start codon CTG or ATG at t3 (`x`), which the GFF3 marks with a start_codon row or not.
+    CTG>CCG and ATG>ACG change its second base, at t4. The missense CCC>CGC changes t10 in exon 2. `s` is the stop
+    codon. After a start loss, the scan looks for an ATG from t3 on and finds none, so it reads no stop codon.
+
+          8 nt         15 nt
+    5' [uuuxxx==]|[=======sssuuuuu] 3'
+    tx  0  3       8      15 18   23
+    """
+    tx = SyntheticTranscript(
+        tmp_path, strand, ["GGG" + cds[:5], cds[5:] + "TAA" + "GGGGG"], 3, 15, start_codon=start_codon
+    )
+
+    row = tx.run(*variant)
+
+    _assert_values(
+        row,
+        {
+            "has_start_codon": start_codon,
+            "ref_start_codon_pos": expected["ref_start_codon_pos"],
+            "alt_start_codon_pos": expected["alt_start_codon_pos"],
+            "start_loss": expected["start_loss"],
+            "stop_loss": False,
+            "transcript_start_codon_pos": None,
+            "transcript_num_stop_codons": expected["scanned_stops"],
+        },
+    )

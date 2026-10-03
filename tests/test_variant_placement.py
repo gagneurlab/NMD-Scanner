@@ -307,7 +307,7 @@ def _run(tmp_path, strand, position, ref, alt, layout=_LAYOUT, rows=_ROWS):
     vcf = pd.DataFrame(
         [{"Chromosome": chrom, "Start": start, "End": start + len(ref), "ID": "var", "Ref": ref, "Alt": alt}]
     )
-    coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=True)
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=True)
     return extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
 
 

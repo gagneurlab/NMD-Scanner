@@ -20,7 +20,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 81 columns and dtypes for every input
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 82 columns and dtypes for every input
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
@@ -54,7 +54,7 @@ The equivalent `python -m nmd_scanner.cli ...` invocation also works without ins
 Arguments:
 - `--vcf`: Path to input VCF, plain or gzip-compressed (SNVs / Indels supported; frameshifts handled). It needs its header, at least the `##fileformat` and `#CHROM` lines, and one ALT allele per record: split multi-allelic records first, e.g. with `bcftools norm -m-`. QUAL, FILTER and INFO are not read. A record whose ALT is a symbolic allele (e.g. `<DEL>`, `<DUP>`, `<INS>`, `<INV>`, `<CNV>`) or a breakend is skipped, and a warning gives their count: NMD-Scanner cannot apply structural variants yet.
 - `--annotation`: Path to gene annotation file in GFF3, optionally gzip-compressed, with the suffix `.gff3` or `.gff`. Both GENCODE and Ensembl GFF3 flavors are supported.
-- `--fasta`: Path to reference genome FASTA. It also shows whether a CDS ends in a stop codon.
+- `--fasta`: Path to reference genome FASTA. It also shows whether a CDS ends in a stop codon, and for an Ensembl GFF3 whether it starts with one.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
 
@@ -73,7 +73,7 @@ Output:
   - extra features such as UTR lengths, exon counts, distances, etc.
   - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
 
-`nmd_scanner.schema` lists the 81 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
+`nmd_scanner.schema` lists the 82 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
@@ -103,8 +103,8 @@ import nmd_scanner
 
 vcf = nmd_scanner.read_vcf("input.vcf")
 fasta = Fasta("reference.fa")
-# exon rows and coding regions: CDS rows that include the stop codon, with the column has_stop_codon.
-# The FASTA shows whether a CDS ends in a stop codon.
+# exon rows and coding regions: CDS rows that include the stop codon, with the columns has_start_codon and
+# has_stop_codon. The FASTA shows whether a CDS ends in a stop codon, and for an Ensembl GFF3 whether it starts with one.
 # Optional: reassign_exons=True recomputes the exon numbers (recommended for hg19).
 annotation = nmd_scanner.read_annotation("annotation.gff3.gz", fasta, reassign_exons=False)
 
