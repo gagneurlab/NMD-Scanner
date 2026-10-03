@@ -491,12 +491,23 @@ def test_start_stop_loss():
                 "alt_valid_stop": False,
                 "ref_last_codon": "TAG",
                 "alt_last_codon": "GGA",
-            }
+            },
+            # stop codon swap: the last codon changes but still encodes a stop
+            {
+                "ref_start_codon_pos": 0,
+                "alt_start_codon_pos": 0,
+                "ref_valid_stop": True,
+                "alt_valid_stop": True,
+                "ref_last_codon": "TAA",
+                "alt_last_codon": "TAG",
+            },
         ]
     )
     result = start_stop_loss(df)
     assert result["start_loss"].iloc[0] == True
     assert result["stop_loss"].iloc[0] == True
+    assert result["start_loss"].iloc[1] == False
+    assert result["stop_loss"].iloc[1] == False
 
 
 def test_splice_alt_cds_into_transcript():
@@ -621,3 +632,22 @@ def test_extract_ptc_without_stop_codon(tmp_path, strand):
     assert result.loc["TGG>TGC", "alt_is_premature"] == False
     # there is no stop codon to lose
     assert result.loc[variants, "stop_loss"].tolist() == [False, False]
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
+def test_extract_ptc_stop_codon_change(tmp_path, strand):
+    variants = {"TAA>TAG": (50, "G"), "TAA>TGA": (49, "G"), "TAA>CAA": (48, "C"), "TGG>TAG": (46, "A")}
+    result = _extract_ptc_synthetic(tmp_path, strand, True, variants)
+
+    # a swap to another stop codon keeps the stop codon at its position: no stop loss and no readthrough
+    for swap in ["TAA>TAG", "TAA>TGA"]:
+        assert result.loc[swap, "alt_valid_stop"] == True
+        assert result.loc[swap, "stop_loss"] == False
+        assert result.loc[swap, "alt_is_premature"] == False
+        assert pd.isna(result.loc[swap, "transcript_num_stop_codons"])
+    # the annotated stop codon no longer encodes a stop
+    assert result.loc["TAA>CAA", "stop_loss"] == True
+    assert result.loc["TAA>CAA", "alt_is_premature"] == False
+    # a stop gained in the last sense codon lies upstream of the annotated stop codon
+    assert result.loc["TGG>TAG", "alt_is_premature"] == True
+    assert result.loc["TGG>TAG", "stop_loss"] == False

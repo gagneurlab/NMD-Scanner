@@ -679,11 +679,10 @@ def start_stop_loss(df):
         df["ref_start_codon_pos"] != df["alt_start_codon_pos"]
     )  # fmt: skip
 
-    # Stop codon loss: reference sequence had a valid stop codon, the alternative sequence does not or the position is changed.
-    # Without an annotated stop codon, ref_valid_stop is False: there is no stop codon to lose.
-    df["stop_loss"] = (df["ref_valid_stop"] == True) & (
-        (df["alt_valid_stop"] != True) | (df["ref_last_codon"] != df["alt_last_codon"])  # Or take this out?
-    )
+    # Stop codon loss: the annotated stop codon no longer encodes a stop in the alternative sequence. A swap to another
+    # stop codon, e.g. TAA>TAG, is no loss. Without an annotated stop codon, ref_valid_stop is False: there is no stop
+    # codon to lose.
+    df["stop_loss"] = (df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)
 
     return df
 
