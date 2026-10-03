@@ -94,7 +94,7 @@ def calculate_utr_lengths(row):
     strand = row.get("strand")
     ref_cds_info = row.get("ref_cds_info") or []
     transcript_exon_info = row.get("transcript_exon_info") or []
-    has_stop_codon = bool(row.get("has_stop_codon"))
+    has_stop_codon = bool(row["has_stop_codon"])
 
     if not ref_cds_info or not transcript_exon_info:
         return {"utr5_length": None, "utr3_length": None}
@@ -255,7 +255,7 @@ def calculate_stop_codon_dist(row):
     Without an annotated stop codon (has_stop_codon False), there is no reference stop codon and the distance is None.
     """
 
-    if not row.get("has_stop_codon"):
+    if not row["has_stop_codon"]:
         return None
 
     alt_cds_len = row.get("alt_cds_len")

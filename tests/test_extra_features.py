@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from nmd_scanner.extra_features import (
     add_likely_misannotated_flag,
@@ -96,6 +97,7 @@ def test_calculate_utr_lengths():
     # Example 5.1: missing ref_cds_info
     row = {
         "strand": "+",
+        "has_stop_codon": True,
         "transcript_exon_info": [("1", 200), ("2", 300)],
     }
     result = calculate_utr_lengths(row)
@@ -104,6 +106,7 @@ def test_calculate_utr_lengths():
     # Example 5.2: missing transcript_exon_info
     row = {
         "strand": "-",
+        "has_stop_codon": True,
         "ref_cds_info": [(1, 100), (2, 150)],
     }
     result = calculate_utr_lengths(row)
@@ -382,6 +385,15 @@ def _analyzed(ref_cds_seq, alt_cds_seq):
         ]
     )
     return analyze_sequence(df).iloc[0]
+
+
+def test_has_stop_codon_is_required():
+    row = {"strand": "+", "ref_cds_info": [(1, 60)], "transcript_exon_info": [("1", 100)]}
+    with pytest.raises(KeyError, match="has_stop_codon"):
+        calculate_utr_lengths(row)
+    row = {"alt_cds_len": 903, "alt_first_stop_pos": 900, "alt_is_premature": False}
+    with pytest.raises(KeyError, match="has_stop_codon"):
+        calculate_stop_codon_dist(row)
 
 
 def test_calculate_stop_codon_dist():
