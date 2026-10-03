@@ -296,6 +296,33 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
                 assert exp == act, column
 
 
+@pytest.mark.parametrize("output_name", ["numeric_ids.parquet", "numeric_ids.csv"])
+def test_main_keeps_numeric_and_NA_variant_ids_as_text(tmp_path, output_name):
+    """ClinVar-style numeric IDs (and an ID of "NA") must reach variant_id as written, in either output format."""
+
+    vcf = tmp_path / "numeric_ids.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr18\t21383521\t12345\tG\tGT\t.\t.\t.\n"
+        "chr18\t21383521\tNA\tG\tGTTT\t.\t.\t.\n"
+    )
+    out = tmp_path / output_name
+    results = main(
+        vcf_path=str(vcf),
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+
+    assert set(results["variant_id"]) == {"12345", "NA"}
+    if output_name.endswith(".parquet"):
+        loaded = pd.read_parquet(out)
+    else:
+        loaded = pd.read_csv(out, dtype={"variant_id": str}, keep_default_na=False)
+    assert set(loaded["variant_id"]) == {"12345", "NA"}
+
+
 def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, caplog):
     out = tmp_path / "empty.csv"
     with caplog.at_level(logging.INFO):

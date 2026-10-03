@@ -40,11 +40,16 @@ def read_vcf(vcf_path):
         sep="\t",
         header=None,
         names=["Chromosome", "Start", "ID", "Ref", "Alt", "Qual", "Filter", "Info"],
+        # Every VCF field except POS is text. Without this pandas infers int64 for numeric
+        # CHROM/ID values and turns text such as "NA" into NaN.
+        dtype={"Start": "int64", **{c: str for c in ("Chromosome", "ID", "Ref", "Alt", "Qual", "Filter", "Info")}},
+        keep_default_na=False,
+        na_filter=False,
     )
 
     # Reject multi-allelic records: the VCF spec allows comma-separated ALT,
     # but the rest of the pipeline assumes one ALT allele per row.
-    multiallelic = df["Alt"].astype(str).str.contains(",")
+    multiallelic = df["Alt"].str.contains(",")
     if multiallelic.any():
         n_multiallelic = int(multiallelic.sum())
         raise ValueError(

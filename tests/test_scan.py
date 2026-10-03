@@ -72,6 +72,25 @@ def test_read_vcf_accepts_single_allelic(tmp_path):
     assert gr.df.shape[0] == 2
 
 
+def test_read_vcf_keeps_text_fields_as_written(tmp_path):
+    vcf = tmp_path / "text_fields.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "22\t100\t12345\tA\tNA\t.\tPASS\tNA\n"
+        "22\t200\tNA\tC\tG\t50\t.\t.\n"
+    )
+    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    assert (df["Chromosome"] == "22").all()
+    assert df["ID"].tolist() == ["12345", "NA"]
+    assert df["Alt"].tolist() == ["NA", "G"]
+    assert df["Qual"].tolist() == [".", "50"]
+    assert df["Filter"].tolist() == ["PASS", "."]
+    assert df["Info"].tolist() == ["NA", "."]
+    assert df["Start"].tolist() == [99, 199]
+    assert df["End"].tolist() == [100, 200]
+
+
 # Test reading GTF file
 def test_read_gtf_file(gtf_path):
     gr = nmd_scanner.scan.read_gtf(gtf_path)
