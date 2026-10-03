@@ -29,7 +29,7 @@ From [PyPI](https://pypi.org/project/nmd-scanner/):
 pip install nmd-scanner
 ```
 
-Writing Parquet output additionally requires `pyarrow` (`pip install pyarrow`); it is not pulled in by default.
+Writing Parquet output additionally requires `pyarrow`. Install it with the `parquet` extra: `pip install "nmd_scanner[parquet]"`. It is not pulled in by default.
 
 ## Usage
 
@@ -39,7 +39,7 @@ After `pip install .` the `nmd-scanner` command is available:
 ```bash
 nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.csv
 
-# write Parquet instead of CSV (requires pyarrow)
+# write Parquet instead of CSV (requires the parquet extra)
 nmd-scanner --vcf input.vcf --gtf annotation.gtf --fasta reference.fa --output results/input.parquet
 
 # option: fix exon numbering (recommended for hg19)

@@ -194,7 +194,7 @@ def write_results(results, output):
             pq.write_table(table, output)
         except ImportError as e:
             raise SystemExit(
-                f"Writing parquet requires pyarrow. Install it via: pip install pyarrow\nOriginal error: {e}"
+                f'Writing parquet requires pyarrow. Install it via: pip install "nmd_scanner[parquet]"\nOriginal error: {e}'
             ) from e
     else:
         raise ValueError(f"Unsupported output extension: {ext!r}. Supported: {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}")
@@ -281,7 +281,7 @@ def main_cli():
         required=True,
         help=(
             "Path to the output file. Extension determines format: "
-            ".csv for CSV, .parquet or .pq for Parquet (requires pyarrow). "
+            ".csv for CSV, .parquet or .pq for Parquet (requires the parquet extra). "
             "Parent directory must exist; the file is overwritten if present."
         ),
     )
