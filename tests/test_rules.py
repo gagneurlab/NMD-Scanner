@@ -19,13 +19,13 @@ from nmd_scanner.rules import (
     analyze_sequence,
     analyze_transcript,
     annotated_stop_in_alt,
-    apply_variant_edge_aware_with_lengths,
     cds_range_in_transcript,
     create_reference_cds,
     drop_symbolic_alleles,
     extract_ptc,
     get_exon,
     get_transcript_sequence,
+    join_variant_windows,
     join_variants_to_cds,
     splice_alt_cds_into_transcript,
     start_stop_loss,
@@ -113,115 +113,6 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
     row.update(add_nmd_features(row))
     row.update(evaluate_nmd_escape_rules(row))
     return row
-
-
-def test_apply_variant_edge_aware_with_lengths():
-    # need to keep in mind all the cases (variant goes over start or end of exon, indels, SNPs)
-    # Maybe can use the test input and output files
-    # input = resources/test_files/variants.vcf
-    # output = resources/test_output_files/variant_exon_output.tsv
-
-    # Load the test output file with expected results: I cross checked these for correctness
-    df_expected = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
-
-    # Apply the function to each row to get actual results
-    df_actual = df_expected.copy()
-    actual_cols = df_actual.apply(apply_variant_edge_aware_with_lengths, axis=1)
-
-    # Attach the new columns to compare
-    df_actual["Exon_Alt_CDS_seq_actual"] = actual_cols["Exon_Alt_CDS_seq"]
-    df_actual["Exon_Alt_CDS_length_actual"] = actual_cols["Exon_Alt_CDS_length"]
-
-    # Run assertions row-by-row to catch mismatches
-    for i, row in df_actual.iterrows():
-        assert row["Exon_Alt_CDS_seq"] == row["Exon_Alt_CDS_seq_actual"], f"Mismatch in Alt_CDS_seq at row {i}"
-        assert row["Exon_Alt_CDS_length"] == row["Exon_Alt_CDS_length_actual"], f"Mismatch in Alt_CDS_length at row {i}"
-
-
-def test_apply_variant_edge_aware_with_lengths_with_DELs():
-    cases = [
-        # cds_seq, start, end, var_start, var_end, ref, alt, expected_seq
-        ("ATGCGTAC", 100, 108, 101, 107, "N", "<DEL>", "AC"),  # internal deletion
-        ("ATGCGTAC", 100, 108, 100, 108, "N", "<DEL>", ""),  # entire CDS deleted
-        ("ATGCGTAC", 100, 108, 90, 104, "N", "<DEL>", "GTAC"),  # deletion starts before CDS
-        ("ATGCGTAC", 100, 108, 104, 120, "N", "<DEL>", "ATGC"),  # deletion ends after CDS
-        ("ATGCGTAC", 100, 108, 200, 210, "N", "<DEL>", None),  # deletion outside CDS
-    ]
-
-    for cds_seq, start, end, var_start, var_end, ref, alt, expected_seq in cases:
-        row = pd.Series(
-            {
-                "Exon_CDS_seq": cds_seq,
-                "Strand": "+",
-                "Start": start,
-                "End": end,
-                "Start_variant": var_start,
-                "End_variant": var_end,
-                "Ref": ref,
-                "Alt": alt,
-            }
-        )
-
-        result = apply_variant_edge_aware_with_lengths(row)
-
-        if expected_seq is None:
-            assert result["Exon_Alt_CDS_seq"] is None or pd.isna(result["Exon_Alt_CDS_seq"])
-            assert result["Exon_Alt_CDS_length"] is None or pd.isna(result["Exon_Alt_CDS_length"])
-        else:
-            assert result["Exon_Alt_CDS_seq"] == expected_seq
-            assert result["Exon_Alt_CDS_length"] == len(expected_seq)
-
-
-def test_apply_variant_edge_aware_with_lengths_with_DUPs():
-    cases = [
-        # cds_seq, start, end, var_start, var_end, ref, alt, expected_seq
-        ("ATGCGTAC", 100, 108, 101, 107, "N", "<DUP>", "ATGCGTATGCGTAC"),  # internal duplication (TGCGTA duplicated)
-        ("ATGCGTAC", 100, 108, 100, 108, "N", "<DUP>", "ATGCGTACATGCGTAC"),  # entire CDS duplicated
-        (
-            "ATGCGTAC",
-            100,
-            108,
-            90,
-            104,
-            "N",
-            "<DUP>",
-            "ATGCATGCGTAC",
-        ),  # duplication starts before CDS, overlap "ATGC" duplicated
-        (
-            "ATGCGTAC",
-            100,
-            108,
-            104,
-            120,
-            "N",
-            "<DUP>",
-            "ATGCGTACGTAC",
-        ),  # duplication ends after CDS, overlap "GTAC" duplicated
-        ("ATGCGTAC", 100, 108, 200, 210, "N", "<DUP>", None),  # duplication outside CDS
-    ]
-
-    for cds_seq, start, end, var_start, var_end, ref, alt, expected_seq in cases:
-        row = pd.Series(
-            {
-                "Exon_CDS_seq": cds_seq,
-                "Strand": "+",
-                "Start": start,
-                "End": end,
-                "Start_variant": var_start,
-                "End_variant": var_end,
-                "Ref": ref,
-                "Alt": alt,
-            }
-        )
-
-        result = apply_variant_edge_aware_with_lengths(row)
-
-        if expected_seq is None:
-            assert result["Exon_Alt_CDS_seq"] is None or pd.isna(result["Exon_Alt_CDS_seq"])
-            assert result["Exon_Alt_CDS_length"] is None or pd.isna(result["Exon_Alt_CDS_length"])
-        else:
-            assert result["Exon_Alt_CDS_seq"] == expected_seq
-            assert result["Exon_Alt_CDS_length"] == len(expected_seq)
 
 
 def test_create_reference_cds_using_file():
@@ -745,20 +636,12 @@ def test_start_stop_loss():
 
 
 def test_splice_alt_cds_into_transcript():
-    # Single exon transcripts on the plus strand from genomic position 100; the variant lies inside the CDS
+    # Single exon transcripts; the variant lies inside the CDS
     row = {
         "ref_cds_seq": "AAAGGGCCC",
         "alt_cds_seq": "AAATTTCCC",
         "cds_start_in_transcript": 3,
         "cds_end_in_transcript": 12,
-        "transcript_exon_info": [(1, 15)],
-        "strand": "+",
-        "ref_cds_start": 103,
-        "ref_cds_stop": 112,
-        "start_variant": 106,
-        "end_variant": 109,
-        "ref": "GGG",
-        "alt": "TTT",
     }
     transcript_seq = "TTTAAAGGGCCCGGG"
 
@@ -771,14 +654,6 @@ def test_splice_alt_cds_into_transcript():
         "alt_cds_seq": "ATGTAATAA",
         "cds_start_in_transcript": 11,
         "cds_end_in_transcript": 20,
-        "transcript_exon_info": [(1, 22)],
-        "strand": "+",
-        "ref_cds_start": 111,
-        "ref_cds_stop": 120,
-        "start_variant": 114,
-        "end_variant": 115,
-        "ref": "A",
-        "alt": "T",
     }
     result = splice_alt_cds_into_transcript(row, "ATGAAATAACCATGAAATAAGG")
     assert result == "ATGAAATAACCATGTAATAAGG"
@@ -789,14 +664,11 @@ def test_splice_alt_cds_into_transcript():
     unknown = {**row, "cds_start_in_transcript": None, "cds_end_in_transcript": None}
     assert splice_alt_cds_into_transcript(unknown, "ATGAAATAACCATGAAATAAGG") is None
 
-    # The deletion ATAAG>A at t16 reaches 1 nt past the stop codon into the 3'UTR, which loses that nt too
-    deletion = {**row, "alt_cds_seq": "ATGAAA", "start_variant": 116, "end_variant": 121, "ref": "ATAAG", "alt": "A"}
+    # A deletion of TAAG at t17 reaches 1 nt past the stop codon into the 3'UTR, which loses that nt too
+    deletion = {**row, "alt_cds_seq": "ATGAAA", "utr3_change": ("G", "")}
     assert splice_alt_cds_into_transcript(deletion, "ATGAAATAACCATGAAATAAGG") == "ATGAAATAACCATGAAAG"
-    # The 3'UTR part of the ref allele does not match the transcript
-    assert splice_alt_cds_into_transcript({**deletion, "ref": "ATAAC"}, "ATGAAATAACCATGAAATAAGG") is None
-    # The exon ends with the stop codon, so the 3'UTR part of the deletion lies in the intron
-    in_intron = {**deletion, "transcript_exon_info": [(1, 20), (2, 2)]}
-    assert splice_alt_cds_into_transcript(in_intron, "ATGAAATAACCATGAAATAAGG") is None
+    # The transcript does not hold the ref 3'UTR bases
+    assert splice_alt_cds_into_transcript({**deletion, "utr3_change": ("C", "")}, "ATGAAATAACCATGAAATAAGG") is None
 
 
 def test_analyze_transcript():
@@ -1643,3 +1515,37 @@ def test_join_variants_to_cds_rejects_an_end_above_the_limit_of_polars_bio(side)
         vcf.loc[0, "End"] = 2**31
     with pytest.raises(ValueError, match=f"Cannot join {side}: it has an End above 2147483647"):
         join_variants_to_cds(cds, vcf)
+
+
+def test_join_variant_windows_reaches_3_bases_past_the_coding_row():
+    """
+    A variant joins a coding row if its window comes within 3 bases of it: 2 bases for the splice dinucleotide, and 1
+    more for an insertion right next to it. `w` marks a window base that joins, `x` one that does not.
+
+    genomic  96 97                100                200    202 203
+             x  w   ..........    [==================]    ..  w  x
+
+    The joined rows keep the coordinates of the coding row in Start and End, and those of the VCF record in
+    Start_variant and End_variant.
+    """
+    cds = pd.DataFrame({"Chromosome": ["chr1"], "Start": [100], "End": [200], "transcript_id": ["tx"]})
+    windows = [(96, 97, "x_before"), (97, 98, "w_before"), (202, 203, "w_after"), (203, 203, "x_insertion_after")]
+    variants = pd.DataFrame(
+        [
+            {
+                "Chromosome": "chr1",
+                "Start": start - 1,
+                "End": end + 1,
+                "ID": variant_id,
+                "Window_Start": start,
+                "Window_End": end,
+            }
+            for start, end, variant_id in windows
+        ]
+    )
+
+    joined = join_variant_windows(cds, variants)
+
+    assert list(joined["ID"]) == ["w_before", "w_after"]
+    assert list(joined["Start"]) == [100, 100] and list(joined["End"]) == [200, 200]
+    assert list(joined["Start_variant"]) == [96, 201] and list(joined["End_variant"]) == [99, 204]

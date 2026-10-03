@@ -18,6 +18,7 @@ from nmd_scanner.cli import (
     write_results,
 )
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
+from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
 RESOURCES = Path(__file__).resolve().parent.parent / "resources"
 
@@ -363,7 +364,13 @@ def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, cap
 
 
 def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp_path, intergenic_vcf):
+    """
+    The full run has rows with an unknown alt transcript. Their start and stop loss and NMD rules are null, and
+    those columns stay bool in Parquet, as in the empty run.
+    """
+
     pytest.importorskip("pyarrow")
+    import pyarrow as pa
     import pyarrow.parquet as pq
 
     empty_out = tmp_path / "empty.parquet"
@@ -382,7 +389,18 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     )
 
     assert pq.read_table(empty_out).num_rows == 0
-    assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
+    schema = pq.read_schema(str(full_out))
+    assert pq.read_schema(str(empty_out)).equals(schema)
+
+    loaded = pd.read_parquet(full_out)
+    unknown = loaded["unknown_reason"].notna()
+    assert unknown.any() and not unknown.all()
+    assert set(loaded.loc[unknown, "unknown_reason"]) <= {SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS}
+    assert schema.field("unknown_reason").type.equals(pa.string())
+    for column in ["start_loss", "stop_loss"] + [column for column in OUTPUT_COLUMN_KINDS if column.startswith("nmd_")]:
+        assert schema.field(column).type.equals(pa.bool_()), column
+        assert loaded.loc[unknown, column].isna().all(), column
+        assert loaded.loc[~unknown, column].notna().any(), column
 
 
 def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, caplog):
@@ -501,6 +519,26 @@ def test_main_end_to_end_reassign_exons(tmp_path):
     pd.testing.assert_frame_equal(results, annotated)
 
 
+def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
+    """Variants over a splice site get a row without prediction, and unknown_reason says why."""
+
+    results = main(
+        vcf_path="resources/test_files/variants.vcf",
+        annotation_path="resources/chr18.gff3.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(tmp_path / "results.csv"),
+    )
+
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+    unknown = results[results["unknown_reason"].notna()]
+    assert not unknown.empty
+    assert set(unknown["unknown_reason"]) <= {SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS}
+    assert unknown["ref_cds_seq"].notna().all()
+    for column in ["alt_cds_seq", "alt_is_premature", "start_loss", "stop_loss", "nmd_escape"]:
+        assert unknown[column].isna().all(), column
+    assert results.loc[results["unknown_reason"].isna(), "nmd_escape"].notna().all()
+
+
 @pytest.fixture(scope="module")
 def cli_stderr(tmp_path_factory):
     """stderr of the CLI in its own process, on the bundled chr18 test data"""
@@ -530,7 +568,7 @@ def cli_stderr(tmp_path_factory):
 
 def test_main_cli_logs_the_info_messages_of_nmd_scanner_in_its_format(cli_stderr):
     assert "INFO nmd_scanner.cli: Reading VCF file" in cli_stderr
-    assert "WARNING nmd_scanner.rules: Skipping 76 variant-transcript pairs" in cli_stderr
+    assert "WARNING nmd_scanner.rules: Skipping 88 variant-transcript pairs" in cli_stderr
     # polars-bio's Rust code logs at INFO too
     info = [line for line in cli_stderr.splitlines() if " INFO " in line]
     assert all(" INFO nmd_scanner." in line for line in info)

@@ -20,7 +20,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 78 columns and dtypes for every input
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 79 columns and dtypes for every input
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
@@ -71,8 +71,9 @@ Output:
   - PTC detection and start / stop-loss flags
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.
+  - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
 
-`nmd_scanner.schema` lists the 78 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
+`nmd_scanner.schema` lists the 79 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
@@ -113,6 +114,8 @@ exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
 results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 ```
+
+`results` has one row per variant and transcript where the variant touches the coding region (CDS plus stop codon) or the splice dinucleotide next to one of its exon edges. An indel in a repeat counts with every equivalent placement, not only the one in the VCF. If the variant destroys a splice site or leaves an exon boundary ambiguous, the alt transcript is unknown. Then `unknown_reason` says why, and the alt columns and the predictions are empty. [Variants at exon boundaries](Technical%20Notes.md#variants-at-exon-boundaries) in the Technical Notes gives the rules.
 
 Add the extra NMD-related features (utr lengths, exon counts, ptc-related features) and the NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results. The columns, column order and dtypes are the same for every input, also for a result without rows (see `nmd_scanner.schema`):
 ```python

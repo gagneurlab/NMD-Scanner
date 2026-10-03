@@ -42,6 +42,21 @@ def add_nmd_features(row):
 
     row = _plain_values(row)
 
+    # Without an alt transcript (unknown_reason), only the features of the reference are known
+    if row.get("unknown_reason") is not None:
+        return {
+            **calculate_utr_lengths(row),
+            "total_exon_count": calculate_exon_features(row)["total_exon_count"],
+            "upstream_exon_count": None,
+            "downstream_exon_count": None,
+            "ptc_to_start_codon": None,
+            "ptc_less_than_150nt_to_start": None,
+            "ptc_exon_length": None,
+            "stop_codon_distance": None,
+            "ptc_to_intron": None,
+            "likely_misannotated": add_likely_misannotated_flag(row),
+        }
+
     # 5' and 3' UTR lengths
     utr_lengths = calculate_utr_lengths(row)
     utr3_length = utr_lengths["utr3_length"]
@@ -284,6 +299,17 @@ def evaluate_nmd_escape_rules(row):
     """
 
     row = _plain_values(row)
+
+    # Unknown without an alt transcript
+    if row.get("unknown_reason") is not None:
+        return {
+            "nmd_last_exon_rule": None,
+            "nmd_50nt_penultimate_rule": None,
+            "nmd_long_exon_rule": None,
+            "nmd_start_proximal_rule": None,
+            "nmd_single_exon_rule": None,
+            "nmd_escape": None,
+        }
 
     # Only relevant for premature stop codons
     if not row.get("alt_is_premature"):

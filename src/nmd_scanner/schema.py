@@ -85,6 +85,7 @@ PTC_COLUMN_KINDS = {
     "transcript_num_stop_codons": "int",
     "transcript_all_stop_codons": "stop_codon_list",
     "transcript_stop_codon_exons": "int_list",
+    "unknown_reason": "string",
 }
 
 # Kind of every column that add_nmd_features returns, in output order

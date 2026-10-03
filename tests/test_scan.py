@@ -732,9 +732,11 @@ _ENSEMBL_RESULTS = [
 )
 def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected):
     """Variants in every fixture transcript, e.g. the split stop codon and the cds_end_NF ones."""
-    _fasta(tmp_path)
+    # In a run of C, a deletion shifts up to the exon edge, and its placements put the edge at different positions.
+    # The planted A bases keep the deletion of v0 in place.
+    _fasta(tmp_path, {**_FIXTURE_BASES, ("chr1", 1100): "ACA"})
     variants = [
-        ("chr1", 1100, "CC", "C"),
+        ("chr1", 1100, "AC", "A"),
         ("chr1", 1600, "C", "A"),
         ("chr1", 4100, "C", "T"),
         ("chr1", 5200, "C", "A"),

@@ -1,6 +1,5 @@
 # Import dependencies
 
-import itertools
 import logging
 
 import numpy as np
@@ -10,6 +9,7 @@ from Bio.Seq import Seq
 from nmd_scanner import catch_sequence
 from nmd_scanner._polars_bio import pb
 from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table
+from nmd_scanner.variant_placement import ReferenceSequence, place_in_transcript, variant_placements
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,12 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
-             It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has zero rows if no
-             variant overlaps a CDS, or every variant is skipped or has a reference mismatch.
+             It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has one row per
+             variant and transcript where the variant touches the coding region or the splice dinucleotide at one
+             of its exon edges, also through an equivalent placement of an indel (see
+             ``variant_placement.place_in_transcript``). If the alt transcript is unknown, unknown_reason names why,
+             and the alt columns are null. It has zero rows if no variant touches a coding region, or every variant
+             is skipped or has a reference mismatch.
     :raises ValueError: if cds_df has no has_stop_codon column, i.e. it does not hold the coding regions.
     """
 
@@ -51,8 +55,16 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # The variant application below cannot apply a structural variant
     vcf = drop_symbolic_alleles(vcf)
 
-    # Intersect variants with CDS regions
-    intersection_cds_vcf = join_variants_to_cds(cds_df_adj, vcf)
+    # Join the variants with the coding regions and the splice dinucleotides at their exon edges
+    references = {}
+
+    def reference(chromosome):
+        if chromosome not in references:
+            references[chromosome] = ReferenceSequence(fasta, chromosome)
+        return references[chromosome]
+
+    variants, placements = place_variants(vcf, set(cds_df_adj["Chromosome"]), reference)
+    intersection_cds_vcf = join_variant_windows(cds_df_adj, variants)
     logger.info("Joining variants with cds entries: done.")
 
     # Nothing to analyze: the steps below need at least one row
@@ -70,19 +82,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     #   lambda seq: str(Seq(seq).reverse_complement()))
     ##########################################################################################
 
-    # Fetch reference CDS sequence for each variant region
-    logger.info("Begin creating exon CDS sequence.")
-    intersection_cds_vcf = catch_sequence.add_exon_cds_sequence(intersection_cds_vcf, fasta)  # for faster access
-    logger.info("Creating exon CDS sequence: done.")
-
-    # Apply variant to CDS and compute alternative CDS sequence and lengths
-    intersection_cds_vcf[["Exon_CDS_length", "Exon_Alt_CDS_seq", "Exon_Alt_CDS_length"]] = intersection_cds_vcf.apply(
-        apply_variant_edge_aware_with_lengths, axis=1
-    )
-    logger.info("Creating exon CDS and alt CDS sequence: done.")
-
     # Filter out Variants with a reference mismatch
-    mismatched_rows = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].isna()]
+    mismatched_rows = intersection_cds_vcf[~intersection_cds_vcf["Ref_matches"]].drop_duplicates(
+        ["transcript_id", "variant_row"]
+    )
     if not mismatched_rows.empty:
         logger.warning("Skipping %d variant-transcript pairs due to reference mismatches.", len(mismatched_rows))
         logger.warning(
@@ -91,10 +94,18 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                 index=False
             ),
         )
-    intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].notna()].copy()
+    intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Ref_matches"]].copy()
 
     if intersection_cds_vcf.empty:
         logger.info("No variant left after the reference check; there are no results to compute.")
+        return empty_table(PTC_COLUMN_KINDS)
+
+    # Apply each variant to the coding rows of each transcript, or find why its alt transcript is unknown
+    intersection_cds_vcf = apply_variants(intersection_cds_vcf, placements, cds_df_adj, exons_df, reference)
+    logger.info("Creating alt CDS sequence: done.")
+
+    if intersection_cds_vcf.empty:
+        logger.info("No variant changed a CDS or its splice sites; there are no results to compute.")
         return empty_table(PTC_COLUMN_KINDS)
 
     # Limit to relevant transcript (to save time)
@@ -160,8 +171,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     loss_df["transcript_seq"] = loss_df["transcript_id"].map(transcript_sequences)
     transcript_lengths = exon_seqs.set_index("transcript_id")["transcript_length"].to_dict()
     loss_df["transcript_length"] = loss_df["transcript_id"].map(transcript_lengths)
-    # The variant changes only the CDS and the 3'UTR, so the alt CDS starts at the same position in the alt transcript.
-    # Object dtype keeps the positions as int next to None.
+    # The alt transcript takes the change of the CDS and the 3'UTR only, so the alt CDS starts at the same position in
+    # the alt transcript. Object dtype keeps the positions as int next to None.
     loss_df[["cds_start_in_transcript", "cds_end_in_transcript"]] = pd.DataFrame(
         [cds_ranges.get(transcript_id) or (None, None) for transcript_id in loss_df["transcript_id"]],
         index=loss_df.index,
@@ -169,20 +180,25 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         dtype=object,
     )
 
-    # Add exon information to dataframe. splice_alt_cds_into_transcript reads it.
+    # Add exon information to dataframe
     transcript_exon_info = exon_seqs.set_index("transcript_id")["transcript_exon_info"].to_dict()
     loss_df["transcript_exon_info"] = loss_df["transcript_id"].map(transcript_exon_info)
 
     # Splice alternative CDS into reference transcript sequence to create alternative transcript sequence and measure new length
     loss_df["alt_transcript_seq"] = loss_df.apply(
         lambda row: (
-            splice_alt_cds_into_transcript(row, row["transcript_seq"]) if pd.notnull(row["transcript_seq"]) else None
+            splice_alt_cds_into_transcript(row, row["transcript_seq"])
+            if pd.notnull(row["transcript_seq"]) and pd.notnull(row["alt_cds_seq"])
+            else None
         ),
         axis=1,
     )
-    loss_df["alt_transcript_length"] = loss_df["alt_transcript_seq"].apply(
-        lambda x: len(x) if pd.notnull(x) else None
-    )  # fmt: skip
+    loss_df["alt_transcript_length"] = pd.Series(
+        [len(seq) if isinstance(seq, str) else None for seq in loss_df["alt_transcript_seq"]],
+        index=loss_df.index,
+        dtype=object,
+    )
+    loss_df = loss_df.drop(columns="utr3_change")
 
     # Classify the first in-frame stop codon of the alternative transcript, and analyze the transcript sequence
     # (e.g., frame, length, stop codon position, etc.) in case of start or stop loss
@@ -283,126 +299,145 @@ def join_variants_to_cds(cds_df, vcf):
     return cds_rows.join(variant_rows, rsuffix="_variant")
 
 
-def apply_variant_edge_aware_with_lengths(row):
+def place_variants(vcf, chromosomes, reference):
     """
-    Applies a variant to a CDS exon sequence, taking into account not only SNVs but also partial overlaps at exon
-    boundaries and computing the alternative sequence.
+    Finds the equivalent placements of each variant on the given chromosomes, and checks its whole REF against the
+    reference genome.
 
-    :param row: A single row from the DataFrame (A pandas.Series) containing among others CDS Start and End, Variant
-                Start and End, Ref, Alt, Exon_CDS_seq (Original CDS sequence as string)
-    :return: The input pandas.Series with additional information:
-             Exon_CDS_length (length of the original CDS),
-             Exon_Alt_CDS_seq (alternative CDS after applying the variant / None if invalid),
-             Exon_Alt_CDS_length (length of the alternative CDS / None if invalid).
+    :param vcf: Variants (DataFrame) with Chromosome, Start, End, Ref and Alt, as ``scan.read_vcf`` returns them
+    :param chromosomes: Chromosomes to keep, e.g. those with a coding region
+    :param reference: Function that returns the ReferenceSequence of a chromosome
+    :return: Tuple (variants, placements). variants holds the kept rows plus variant_row (a key into placements),
+             Window_Start and Window_End (the union of the placements) and Ref_matches. Variants whose REF equals
+             their ALT are dropped. placements maps variant_row to the list of Placement.
     """
 
-    cds_seq = list(row["Exon_CDS_seq"])
-    ref = row["Ref"]
-    alt = row["Alt"]
-    cds_start = int(row["Start"])
-    cds_end = int(row["End"])
-    var_start = int(row["Start_variant"])
-    var_end = int(row["End_variant"])
-
-    # extract_ptc skips symbolic alleles (drop_symbolic_alleles), so only a direct call reaches the two branches below.
-    # Special handling for deletions (Ref = N and Alt = <DEL>)
-    if ref == "N" and alt == "<DEL>":
-        # Clip deletion to the CDS region (only remove overlap part)
-
-        # Determine the overlap between variant and this CDS region
-        overlap_start = max(var_start, cds_start)
-        overlap_end = min(var_end, cds_end)
-
-        # If there is no overlap between the variant and this CDS region
-        if overlap_start >= overlap_end:
-            return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
-
-        cds_index_start = overlap_start - cds_start
-        cds_index_end = overlap_end - cds_start
-
-        alt_seq = []
-        alt_seq.extend(cds_seq[:cds_index_start])  # keep sequence before deletion
-        alt_seq.extend(cds_seq[cds_index_end:])  # keep sequence after deletion
-
-        return pd.Series(
-            {"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": "".join(alt_seq), "Exon_Alt_CDS_length": len(alt_seq)}
+    variants = vcf[vcf["Chromosome"].isin(chromosomes)].reset_index(drop=True)
+    variants["variant_row"] = variants.index
+    placements = {}
+    windows = []
+    ref_matches = []
+    for row, chromosome, start, end, ref, alt in zip(
+        variants.index, variants["Chromosome"], variants["Start"], variants["End"], variants["Ref"], variants["Alt"]
+    ):
+        chromosome_reference = reference(chromosome)
+        placements[row] = variant_placements(int(start), str(ref), str(alt), chromosome_reference)
+        windows.append(
+            (min(p.start for p in placements[row]), max(p.end for p in placements[row])) if placements[row] else (0, 0)
         )
+        ref_matches.append(chromosome_reference.bases(int(start), int(end)) == str(ref).upper())
 
-    # Special handling for duplications (Ref = N and Alt = <DUP>)
-    if ref == "N" and alt == "<DUP>":
-        # Determine the overlap between variant and this CDS region
-        overlap_start = max(var_start, cds_start)
-        overlap_end = min(var_end, cds_end)
+    variants["Window_Start"] = pd.Series([start for start, _ in windows], index=variants.index, dtype="int64")
+    variants["Window_End"] = pd.Series([end for _, end in windows], index=variants.index, dtype="int64")
+    variants["Ref_matches"] = pd.Series(ref_matches, index=variants.index, dtype=bool)
+    has_placements = pd.Series([bool(placements[row]) for row in variants.index], index=variants.index, dtype=bool)
+    return variants[has_placements], placements
 
-        # If there is no overlap between the variant and this CDS region
-        if overlap_start >= overlap_end:
-            return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
 
-        cds_index_start = overlap_start - cds_start
-        cds_index_end = overlap_end - cds_start
+def join_variant_windows(cds_df, variants):
+    """
+    Joins the coding rows with the variant windows that come within 3 bases of them. This finds every coding row
+    that a variant can change, also through a splice dinucleotide or an insertion next to it.
 
-        alt_seq = []
-        alt_seq.extend(cds_seq[:cds_index_start])  # sequence up to the end of the overlap
-        alt_seq.extend(cds_seq[cds_index_start:cds_index_end])  # overlap-region (original, in CDS)
-        alt_seq.extend(cds_seq[cds_index_start:cds_index_end])  # duplicate the overlapped region
-        alt_seq.extend(cds_seq[cds_index_end:])  # keep sequence after duplication
+    :param cds_df: Coding rows (DataFrame): CDS rows that include the stop codon
+    :param variants: Variants with Window_Start and Window_End (place_variants)
+    :return: DataFrame with one row per coding row and variant, as ``join_variants_to_cds`` returns it: the coding
+             row columns, then the variant columns. Start_variant and End_variant hold the VCF interval of the
+             variant.
+    """
 
-        return pd.Series(
-            {"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": "".join(alt_seq), "Exon_Alt_CDS_length": len(alt_seq)}
-        )
-
-    # Determine the overlap between variant and this CDS region
-    overlap_start = max(var_start, cds_start)
-    overlap_end = min(var_end, cds_end)
-
-    # If there is no overlap between the variant and this CDS region
-    if overlap_start >= overlap_end:
-        return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
-
-    # Position of overlap within the CDS
-    cds_index = overlap_start - cds_start
-    overlap_len = overlap_end - overlap_start
-
-    # Offset of the overlapping region within the variant
-    ref_offset = overlap_start - var_start
-    ref_in_cds = ref[ref_offset : ref_offset + overlap_len]
-    alt_in_cds = alt[ref_offset : ref_offset + overlap_len]
-
-    # Determine if there’s leftover alt outside CDS (insertions at end)
-    extra_alt = ""
-    if len(alt) > len(ref):
-        # Limit extra_alt to what corresponds to CDS overlap
-        extra_start = ref_offset + overlap_len
-        if var_end > cds_end:
-            # Only include alt bases that map to CDS
-            remaining_cds_len = cds_end - overlap_end
-            extra_alt = alt[extra_start : extra_start + remaining_cds_len]
-        else:
-            extra_alt = alt[extra_start:]
-
-    # Confirm that the reference matches
-    cds_ref_part = "".join(cds_seq[cds_index : cds_index + overlap_len])
-    if cds_ref_part != ref_in_cds.upper():  # reference mismatch
-        return pd.Series({"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": None, "Exon_Alt_CDS_length": None})
-
-    # Build alternative sequence
-    alt_seq = []
-    alt_seq.extend(cds_seq[:cds_index])  # Copy the CDS up to the variant position
-
-    if len(ref) == len(alt):  # Substitution
-        alt_seq.extend(list(alt_in_cds))
-    elif len(alt) > len(ref):  # Insertion
-        alt_seq.extend(list(alt_in_cds))
-        alt_seq.extend(list(extra_alt))
-    elif len(ref) > len(alt):  # Deletion
-        alt_seq.extend(list(alt_in_cds))
-
-    # Add remaining CDS sequence after variant
-    alt_seq.extend(cds_seq[cds_index + overlap_len :])
-
-    return pd.Series(
-        {"Exon_CDS_length": len(cds_seq), "Exon_Alt_CDS_seq": "".join(alt_seq), "Exon_Alt_CDS_length": len(alt_seq)}
+    coding = cds_df.assign(
+        Coding_Start=cds_df["Start"],
+        Coding_End=cds_df["End"],
+        Start=(cds_df["Start"] - 2).clip(lower=0),
+        End=cds_df["End"] + 2,
     )
+    windows = variants.assign(
+        VCF_Start=variants["Start"],
+        VCF_End=variants["End"],
+        Start=(variants["Window_Start"] - 1).clip(lower=0),
+        End=variants["Window_End"] + 1,
+    )
+    joined = join_variants_to_cds(coding, windows)
+    joined["Start"], joined["End"] = joined.pop("Coding_Start"), joined.pop("Coding_End")
+    joined["Start_variant"], joined["End_variant"] = joined.pop("VCF_Start"), joined.pop("VCF_End")
+    return joined
+
+
+def apply_variants(intersection_cds_vcf, placements, cds_df, exons_df, reference):
+    """
+    Applies each variant to the coding rows of each transcript it joined (see place_in_transcript).
+
+    :param intersection_cds_vcf: Coding rows joined with variants (join_variant_windows)
+    :param placements: Placements per variant_row (place_variants)
+    :param cds_df: All coding rows; they give the edges of each coding region
+    :param exons_df: Exon rows of the annotation (DataFrame with transcript_id, Start, End)
+    :param reference: Function that returns the ReferenceSequence of a chromosome
+    :return: The rows of the variant-transcript pairs that touch a coding region or its splice dinucleotides, plus
+             Exon_Alt_CDS_seq (alt bases of the coding row; None if the alt transcript is unknown), UTR3_Ref and
+             UTR3_Alt (the 3'UTR change of the pair, see TranscriptEffect) and unknown_reason (None if the alt
+             transcript is known)
+    """
+
+    exons_by_transcript = {
+        transcript_id: list(zip(group["Start"].astype(int), group["End"].astype(int)))
+        for transcript_id, group in exons_df[
+            exons_df["transcript_id"].isin(intersection_cds_vcf["transcript_id"])
+        ].groupby("transcript_id", observed=True)
+    }
+
+    # Start and end of each whole coding region
+    coding = cds_df[cds_df["transcript_id"].isin(intersection_cds_vcf["transcript_id"])]
+    coding_regions = {
+        transcript_id: (int(group["Start"].min()), int(group["End"].max()))
+        for transcript_id, group in coding.groupby("transcript_id", observed=True)
+    }
+
+    # The loop collects the results per row position in lists. Setting cells of the DataFrame in the loop is slow.
+    df = intersection_cds_vcf.reset_index(drop=True)
+    starts = df["Start"].to_numpy(dtype="int64")
+    ends = df["End"].to_numpy(dtype="int64")
+    chromosomes = df["Chromosome"].astype(str).to_numpy()
+    strands = df["Strand"].astype(str).to_numpy()
+    keep = np.zeros(len(df), dtype=bool)
+    alt_coding = [None] * len(df)
+    utr3 = [("", "")] * len(df)
+    unknown_reasons = [None] * len(df)
+    for (transcript_id, variant_row), positions in df.groupby(
+        ["transcript_id", "variant_row"], observed=True
+    ).indices.items():
+        coding_rows = [(int(starts[i]), int(ends[i])) for i in positions]
+        effect = place_in_transcript(
+            placements[variant_row],
+            coding_rows,
+            exons_by_transcript.get(transcript_id, []),
+            reference(chromosomes[positions[0]]),
+            strands[positions[0]],
+            coding_regions[transcript_id],
+        )
+        if effect is None:
+            continue
+        for i, coding_row in zip(positions, coding_rows):
+            keep[i] = True
+            if effect.unknown_reason is not None:
+                unknown_reasons[i] = effect.unknown_reason
+            else:
+                alt_coding[i] = effect.alt_coding[coding_row]
+                utr3[i] = effect.utr3
+
+    df["Exon_Alt_CDS_seq"] = pd.Series(alt_coding, index=df.index, dtype=object)
+    df["UTR3_Ref"] = pd.Series([ref for ref, _ in utr3], index=df.index, dtype=object)
+    df["UTR3_Alt"] = pd.Series([alt for _, alt in utr3], index=df.index, dtype=object)
+    df["unknown_reason"] = pd.Series(unknown_reasons, index=df.index, dtype=object)
+    df = df[keep].copy()
+    reasons = df.drop_duplicates(["transcript_id", "variant_row"])["unknown_reason"].value_counts()
+    if not reasons.empty:
+        logger.warning(
+            "%d variant-transcript pairs get no prediction because their alt transcript is unknown: %s",
+            reasons.sum(),
+            ", ".join(f"{count} {reason}" for reason, count in reasons.items()),
+        )
+    return df
 
 
 def create_reference_cds(intersection_cds_vcf, cds_df_test):
@@ -410,11 +445,14 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     Constructs the whole CDS sequence (multiple exons) for transcripts affected by a variant, both in their reference
     and alternative form.
     :param intersection_cds_vcf: DataFrame containing variant-CDS intersection and corresponding alternative CDS sequences
-                                 includes: transcript_id, Exon_CDS_seq + length, Exon_ALT_CDS_seq + length
+                                 includes: transcript_id, exon_number, Exon_Alt_CDS_seq, and optionally
+                                 the UTR change columns and unknown_reason (see apply_variants)
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
                         includes: transcript_id, exon_number, Start, End, Strand, Exon_CDS_seq, has_stop_codon
     :return: DataFrame with one row per variant-transcript pair, containing full reference and alternative CDS + lengths,
-             exon-wise CDS information as tuple (exon number, exon-wise CDS length), and has_stop_codon
+             exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_stop_codon, utr3_change
+             (tuple (ref, alt), see TranscriptEffect) and unknown_reason. A pair with unknown_reason has None in the
+             alt columns.
     """
 
     results = []
@@ -440,6 +478,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
         # Get strand info (all should be the same within transcript)
         strand = ref_exons["Strand"].iloc[0]
+        ref_seq_final = str(Seq(ref_seq).reverse_complement()) if strand == "-" else ref_seq
         # whether the coding region ends in an annotated stop codon (same within transcript)
         has_stop_codon = bool(ref_exons["has_stop_codon"].iloc[0])
 
@@ -451,6 +490,37 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             chromosome, start_variant, end_variant, ref_allele, alt_allele = variant
             variant_id = cds_df["ID"].iloc[0]
             gene_id = cds_df["gene_id"].iloc[0]
+
+            # An unknown alt transcript gives a row without alt CDS
+            unknown_reason = cds_df["unknown_reason"].iloc[0] if "unknown_reason" in cds_df else None
+            if isinstance(unknown_reason, str):
+                results.append(
+                    {
+                        "transcript_id": transcript_id,
+                        "variant_id": variant_id,
+                        "ref_cds_start": ref_cds_start,
+                        "ref_cds_stop": ref_cds_stop,
+                        "ref_cds_seq": ref_seq_final,
+                        "ref_cds_len": len(ref_seq_final),
+                        "alt_cds_start": None,
+                        "alt_cds_stop": None,
+                        "alt_cds_seq": None,
+                        "alt_cds_len": None,
+                        "chromosome": chromosome,
+                        "gene_id": gene_id,
+                        "strand": strand,
+                        "has_stop_codon": has_stop_codon,
+                        "ref": ref_allele,
+                        "alt": alt_allele,
+                        "start_variant": start_variant,
+                        "end_variant": end_variant,
+                        "ref_cds_info": ref_cds_info,
+                        "alt_cds_info": None,
+                        "utr3_change": ("", ""),
+                        "unknown_reason": unknown_reason,
+                    }
+                )
+                continue
 
             # Sort variant exons
             cds_df = cds_df.sort_values("Start")
@@ -477,12 +547,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             alt_seq = "".join(alt_exons["Exon_CDS_seq"].tolist())
 
             # Apply reverse complement if on minus strand
-            if strand == "-":
-                ref_seq_final = str(Seq(ref_seq).reverse_complement())
-                alt_seq_final = str(Seq(alt_seq).reverse_complement())
-            else:
-                ref_seq_final = ref_seq
-                alt_seq_final = alt_seq
+            alt_seq_final = str(Seq(alt_seq).reverse_complement()) if strand == "-" else alt_seq
 
             # Append to results
             results.append(
@@ -507,11 +572,31 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                     "end_variant": end_variant,
                     "ref_cds_info": ref_cds_info,
                     "alt_cds_info": alt_cds_info,
+                    "utr3_change": utr_change(cds_df, "UTR3"),
+                    "unknown_reason": None,
                 }
             )
 
     results_df = pd.DataFrame(results)
+    # Object dtype keeps the alt positions and lengths as int next to the None of an unknown alt transcript
+    for column in ["alt_cds_start", "alt_cds_stop", "alt_cds_len"]:
+        if column in results_df:
+            results_df[column] = pd.Series([result[column] for result in results], index=results_df.index, dtype=object)
     return results_df
+
+
+def utr_change(cds_df, utr):
+    """
+    The UTR change (ref, alt) of a variant-transcript pair, from the columns that apply_variants adds; both empty
+    without them.
+
+    :param cds_df: The coding rows of the pair
+    :param utr: "UTR3"
+    """
+
+    if f"{utr}_Ref" not in cds_df:
+        return "", ""
+    return cds_df[f"{utr}_Ref"].iloc[0], cds_df[f"{utr}_Alt"].iloc[0]
 
 
 def get_transcript_sequence(exons_df, fasta):
@@ -734,49 +819,27 @@ def start_stop_loss(df):
     # codon to lose.
     df["stop_loss"] = (df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)
 
+    # Without an alt CDS (unknown alt transcript), start and stop loss are unknown too
+    if "unknown_reason" in df:
+        unknown = df["unknown_reason"].notna()
+        for column in ["start_loss", "stop_loss"]:
+            df[column] = df[column].astype(object).where(~unknown, None)
+
     return df
-
-
-def variant_part_in_utr3(row):
-    """
-    Return the part of the variant that lies past the 3' end of the coding region, in the 3'UTR, as (ref, alt) in
-    transcript orientation. Both are empty if the variant ends inside the coding region.
-
-    apply_variant_edge_aware_with_lengths applies only the part inside the coding region: there, the alt allele
-    replaces the ref bases position by position. The 3'UTR part gets the remaining alt bases. On the plus strand, the
-    3'UTR follows the coding region in genomic order; on the minus strand, it precedes it.
-
-    :param row: A pd.Series row containing strand, start_variant, end_variant, ref and alt (VCF alleles, plus strand),
-                and ref_cds_start and ref_cds_stop (genomic bounds of the coding region)
-    :return: Tuple (ref, alt) of the 3'UTR part in transcript orientation
-    """
-
-    ref, alt = str(row["ref"]).upper(), str(row["alt"]).upper()
-
-    if row["strand"] == "+":
-        utr3_length = row["end_variant"] - row["ref_cds_stop"]
-        if utr3_length <= 0:
-            return "", ""
-        cds_length = len(ref) - utr3_length
-        return ref[cds_length:], alt[cds_length:]
-
-    utr3_length = row["ref_cds_start"] - row["start_variant"]
-    if utr3_length <= 0:
-        return "", ""
-    return str(Seq(ref[:utr3_length]).reverse_complement()), str(Seq(alt[:utr3_length]).reverse_complement())
 
 
 def splice_alt_cds_into_transcript(row, transcript_seq):
     """
     Splice the alternative CDS sequence into the full transcript sequence to create the alternative transcript.
-    A variant that reaches past the coding region into the 3'UTR changes the 3'UTR, too.
+    A variant can change the 3'UTR next to the coding region, too: utr3_change replaces the ref 3'UTR bases right
+    after it.
     :param row: A pd.Series row containing "ref_cds_seq" (Reference CDS), "alt_cds_seq" (Alternative / Variant-modified CDS),
-                "cds_start_in_transcript" and "cds_end_in_transcript" (from cds_range_in_transcript), "transcript_exon_info",
-                and the variant columns that variant_part_in_utr3 reads
+                "cds_start_in_transcript" and "cds_end_in_transcript" (from cds_range_in_transcript), and optionally
+                utr3_change (tuple (ref, alt) in transcript orientation, see create_reference_cds)
     :param transcript_seq: Full transcript sequence
     :return: Modified (alternative) transcript sequence with the alternative CDS spliced in the correct position,
-             or None if the CDS position is unknown, the transcript does not hold the ref CDS or the ref allele there,
-             or the variant reaches past the end of the exon
+             or None if the CDS position is unknown, or the transcript does not hold the ref CDS or the ref 3'UTR
+             bases there
     """
 
     ref_cds_seq = row["ref_cds_seq"].upper()
@@ -787,14 +850,10 @@ def splice_alt_cds_into_transcript(row, transcript_seq):
     if ref_start_idx is None or transcript_seq[ref_start_idx:ref_end_idx] != ref_cds_seq:
         return None  # Cannot find ref CDS, alignment problem
 
-    utr3_ref, utr3_alt = variant_part_in_utr3(row)
+    utr3_ref, utr3_alt = row.get("utr3_change", ("", ""))
     utr3_end = ref_end_idx + len(utr3_ref)
-    if utr3_ref:
-        # The part of the variant in the 3'UTR must lie in the exon that holds the end of the coding region
-        exon_ends = itertools.accumulate(int(length) for _, length in row["transcript_exon_info"])
-        exon_end = next(end for end in exon_ends if end >= ref_end_idx)
-        if transcript_seq[ref_end_idx:utr3_end] != utr3_ref or utr3_end > exon_end:
-            return None  # ref allele mismatch, or the variant reaches past the end of the exon
+    if transcript_seq[ref_end_idx:utr3_end] != utr3_ref:
+        return None  # the transcript does not hold the ref 3'UTR bases
 
     # Replace the reference CDS with the variant-modified / alternative one
     new_transcript_seq = (
@@ -985,8 +1044,8 @@ def analyze_transcript(results_df):
 
     for idx, row in df.iterrows():
         seq = row["alt_transcript_seq"]
-        # The variant changes only the CDS and the 3'UTR, so the alt CDS starts at the same transcript position as
-        # the ref CDS.
+        # The alt transcript takes the change of the CDS and the 3'UTR only, so the alt CDS starts at the same
+        # transcript position as the ref CDS.
         cds_start = row["cds_start_in_transcript"]
 
         exon_info = row["transcript_exon_info"]  # for exon number
