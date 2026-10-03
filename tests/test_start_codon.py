@@ -1,5 +1,6 @@
 """
-Tests of the start codon and of start loss, through annotate() on one synthetic transcript and a GFF3 file.
+Tests of the reading frame, the start codon and start loss, through annotate() on one synthetic transcript and a GFF3
+file.
 
 The transcript drawings show a transcript 5' to 3' and are not to scale. `u` is UTR, `=` is CDS, `[...]` is an exon,
 `|` between two exons is an exon junction, and `x` marks the changed bases. The numbers under a transcript are
@@ -189,5 +190,93 @@ def test_lost_internal_atg_is_no_start_loss(tmp_path, strand):
             "alt_is_premature": False,
             "transcript_start_codon_pos": None,
             "transcript_first_stop_pos": None,
+        },
+    )
+
+
+@pytest.mark.parametrize("frame", [0, 1, 2])
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        (
+            (5, "C", "T"),
+            {"alt_is_premature": False, "alt_first_stop_pos": 15, "alt_all_stop_codons": [(15, "TAA")], "distance": 0},
+        ),
+        (
+            (12, "C", "T"),
+            {
+                "alt_is_premature": True,
+                "alt_first_stop_pos": 9,
+                "alt_all_stop_codons": [(9, "TAA"), (15, "TAA")],
+                "distance": 6,
+            },
+        ),
+    ],
+    ids=["out_of_frame_stop", "in_frame_stop"],
+)
+def test_codon_scan_starts_at_the_first_complete_codon(tmp_path, strand, frame, variant, expected):
+    """
+    The CDS of a cds_start_NF transcript starts with `frame` bases (`f`) that belong to no complete codon: the GFF3
+    phase of its CDS row. The codons TGC AAA CCC CAA GGC and the stop codon TAA follow. The drawing shows frame 1, with
+    the first complete codon at t4. TGC>TGT at t6 (`a`) puts a TAA out of frame. CAA>TAA at t13 (`b`) is an in-frame
+    PTC. The positions in the test are those of frame 0, shifted by `frame`.
+
+          8 nt           19 nt
+    5' [uuuf==a=]|[=====b=====sssuuuuu] 3'
+    tx  0  3       8    13    19      27
+    """
+    cds = "AC"[:frame] + "TGCAAACCCCAAGGC"
+    exons = ["GGG" + cds[:5], cds[5:] + "TAA" + "GGGGG"]
+    tx = SyntheticTranscript(tmp_path, strand, exons, 3, 3 + len(cds), frame=frame, start_codon=False)
+    position, ref, alt = variant
+
+    row = tx.run(position + frame, ref, alt)
+
+    _assert_values(
+        row,
+        {
+            "cds_frame": frame,
+            "ref_start_codon_pos": None,
+            "ref_all_stop_codons": [(15 + frame, "TAA")],
+            "alt_first_stop_pos": expected["alt_first_stop_pos"] + frame,
+            "alt_all_stop_codons": [(pos + frame, codon) for pos, codon in expected["alt_all_stop_codons"]],
+            "alt_is_premature": expected["alt_is_premature"],
+            "start_loss": False,
+            "stop_loss": False,
+            "stop_codon_distance": expected["distance"],
+        },
+    )
+
+
+def test_stop_loss_reads_through_the_3utr_in_the_cds_frame(tmp_path, strand):
+    """
+    The CDS of a cds_start_NF transcript has phase 1: its first base A belongs to no complete codon (`f`). The codons
+    TGC AAA CCC and the stop codon TAA (`x`) follow, from t4. TAA>CAA at t13 loses the stop codon. The scan reads on in
+    the frame of t4, to the TGA at t25 (`s`) in the 3' UTR. Read from t3, the alt transcript has no stop codon.
+
+          8 nt              22 nt
+    5' [uuuf====]|[=====xxxuuuuuuuuusssuu] 3'
+    tx  0  3       8    13 16       25   30
+    """
+    cds = "ATGCAAACCC"
+    exons = ["GGG" + cds[:5], cds[5:] + "TAA" + "GGGCCCGGGTGACC"]
+    tx = SyntheticTranscript(tmp_path, strand, exons, 3, 13, frame=1, start_codon=False)
+
+    row = tx.run(13, "T", "C")
+
+    _assert_values(
+        row,
+        {
+            "cds_frame": 1,
+            "ref_start_codon_pos": None,
+            "alt_first_stop_pos": None,
+            "alt_is_premature": False,
+            "start_loss": False,
+            "stop_loss": True,
+            "transcript_start_codon_pos": None,
+            "transcript_first_stop_codon": "TGA",
+            "transcript_first_stop_pos": 25,
+            "transcript_all_stop_codons": [(25, "TGA")],
+            "stop_codon_distance": -12,
         },
     )

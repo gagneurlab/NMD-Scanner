@@ -38,6 +38,7 @@ PTC_COLUMN_KINDS = {
     "gene_id": "string",
     "strand": "string",
     "has_stop_codon": "bool",
+    "cds_frame": "int",
     "ref": "string",
     "alt": "string",
     "start_variant": "int",

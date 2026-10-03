@@ -17,6 +17,7 @@ Summary of the NMD-Scanner Script:
         1. Get full reference CDS per transcript by stitching exon CDS regions together plus length
         2. Get full alternative CDS with length
         3. get CDS exon information (exon number, CDS exon length) for ref and alt
+        4. take the GFF3 phase (column Frame) of the 5'-most CDS row as cds_frame, the start of the first complete codon
     10. Get whole transcript sequences plus information of relevant transcripts —> get_transcript_sequence()
     11. Validate that the CDS sequence we generated before is present inside the transcript sequence generated in step 10, to make sure the transcript sequence was computed correctly
     12. Analyze reference and alternative CDS for start and stop codons, their positions, and potential premature termination codons (PTCs) —> analyze_sequence()
@@ -26,7 +27,7 @@ Summary of the NMD-Scanner Script:
         2. create alternative transcript sequence + length by exchanging the reference CDS by the alternative CDS, and the UTR bases next to it that the variant changes -> splice_alt_cds_into_transcript()
         3. Add transcript exon information to the dataframe
         4. Analyze the transcript sequence for length, start / stop codon positions, etc., basically same analysis as we did for reference and alternative CDS sequence in step 12) —> analyze_transcript()
-        5. For every row, classify the first in-frame stop codon of the alternative transcript, read from the CDS start into the 3' UTR -> analyze_transcript(). The result replaces alt_is_premature and stop_loss of steps 12 and 13, before the scan of step 4 reads stop_loss. The section "Stop codon classification" below gives the cases.
+        5. For every row, classify the first in-frame stop codon of the alternative transcript, read from the first complete codon of the CDS into the 3' UTR -> analyze_transcript(). The result replaces alt_is_premature and stop_loss of steps 12 and 13, before the scan of step 4 reads stop_loss. The section "Stop codon classification" below gives the cases.
     15. Return to cli.py and call evaluate_nmd_escape_rules(): Evaluates whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on established biological rules. This function applies five NMD escape rules to determine if a premature termination codon (PTC) is likely to escape degradation. Returns dictionary
     16. Join Dictionary containing NMD rules with results from extract_ptc() and save output
     17. Compute some additional features such as UTR lengths, total / downstream / upstream exon count, and other positional information of the PTC —> extra_features.py : add_nmd_features()
@@ -54,7 +55,7 @@ final_nmd_results.csv: File with all features, saved in step 18
 
 Each row of the result is one variant in one transcript whose coding region the variant touches. The coding region is the CDS plus the stop codon. A variant touches it if one of its placements changes a base of the coding region, or of a splice dinucleotide at one of its exon edges (see [Variants at exon boundaries](#variants-at-exon-boundaries)). A variant gives no row if it touches no coding region, or if its ALT is a symbolic allele or a breakend (`rules.drop_symbolic_alleles`). It gives no row either if its REF does not match the reference genome.
 
-The tables below list the 80 columns in output order, as `OUTPUT_COLUMN_KINDS` in `nmd_scanner.schema` does. There is one table for each of its three parts: the PTC columns, the NMD features and the NMD rules.
+The tables below list the 81 columns in output order, as `OUTPUT_COLUMN_KINDS` in `nmd_scanner.schema` does. There is one table for each of its three parts: the PTC columns, the NMD features and the NMD rules.
 
 ### Kinds and dtypes
 
@@ -75,7 +76,7 @@ A null is pd.NA in an int, bool or string column. In a list column, it is None o
 
 - Genomic positions are 0-based half-open: a start is the first base, and an end is the base after the last one. They do not depend on the strand, so on the minus strand a start is the 3' end.
 - CDS positions count from the 5' base of the ref or alt CDS, which is position 0. Transcript positions count the same way from the 5' base of the transcript sequence. Both run 5' to 3', also on the minus strand.
-- In the codon scan of a CDS, in-frame means in the frame of CDS position 0. The scan ignores the GFF3 phase. So a `cds_start_NF` transcript whose 5' CDS row has phase 1 or 2 is read in the wrong frame.
+- In-frame means in the frame of the first complete codon of the CDS, at CDS position `cds_frame`. `cds_frame` is the GFF3 phase of the 5'-most CDS row. It is 1 or 2 only for a CDS that lacks its 5' end, e.g. of a `cds_start_NF` transcript, whose first 1 or 2 bases belong to no complete codon. Every codon scan starts at the first complete codon: the scan of the ref and the alt CDS, the stop codon classification, and the scan of the alt transcript.
 - The start codon (`ref_start_codon_pos`, `alt_start_codon_pos`) is the first in-frame ATG anywhere in the CDS. It lies at CDS position 0 only if the CDS starts with ATG. A `cds_start_NF` transcript often has its first in-frame ATG further downstream. For the rows of such a transcript, `ptc_to_start_codon` and `nmd_start_proximal_rule` are measured from that downstream ATG, and `likely_misannotated` is True.
 - The codon scans know only the stop codons TAA, TAG and TGA, also on the mitochondrial chromosome.
 - A PTC row is a row with `alt_is_premature` True. Its PTC is the first in-frame stop codon of the alt CDS, at `alt_first_stop_pos`. The PTC exon is the exon that holds the PTC.
@@ -101,7 +102,7 @@ An unknown alt transcript has no alt CDS. Its row is null in the alt CDS columns
 
 ### Stop codon classification
 
-`alt_is_premature` and `stop_loss` come from the first in-frame stop codon of `alt_transcript_seq`, read from `alt_cds_start_in_transcript` through the CDS into the 3' UTR (`rules.analyze_transcript`). The codon scan of the alt CDS misses this stop codon after a frameshift: the last 3 nt of the alt CDS are then out of frame, and the stop codon can lie in the 3' UTR. The first stop codon is compared with the annotated stop codon, both at their positions in `alt_transcript_seq`:
+`alt_is_premature` and `stop_loss` come from the first in-frame stop codon of `alt_transcript_seq`, read from the first complete codon of the alt CDS, at `alt_cds_start_in_transcript` + `cds_frame`, through the CDS into the 3' UTR (`rules.analyze_transcript`). The codon scan of the alt CDS misses this stop codon after a frameshift: the last 3 nt of the alt CDS are then out of frame, and the stop codon can lie in the 3' UTR. The first stop codon is compared with the annotated stop codon, both at their positions in `alt_transcript_seq`:
 
 - Upstream of the annotated stop codon: a PTC. `alt_is_premature` is True, and `stop_loss` is False.
 - At the annotated stop codon: neither. Both are False. An insertion inside the stop codon, e.g. TAA>TGAA, is such a case.
@@ -114,13 +115,13 @@ Without an annotated stop codon (`has_stop_codon` False), a first stop codon ins
 Two kinds of rows keep the flags from the CDS: `alt_is_premature` from the codon scan of the alt CDS, and `stop_loss` from `ref_valid_stop` and `alt_valid_stop`.
 
 - Rows where `alt_transcript_seq` or `cds_start_in_transcript` is null, except rows with `unknown_reason`. On those, both flags are null.
-- Rows whose `transcript_seq`, read in frame from `cds_start_in_transcript`, does not read its first stop codon at the annotated stop codon. The annotated stop codon is then out of frame, as in a `cds_start_NF` CDS, or it is no stop codon, or an in-frame stop codon lies upstream of it. That upstream stop codon is a selenocysteine TGA or a misannotation. The pipeline does not read selenocysteine annotations, so it cannot tell the two apart.
+- Rows whose `transcript_seq`, read in frame from `cds_start_in_transcript` + `cds_frame`, does not read its first stop codon at the annotated stop codon. The annotated stop codon is then out of frame, e.g. because the CDS length does not fit `cds_frame`, or it is no stop codon, or an in-frame stop codon lies upstream of it. That upstream stop codon is a selenocysteine TGA or a misannotation. The pipeline does not read selenocysteine annotations, so it cannot tell the two apart.
 
 ### PTC columns
 
-`extract_ptc` returns these 63 columns. A codon scan of the ref and alt CDS gives the `ref_*` and `alt_*` codon columns. `alt_is_premature` and `stop_loss` come from the alt transcript instead (see [Stop codon classification](#stop-codon-classification)).
+`extract_ptc` returns these 64 columns. A codon scan of the ref and alt CDS gives the `ref_*` and `alt_*` codon columns. `alt_is_premature` and `stop_loss` come from the alt transcript instead (see [Stop codon classification](#stop-codon-classification)).
 
-A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcript_start_codon_pos` on. It runs only if `start_loss` or `stop_loss` is True and `alt_transcript_seq` is not null. Otherwise the 9 columns are null, and the table says "not scanned". After a start loss, the scan takes the first ATG at or after the scan start, in any frame, and reads the stop codons in the frame of that ATG. After a stop loss without a start loss, it reads the codons in the frame of the scan start. The scan start is `alt_cds_start_in_transcript`, the start of the alt CDS in the alt transcript. Since `stop_loss` comes from the alt transcript, the scan also runs after a frameshift whose first stop codon lies in the 3' UTR. After a stop loss without a start loss, `transcript_first_stop_pos` is the first in-frame stop codon from the scan start. Unless the row keeps the flags from the CDS, that is the new stop codon downstream of the annotated one, or null for a nonstop.
+A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcript_start_codon_pos` on. It runs only if `start_loss` or `stop_loss` is True and `alt_transcript_seq` is not null. Otherwise the 9 columns are null, and the table says "not scanned". After a start loss, the scan takes the first ATG at or after the scan start, in any frame, and reads the stop codons in the frame of that ATG. After a stop loss without a start loss, it reads the codons in the frame of the scan start. The scan start is the first complete codon of the alt CDS in the alt transcript, at `alt_cds_start_in_transcript` + `cds_frame`. Since `stop_loss` comes from the alt transcript, the scan also runs after a frameshift whose first stop codon lies in the 3' UTR. After a stop loss without a start loss, `transcript_first_stop_pos` is the first in-frame stop codon from the scan start. Unless the row keeps the flags from the CDS, that is the new stop codon downstream of the annotated one, or null for a nonstop.
 
 | Column | Kind | Meaning | Null when |
 |---|---|---|---|
@@ -138,6 +139,7 @@ A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcri
 | `gene_id` | string | Gene ID from the annotation | never |
 | `strand` | string | Strand of the transcript, `+` or `-` | never |
 | `has_stop_codon` | bool | Whether the coding region ends in an annotated stop codon. A GENCODE GFF3 marks it with `stop_codon` rows. In an Ensembl GFF3, the last 3 CDS bases in the FASTA decide (`scan.read_gff3`) | never |
+| `cds_frame` | int | GFF3 phase (column 8) of the 5'-most CDS row: the number of bases before the first complete codon, 0 to 2. It is 1 or 2 only for a CDS that lacks its 5' end, e.g. of a `cds_start_NF` transcript. Every codon scan starts at CDS position `cds_frame` (see [Positions and terms](#positions-and-terms)) | never |
 | `ref` | string | REF allele of the VCF record | never |
 | `alt` | string | ALT allele of the VCF record | never |
 | `start_variant` | int | Genomic start of the variant: VCF POS minus 1 | never |

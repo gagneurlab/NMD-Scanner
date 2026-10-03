@@ -299,6 +299,7 @@ def _run(tmp_path, strand, position, ref, alt, layout=_LAYOUT, rows=_ROWS):
                 "exon_number": str(number),
                 "transcript_id": "tx",
                 "gene_id": "gene",
+                "Frame": "0",
             }
             for feature, number, s, e in rows
         ]

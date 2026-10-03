@@ -367,6 +367,7 @@ def _analyzed(ref_cds_seq, alt_cds_seq):
                 "ref_cds_info": [(1, len(ref_cds_seq))],
                 "alt_cds_info": [(1, len(alt_cds_seq))],
                 "has_stop_codon": True,
+                "cds_frame": 0,
             }
         ]
     )
@@ -423,6 +424,7 @@ def test_calculate_stop_codon_dist():
         "alt_transcript_seq": "CCATGAAACCCTGAAGG",
         "cds_start_in_transcript": 2,
         "alt_cds_start_in_transcript": 2,
+        "cds_frame": 0,
         "cds_end_in_transcript": 14,
     }
     assert calculate_stop_codon_dist(row7) == 0
@@ -441,6 +443,7 @@ def test_calculate_stop_codon_dist():
         "alt_transcript_seq": "CCATGAAATGGTAACTGG",
         "cds_start_in_transcript": 2,
         "alt_cds_start_in_transcript": 2,
+        "cds_frame": 0,
         "cds_end_in_transcript": 14,
     }
     assert calculate_stop_codon_dist(row8) == 0

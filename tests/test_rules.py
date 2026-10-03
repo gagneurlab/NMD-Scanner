@@ -93,6 +93,8 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
                 "exon_number": str(number),
                 "transcript_id": "tx1",
                 "gene_id": "gene1",
+                # GFF3 phase: the CDS starts with a complete codon
+                "Frame": "0",
             }
             for feature, number, start, end in rows
         ]
@@ -161,6 +163,7 @@ def test_create_reference_cds():
             "Strand": ["+" for _ in range(5)],
             "Exon_CDS_seq": ["AAA", "CCC", "GGG", "TTT", "AAA"],
             "has_stop_codon": [True] * 5,
+            "Frame": ["0"] * 5,
         }
     )
 
@@ -293,6 +296,7 @@ def test_create_reference_cds_carries_has_stop_codon():
             "Strand": ["+"] * 3,
             "Exon_CDS_seq": ["ATG", "AAATAA", "ATGAAA"],
             "has_stop_codon": [True, True, False],
+            "Frame": ["0"] * 3,
         }
     )
     variant = {"Chromosome": "chr1", "Strand": "+", "Ref": "A", "Alt": "C"}
@@ -564,6 +568,7 @@ def test_analyze_sequence():
                 "ref_cds_info": [(1, 9)],
                 "alt_cds_info": [(1, 9)],
                 "has_stop_codon": True,
+                "cds_frame": 0,
             }
         ]
     )
@@ -584,6 +589,7 @@ def test_analyze_sequence_without_stop_codon():
                 "ref_cds_info": [(1, 9)],
                 "alt_cds_info": [(1, 9)],
                 "has_stop_codon": False,
+                "cds_frame": 0,
             },
             # coding region that ends in an incomplete codon: the last 3 bases TAA are out of frame
             {
@@ -592,6 +598,7 @@ def test_analyze_sequence_without_stop_codon():
                 "ref_cds_info": [(1, 10)],
                 "alt_cds_info": [(1, 10)],
                 "has_stop_codon": False,
+                "cds_frame": 0,
             },
         ]
     )
@@ -604,6 +611,41 @@ def test_analyze_sequence_without_stop_codon():
     # the last codon is not an annotated stop codon, whatever its bases
     assert analyzed["ref_valid_stop"].tolist() == [False, False]
     assert analyzed["alt_valid_stop"].tolist() == [False, False]
+
+
+def test_analyze_sequence_reads_codons_in_the_cds_frame():
+    """
+    A cds_start_NF CDS with phase 1: its first base A belongs to no codon, and the codons TGC AAA CCC TAA follow.
+
+    ref CDS  A TGC AAA CCC TAA
+             0 1   4   7   10
+    """
+    df = pd.DataFrame(
+        {
+            "ref_cds_seq": ["ATGCAAACCCTAA"] * 3,
+            "alt_cds_seq": [
+                "GTGCAAACCCTAA",  # A>G at CDS position 0
+                "ATGTAAACCCTAA",  # C>T at CDS position 3: TGC>TGT, and TAA out of frame
+                "ATGCTAACCCTAA",  # A>T at CDS position 4: AAA>TAA in frame
+            ],
+            "ref_cds_info": [[(1, 13)]] * 3,
+            "alt_cds_info": [[(1, 13)]] * 3,
+            "has_stop_codon": [True] * 3,
+            "cds_frame": [1] * 3,
+        }
+    )
+
+    result = start_stop_loss(analyze_sequence(df))
+
+    # The out-of-frame ATG at CDS position 0 is no start codon, so changing it is no start loss
+    assert result["ref_start_codon_pos"].tolist() == [None] * 3
+    assert result["start_loss"].tolist() == [False] * 3
+    # Out-of-frame stop codon: the first in-frame stop codon is still the one at the CDS end
+    assert result.loc[1, "alt_is_premature"] == False
+    assert result.loc[1, "alt_first_stop_pos"] == 10
+    # In-frame stop codon
+    assert result.loc[2, "alt_is_premature"] == True
+    assert result.loc[2, "alt_first_stop_pos"] == 4
 
 
 def test_start_stop_loss():
@@ -675,6 +717,7 @@ def test_start_and_stop_loss_reads_from_the_next_atg_into_the_3utr():
         "cds_start_in_transcript": 2,
         "cds_end_in_transcript": 14,
         "alt_cds_start_in_transcript": 2,
+        "cds_frame": 0,
         "has_stop_codon": True,
         "ref_cds_seq": "ATGAAACCCTAA",
         "alt_cds_seq": "A",
@@ -743,6 +786,7 @@ def test_analyze_transcript():
                 "transcript_seq": "CCCATGAAATAATAGGGG",
                 "cds_start_in_transcript": 0,
                 "alt_cds_start_in_transcript": 0,
+                "cds_frame": 0,
                 "cds_end_in_transcript": 12,
                 "has_stop_codon": True,
                 "ref_cds_seq": "CCCATGAAATAA",
@@ -808,6 +852,7 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
         "cds_start_in_transcript": 3,
         "cds_end_in_transcript": 12,
         "alt_cds_start_in_transcript": 2,
+        "cds_frame": 0,
         "has_stop_codon": True,
         "ref_cds_seq": "ATGAAATAA",
         "alt_cds_seq": "ATGAAACAA",
@@ -1358,6 +1403,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
                 "exon_number": str(e),
                 "transcript_id": "tx",
                 "gene_id": "gene",
+                "Frame": "0",
             }
             for f, e, start, end in rows
         ]

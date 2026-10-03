@@ -25,9 +25,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     start and stop loss, and getting the transcript information.
 
     :param cds_df: Coding regions of the annotation (DataFrame): CDS rows that include the stop codon, one row per
-                   transcript and exon, with exon_number and the column has_stop_codon. has_stop_codon says whether
-                   the coding region of the transcript ends in an annotated stop codon. ``scan.read_annotation``
-                   returns the coding regions as its CDS rows.
+                   transcript and exon, with exon_number, Frame (the GFF3 phase) and the column has_stop_codon.
+                   has_stop_codon says whether the coding region of the transcript ends in an annotated stop codon.
+                   ``scan.read_annotation`` returns the coding regions as its CDS rows.
     :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them.
                 A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
@@ -461,9 +461,10 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                                  includes: transcript_id, exon_number, Exon_Alt_CDS_seq, and optionally
                                  the UTR change columns and unknown_reason (see apply_variants)
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
-                        includes: transcript_id, exon_number, Start, End, Strand, Exon_CDS_seq, has_stop_codon
+                        includes: transcript_id, exon_number, Start, End, Strand, Frame, Exon_CDS_seq, has_stop_codon
     :return: DataFrame with one row per variant-transcript pair, containing full reference and alternative CDS + lengths,
-             exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_stop_codon,
+             exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_stop_codon, cds_frame (the
+             Frame of the 5'-most CDS row: the number of bases before the first complete codon),
              utr5_change and utr3_change (tuples (ref, alt), see TranscriptEffect) and unknown_reason. A pair with
              unknown_reason has None in the alt columns.
     """
@@ -494,6 +495,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         ref_seq_final = str(Seq(ref_seq).reverse_complement()) if strand == "-" else ref_seq
         # whether the coding region ends in an annotated stop codon (same within transcript)
         has_stop_codon = bool(ref_exons["has_stop_codon"].iloc[0])
+        # The codons start after the Frame of the 5'-most CDS row, which is 1 or 2 if the CDS lacks its 5' end
+        # (e.g. cds_start_NF). That row has the smallest Start on the plus strand and the largest on the minus strand.
+        cds_frame = int(ref_exons["Frame"].iloc[0 if strand == "+" else -1])
 
         for variant, cds_df in var_df.groupby(
             ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"], observed=True
@@ -523,6 +527,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                         "gene_id": gene_id,
                         "strand": strand,
                         "has_stop_codon": has_stop_codon,
+                        "cds_frame": cds_frame,
                         "ref": ref_allele,
                         "alt": alt_allele,
                         "start_variant": start_variant,
@@ -580,6 +585,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                     "gene_id": gene_id,
                     "strand": strand,
                     "has_stop_codon": has_stop_codon,
+                    "cds_frame": cds_frame,
                     "ref": ref_allele,
                     "alt": alt_allele,
                     "start_variant": start_variant,
@@ -737,7 +743,9 @@ def analyze_sequence(results_df):
     Analyzes reference and alternative CDS for start and stop codons, their positions, and potential premature termination codons (PTCs)
 
     :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative sequences, per variant,
-                       and has_stop_codon (whether the coding region ends in an annotated stop codon)
+                       has_stop_codon (whether the coding region ends in an annotated stop codon) and cds_frame (the
+                       number of bases before the first complete codon). All codon scans start at the first complete
+                       codon.
     :return: DataFrame with added annotation columns for reference and alternative sequence separately:
              such as start codon position / exon, last codon and its validity as stop codon, first in-frame stop codon + position,
              number and information of all available stop codons, premature stop codon flag.
@@ -766,6 +774,7 @@ def analyze_sequence(results_df):
     # Row-wise codon scanning
     for idx, row in df.iterrows():
         has_stop_codon = bool(row["has_stop_codon"])
+        frame = int(row["cds_frame"])
         for label in ["ref", "alt"]:
             seq = row[f"{label}_cds_seq"]
 
@@ -779,8 +788,8 @@ def analyze_sequence(results_df):
             stop_codons = []
             stop_exons = []  # for exon number
 
-            # Scan in codons (step=3)
-            for i in range(0, len(seq) - 2, 3):
+            # Scan in codons (step=3), from the first complete codon
+            for i in range(frame, len(seq) - 2, 3):
                 codon = seq[i : i + 3]
                 if codon == start_codon and start_pos is None:  # first start codon position
                     start_pos = i
@@ -963,19 +972,19 @@ def annotated_stop_in_alt(ref_seq, alt_seq, stop):
 
 def ends_at_annotated_stop(row):
     """
-    Return whether the reference transcript, read in frame from the annotated start codon, reads its first stop codon
-    at the annotated stop codon.
+    Return whether the reference transcript, read in frame from the first complete codon of the CDS, reads its first
+    stop codon at the annotated stop codon.
 
-    Not so if the annotated stop codon is out of the reading frame, as in a cds_start_NF CDS read from its first base,
+    Not so if the annotated stop codon is out of the reading frame, e.g. because the CDS length does not fit its Frame,
     or if the transcript has no stop codon there. Not so either if an in-frame stop codon lies upstream of it: a
     selenocysteine TGA or a misannotation. The annotation marks selenocysteine codons, but the pipeline does not read
     them, so it cannot tell the two apart.
 
     :param row: A pd.Series row containing transcript_seq, cds_start_in_transcript and cds_end_in_transcript (from
-                cds_range_in_transcript)
+                cds_range_in_transcript), and cds_frame
     """
 
-    first_stop = first_stop_codon(row["transcript_seq"], row["cds_start_in_transcript"])
+    first_stop = first_stop_codon(row["transcript_seq"], row["cds_start_in_transcript"] + int(row["cds_frame"]))
     return first_stop == row["cds_end_in_transcript"] - 3
 
 
@@ -1005,7 +1014,8 @@ def annotated_stop_distance(row, first_stop):
 
 def classify_first_stop(row, first_stop):
     """
-    Classify the first in-frame stop codon of the alternative transcript, read from the annotated start codon.
+    Classify the first in-frame stop codon of the alternative transcript, read from the first complete codon of the
+    alternative CDS.
 
     With an annotated stop codon, compare the first stop with it in alternative transcript coordinates (see
     annotated_stop_distance). A stop upstream of it is premature. A stop at its position is neither premature nor a
@@ -1032,8 +1042,8 @@ def analyze_transcript(results_df):
     Analyze the alternative transcript sequence: classify its first in-frame stop codon, and in cases of start or stop
     codon loss, scan for new in-frame start or stop codons.
 
-    The classification reads the alternative transcript in frame from the annotated start codon, at
-    alt_cds_start_in_transcript, through the CDS into the 3'UTR (see classify_first_stop). It replaces alt_is_premature and stop_loss from analyze_sequence and
+    The classification reads the alternative transcript in frame from the first complete codon of the alternative CDS,
+    at alt_cds_start_in_transcript + cds_frame, through the CDS into the 3'UTR (see classify_first_stop). It replaces alt_is_premature and stop_loss from analyze_sequence and
     start_stop_loss, which see only the CDS: after a frameshift, the last codon of the alternative CDS is out of frame.
     The comparison with the annotated stop codon needs a reference transcript that, read the same way, stops there
     (see ends_at_annotated_stop). Rows where it does not, and rows without an alternative transcript, keep those flags.
@@ -1069,8 +1079,8 @@ def analyze_transcript(results_df):
         if not isinstance(seq, str) or len(seq) < 3 or pd.isna(cds_start):
             continue
 
-        # Read codons in frame from the annotated start codon to the end of the transcript
-        scan_start = cds_start
+        # Read codons in frame from the first complete codon of the CDS to the end of the transcript
+        scan_start = cds_start + int(row["cds_frame"])
         stop_codons_in_frame = list(in_frame_codons(seq, scan_start, valid_stop_codons))
 
         # The comparison needs a reference transcript that reads its first stop codon at the annotated one. Otherwise,
@@ -1093,8 +1103,8 @@ def analyze_transcript(results_df):
 
         # START LOSS rescue search
         if row["start_loss"]:
-            # Walk through sequence starting at CDS start with +1 positions until start codon is found
-            for i in range(cds_start, len(seq) - 2):
+            # Walk through sequence starting at the first complete codon with +1 positions until start codon is found
+            for i in range(scan_start, len(seq) - 2):
                 codon = seq[i : i + 3]
                 if codon == start_codon:
                     start_pos = i
@@ -1106,7 +1116,7 @@ def analyze_transcript(results_df):
 
                     break
 
-        # STOP LOSS readthrough: the in-frame stop codons from the annotated start codon on. Only without a start
+        # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on. Only without a start
         # loss: after a start loss, the scan above already reads on to the transcript end (3'UTR).
         else:
             start_pos = next((i for i, _ in in_frame_codons(seq, scan_start, {start_codon})), None)

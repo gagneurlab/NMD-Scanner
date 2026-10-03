@@ -236,7 +236,7 @@ def calculate_stop_codon_dist(row):
         return alt_cds_len - 3 - alt_stop
 
     if ends_at_annotated_stop(row):
-        first_stop = first_stop_codon(alt_seq, alt_cds_start)
+        first_stop = first_stop_codon(alt_seq, alt_cds_start + int(row["cds_frame"]))
     else:
         first_stop = None if alt_stop is None else alt_cds_start + alt_stop
     return annotated_stop_distance(row, first_stop)
