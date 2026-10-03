@@ -83,8 +83,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     ##### New ######
     # Filter out Variants with a reference mismatch
     mismatched_rows = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].isna()]
-    logger.warning("Skipping %d variants due to reference mismatches.", len(mismatched_rows))
     if not mismatched_rows.empty:
+        logger.warning("Skipping %d variants due to reference mismatches.", len(mismatched_rows))
         logger.warning(
             "Reference-mismatched variants:\n%s",
             mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(

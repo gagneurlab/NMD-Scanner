@@ -364,6 +364,22 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
 
 
+def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, caplog):
+    vcf = tmp_path / "matching.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383521\tv1\tG\tGT\t.\t.\t.\n"
+    )
+    with caplog.at_level(logging.INFO):
+        results = main(
+            vcf_path=str(vcf),
+            gtf_path="resources/chr18.gtf.gz",
+            fasta_path="resources/chr18.fa.gz",
+            output=str(tmp_path / "out.csv"),
+        )
+    assert not results.empty
+    assert "reference mismatches" not in caplog.text
+
+
 def test_main_with_only_reference_mismatches_writes_empty_csv(tmp_path, reference_mismatch_vcf, caplog):
     out = tmp_path / "mismatch.csv"
     with caplog.at_level(logging.INFO):
