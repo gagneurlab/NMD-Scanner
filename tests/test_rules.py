@@ -67,6 +67,24 @@ def test_merge_stop_codons_into_cds_split_stop_codon():
     ]
 
 
+def test_merge_stop_codons_into_cds_split_stop_codon_minus_strand():
+    # stop codon split across an intron on the - strand: 2 bases at the lower end of exon 2, 1 base in exon 3,
+    # which lies at lower coordinates and has no CDS row
+    rows = _coding_rows(
+        [
+            ("CDS", 1, 800, 850, "-"),
+            ("CDS", 2, 500, 550, "-"),
+            ("stop_codon", 2, 498, 500, "-"),
+            ("stop_codon", 3, 400, 401, "-"),
+        ]
+    )
+    assert _intervals(merge_stop_codons_into_cds(rows)) == [
+        (1, 800, 850, "CDS"),
+        (2, 498, 550, "CDS"),
+        (3, 400, 401, "CDS"),
+    ]
+
+
 def test_merge_stop_codons_into_cds_gff3():
     # GFF3: the CDS already includes the stop codon, so the union changes nothing
     rows = _coding_rows([("CDS", 1, 100, 150, "+"), ("CDS", 2, 200, 253, "+"), ("stop_codon", 2, 250, 253, "+")])
@@ -116,6 +134,14 @@ def test_merge_stop_codons_into_cds_on_real_transcripts():
     split = rows[rows["transcript_id"] == "ENST00000399496.8"]
     assert (split["Feature"] == "stop_codon").sum() == 2
     seq = _coding_sequence(merge_stop_codons_into_cds(split), fasta)
+    assert len(seq) % 3 == 0
+    assert seq[-3:] in {"TAA", "TAG", "TGA"}
+
+    # ENST00000454642.3: minus strand, stop codon split across an intron (two stop_codon rows)
+    split_minus = rows[rows["transcript_id"] == "ENST00000454642.3"]
+    assert (split_minus["Feature"] == "stop_codon").sum() == 2
+    assert split_minus["Strand"].iloc[0] == "-"
+    seq = _coding_sequence(merge_stop_codons_into_cds(split_minus), fasta)
     assert len(seq) % 3 == 0
     assert seq[-3:] in {"TAA", "TAG", "TGA"}
 
