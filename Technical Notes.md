@@ -78,6 +78,7 @@ analyzing ref_ and alt_  (CDS)
 ————————————————————————————————————————————————————————————
 transcript:
 - start, end, seq, len
+- cds_start_in_transcript, cds_end_in_transcript: position of the ref CDS (with stop codon) in the transcript sequence, 0-based half-open
 - alt_transcript_seq
 - alt_transcript_length
 - transcript_:

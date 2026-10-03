@@ -70,6 +70,8 @@ PTC_COLUMN_KINDS = {
     "transcript_end": "int",
     "transcript_seq": "string",
     "transcript_length": "int",
+    "cds_start_in_transcript": "int",
+    "cds_end_in_transcript": "int",
     "alt_transcript_seq": "string",
     "alt_transcript_length": "int",
     "transcript_exon_info": "pair_list",

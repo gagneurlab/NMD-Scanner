@@ -87,68 +87,24 @@ def add_nmd_features(row):
 
 def calculate_utr_lengths(row):
     """
-    Calculate the 5' and 3' UTR lengths of the transcript. The 3'UTR starts after the stop codon, so its length is
-    None without an annotated stop codon (has_stop_codon False).
+    Calculate the 5' and 3' UTR lengths of the reference transcript from the position of the CDS in it.
+    The 3'UTR starts after the stop codon, so its length is None without an annotated stop codon (has_stop_codon False).
+
+    :param row: A row of the DataFrame including cds_start_in_transcript and cds_end_in_transcript
+                (coding region, from cds_range_in_transcript), transcript_exon_info and has_stop_codon
+    :return: A dictionary with utr5_length and utr3_length, both None if the CDS position or the exons are unknown
     """
 
-    strand = row.get("strand")
-    ref_cds_info = row.get("ref_cds_info") or []
+    cds_start = row.get("cds_start_in_transcript")
+    cds_end = row.get("cds_end_in_transcript")
     transcript_exon_info = row.get("transcript_exon_info") or []
     has_stop_codon = bool(row["has_stop_codon"])
 
-    if not ref_cds_info or not transcript_exon_info:
+    if cds_start is None or cds_end is None or not transcript_exon_info:
         return {"utr5_length": None, "utr3_length": None}
 
-    # Convert to dicts for easier lookup
-    transcript_exon_dict = {int(k): int(v) for k, v in transcript_exon_info}
-    cds_exons_dict = {int(exon): int(length) for exon, length in ref_cds_info}
-
-    # Handle single exon
-    if len(transcript_exon_dict) == 1:
-        if strand == "+":
-            utr5 = row["ref_cds_start"] - row["transcript_start"]
-            utr3 = row["transcript_end"] - row["ref_cds_stop"]
-        else:
-            utr5 = row["transcript_end"] - row["ref_cds_stop"]
-            utr3 = row["ref_cds_start"] - row["transcript_start"]
-
-        utr5 = utr5 if utr5 >= 0 else None
-        utr3 = utr3 if utr3 >= 0 and has_stop_codon else None
-
-        return {"utr5_length": utr5, "utr3_length": utr3}
-
-    cds_exon_nums = sorted(cds_exons_dict.keys())
-    tx_exon_nums = sorted(transcript_exon_dict.keys())
-
-    utr5 = 0
-    utr3 = 0
-
-    # Exon numbers follow transcript order on both strands (exon 1 is the 5' exon),
-    # as in GENCODE and after compute_exon_numbers.
-    for exon in tx_exon_nums:
-        exon_len = transcript_exon_dict[exon]
-        cds_len = cds_exons_dict.get(exon, 0)
-        utr_len = exon_len - cds_len
-
-        if utr_len <= 0:
-            continue
-
-        if exon in cds_exons_dict:
-            # Exon overlaps CDS, partial UTR
-            if exon == cds_exon_nums[0]:
-                utr5 += utr_len
-            elif exon == cds_exon_nums[-1]:
-                utr3 += utr_len
-        else:
-            # Exon is outside CDS
-            if exon < cds_exon_nums[0]:
-                utr5 += exon_len
-            elif exon > cds_exon_nums[-1]:
-                utr3 += exon_len
-
-    utr5 = utr5 if utr5 >= 0 else None
-    utr3 = utr3 if utr3 >= 0 and has_stop_codon else None
-    return {"utr5_length": utr5, "utr3_length": utr3}
+    utr3 = sum(int(length) for _, length in transcript_exon_info) - cds_end
+    return {"utr5_length": cds_start, "utr3_length": utr3 if utr3 >= 0 and has_stop_codon else None}
 
 
 def calculate_exon_features(row):
