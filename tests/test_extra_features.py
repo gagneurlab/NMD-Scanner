@@ -680,7 +680,10 @@ def test_calculate_ptc_to_downstream_ej():
         "alt_is_premature": True,
         "alt_first_stop_pos": 250,  # PTC position
         "alt_stop_codon_exons": [2],
+        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 150)],
+        "ref_cds_info": [(1, 100), (2, 200), (3, 150)],
         "alt_cds_info": [(1, 100), (2, 200), (3, 150)],
+        "cds_start_in_transcript": 0,
     }
     # End of exon 2: 100 + 200 = 300, distance = 300 - 250 = 50
     assert calculate_ptc_to_downstream_ej(row1) == 50
@@ -690,27 +693,35 @@ def test_calculate_ptc_to_downstream_ej():
         "alt_is_premature": True,
         "alt_first_stop_pos": 60,
         "alt_stop_codon_exons": [1],
+        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 150)],
+        "ref_cds_info": [(1, 100), (2, 200), (3, 150)],
         "alt_cds_info": [(1, 100), (2, 200), (3, 150)],
+        "cds_start_in_transcript": 0,
     }
     # End of exon 1: 100, distance = 100 - 60 = 40
     assert calculate_ptc_to_downstream_ej(row2) == 40
 
-    # Case 3: PTC in last exon
+    # Case 3: PTC in the last exon, which has no downstream exon junction
     row3 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 430,
         "alt_stop_codon_exons": [3],
+        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 200)],
+        "ref_cds_info": [(1, 100), (2, 200), (3, 200)],
         "alt_cds_info": [(1, 100), (2, 200), (3, 200)],
+        "cds_start_in_transcript": 0,
     }
-    # End of exon 3: 100+200+200=500, distance = 500 - 430 = 70
-    assert calculate_ptc_to_downstream_ej(row3) == 70
+    assert calculate_ptc_to_downstream_ej(row3) is None
 
     # Case 4: Multiple stop codons, take the smallest exon number
     row4 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 350,
         "alt_stop_codon_exons": [2, 3],
+        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 200)],
+        "ref_cds_info": [(1, 100), (2, 200), (3, 200)],
         "alt_cds_info": [(1, 100), (2, 200), (3, 200)],
+        "cds_start_in_transcript": 0,
     }
     # Smallest exon = 2, end of exon 2: 100+200=300, distance = 300 - 350 = -50 (PTC past exon end)
     assert calculate_ptc_to_downstream_ej(row4) == -50
@@ -755,6 +766,10 @@ def test_calculate_ptc_to_downstream_ej():
     }
     # Exon 2 ends at transcript position 300, i.e. at 300 - 40 - 1 = 259 in alt CDS coordinates: distance = 259 - 250 = 9
     assert calculate_ptc_to_downstream_ej(row8) == 9
+
+    # Case 9: transcript exons unknown
+    row9 = {**row1, "transcript_exon_info": None}
+    assert calculate_ptc_to_downstream_ej(row9) is None
 
 
 def test_add_likely_misannotated_flag():

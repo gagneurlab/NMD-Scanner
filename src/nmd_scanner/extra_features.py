@@ -319,9 +319,7 @@ def evaluate_nmd_escape_rules(row):
 def calculate_ptc_to_downstream_ej(row):
     """
     Calculate distance from PTC to the downstream exon junction, i.e. the 3' end of the PTC exon.
-    For a PTC in the last exon (no downstream junction), or without transcript_exon_info,
-    measure to the end of the CDS part of the PTC exon.
-    Returns None if not applicable.
+    Returns None if not applicable. This includes a PTC in the last exon, which has no downstream junction.
     """
 
     # only calculate if we have PTC
@@ -329,36 +327,21 @@ def calculate_ptc_to_downstream_ej(row):
         return None
 
     stop_exons = row.get("alt_stop_codon_exons") or []
-
-    # exon_info = row.get("transcript_exon_info") or []
-    exon_info = (
-        row.get("alt_cds_info") or []
-    )  # Assuming that the PTC cannot be outside the CDS, since it needs to come before the original stop codon
-
+    tx_exon_nums = [int(e) for e, _ in row.get("transcript_exon_info") or []]
     ptc_pos = row.get("alt_first_stop_pos")
 
-    if not stop_exons or not exon_info or ptc_pos is None:
+    if not stop_exons or not tx_exon_nums or ptc_pos is None:
         return None
 
     # Choose the PTC exon (smallest number, closer to start)
     ptc_exon = min(stop_exons)
 
-    # The last CDS exon can go on with 3' UTR, so its junction lies past the CDS end
-    tx_exon_nums = [int(e) for e, _ in row.get("transcript_exon_info") or []]
-    if tx_exon_nums and ptc_exon < max(tx_exon_nums):
-        exon_end = exon_end_in_alt_cds(row, ptc_exon)
-        return exon_end - ptc_pos if exon_end is not None else None
+    if ptc_exon >= max(tx_exon_nums):
+        return None
 
-    # Sum lengths of exons up to and including ptc_exon
-    cumulative_length = 0
-    for exon_num, length in exon_info:
-        cumulative_length += length
-        if exon_num == ptc_exon:
-            break
-
-    # Distance from PTC to downstream exon junction
-    distance = cumulative_length - ptc_pos
-    return distance
+    # The PTC exon can go on with 3' UTR, so its junction can lie past the CDS end
+    exon_end = exon_end_in_alt_cds(row, ptc_exon)
+    return exon_end - ptc_pos if exon_end is not None else None
 
 
 def add_likely_misannotated_flag(row):
