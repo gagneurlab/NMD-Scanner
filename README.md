@@ -10,7 +10,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
 - Detects start / stop-loss and premature termination codons (PTCs) with the exact position in the CDS and in which exon it lies
 - Computes different NMD-related features:
   - Total, upstream and downstream exon count
-  - Distance of PTC to original stop codon
+  - Distance of PTC to original stop codon (0 for the original stop codon, negative for the new stop codon after a stop loss, empty for a nonstop)
   - Distance of PTC to start codon
   - Transcript length
   - 3' and 5' UTR lengths

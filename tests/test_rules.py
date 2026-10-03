@@ -1030,6 +1030,62 @@ def test_first_stop_codon_classification(
         assert row["transcript_num_stop_codons"] == (0 if new_stop_pos is None else 1)
     else:
         assert row["transcript_first_stop_pos"] is None
+    if not (is_premature or stop_loss):
+        # The first stop codon is the annotated one
+        assert row["stop_codon_distance"] == 0
+
+
+@pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
+@pytest.mark.parametrize(
+    ("variant", "distance"),
+    [
+        # 1 nt deletion at t18: the stop codon moves to alt t39, and the shifted frame reads TGA at alt t25
+        ((17, "CC", "C"), 14),
+        # TCCTAG inserted right before the stop codon: TAG at alt t43, the stop codon at alt t46
+        ((39, "C", "CTCCTAG"), 3),
+        # TAA>TGAA: TGA at the annotated position of the stop codon
+        ((40, "T", "TG"), 0),
+        # TAA>CAA: reading on in frame, the next stop is the TAG at t52
+        ((40, "T", "C"), -12),
+        # 1 nt deletion at t33: the stop codon moves to alt t39, and the shifted frame reads TGA at alt t46
+        ((32, "CC", "C"), -7),
+        # 1 nt insertion after t32: no stop codon up to the transcript end (nonstop)
+        ((32, "C", "CG"), None),
+    ],
+    ids=[
+        "frameshift_ptc_in_cds",
+        "stop_codon_gained_before_stop_codon",
+        "insertion_in_stop_codon",
+        "stop_codon_snv",
+        "frameshift_stop_in_utr3",
+        "frameshift_nonstop",
+    ],
+)
+def test_stop_codon_distance(tmp_path, strand, variant, distance):
+    """
+    The distance runs from the first in-frame stop codon of the alt transcript to the annotated stop codon, both in
+    alt transcript coordinates. It is negative for a stop loss: the new stop codon lies downstream.
+
+    The 1 nt deletion at t18 (`v`) moves the stop codon `s` to alt t39. The shifted frame reads the PTC `*`, a TGA at
+    alt t25:
+
+                          v
+    5' [uuuuuuuuuuuuu===========]|[=***===========sssuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu] 3'
+    tx  0            13            24             39                                 74
+                                    *------------>  stop_codon_distance = 14
+
+    TAA>CAA (`x`) loses the stop codon at t40. Reading on in frame, the next stop codon `s` is the TAG at t52:
+
+    5' [uuuuuuuuuuuuu============]|[===============xxxuuuuuuuuusssuuuuuuuuuuuuuuuuuuuu] 3'
+    tx  0            13             25             40          52                     75
+                                                   <---------->  stop_codon_distance = -12
+
+    Both drawings are to scale and in transcript orientation, also on the minus strand.
+    """
+    exon_seqs = [_STOP_TRANSCRIPT[:25], _STOP_TRANSCRIPT[25:]]
+    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 40), variant)
+
+    assert row["stop_codon_distance"] == distance
 
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
@@ -1065,6 +1121,7 @@ def test_inframe_indel_before_stop_codon_starting_with_t(tmp_path, strand, last_
     assert row["alt_is_premature"] == False
     assert row["stop_loss"] == False
     assert row["nmd_escape"] == False
+    assert row["stop_codon_distance"] == 0
 
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
@@ -1080,6 +1137,7 @@ def test_annotated_stop_codon_without_stop_in_reference(tmp_path, strand, varian
     assert row["ref_valid_stop"] == False
     assert row["alt_is_premature"] == False
     assert row["stop_loss"] == False
+    assert row["stop_codon_distance"] is None
 
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
@@ -1100,6 +1158,7 @@ def test_internal_stop_codon_in_reference(tmp_path, strand, variant, stop_loss):
     assert row["alt_is_premature"] == True
     assert row["alt_first_stop_pos"] == 15
     assert row["stop_loss"] == stop_loss
+    assert row["stop_codon_distance"] == 12
 
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
@@ -1139,6 +1198,7 @@ def test_deletion_across_stop_codon_placements(tmp_path, strand, variant):
     assert row["alt_transcript_seq"] == transcript_seq[:39] + transcript_seq[44:]
     assert row["alt_is_premature"] == False
     assert row["stop_loss"] == False
+    assert row["stop_codon_distance"] == 0
 
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
@@ -1159,6 +1219,7 @@ def test_deletion_in_stop_codon_run(tmp_path, strand, variant):
     assert row["alt_transcript_seq"] == transcript_seq[:43] + transcript_seq[44:]
     assert row["alt_is_premature"] == False
     assert row["stop_loss"] == False
+    assert row["stop_codon_distance"] == 0
 
 
 # Deletions and delins that remove the start of the stop codon, on the transcript of the stop codon tests. The last
@@ -1215,6 +1276,18 @@ def test_variant_removing_the_start_of_the_stop_codon(
     assert row["alt_is_premature"] == False
     assert row["stop_loss"] == (distance is not None)
     assert row["nmd_escape"] == False
+
+
+@pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
+@pytest.mark.parametrize(
+    ("last_codon", "stop_codon", "utr3", "variant", "distance"), _STOP_START_REMOVED, ids=_STOP_START_REMOVED_IDS
+)
+def test_stop_codon_distance_of_variant_removing_the_start_of_the_stop_codon(
+    tmp_path, strand, last_codon, stop_codon, utr3, variant, distance
+):
+    row = _run_stop_start_removed(tmp_path, strand, last_codon, stop_codon, utr3, variant)
+
+    assert row["stop_codon_distance"] == (0 if distance is None else distance)
 
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])

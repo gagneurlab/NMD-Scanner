@@ -3,6 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 
+from nmd_scanner.rules import annotated_stop_distance, ends_at_annotated_stop, first_stop_codon
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, apply_schema
 
 
@@ -190,27 +191,40 @@ def calculate_ptc_exon_length(row):
 
 def calculate_stop_codon_dist(row):
     """
-    Calculate the distance in nt between the reference stop codon and the alternative stop codon (alt_first_stop_pos).
+    Calculate the distance in nt between the reference stop codon and the alternative stop codon.
     Positive means the PTC is upstream of the reference stop codon, 0 means the alternative stop codon is the
-    reference stop codon.
+    reference stop codon, and negative means it lies downstream (stop loss). Without an alternative stop codon, e.g.
+    for a nonstop, the distance is None.
 
-    Both positions are in alt CDS coordinates. The reference stop codon is the annotated one: the last codon of the
-    alt coding region, at alt_cds_len - 3. The first in-frame stop of the reference is not used, because it can be an
-    internal one, e.g. a selenocysteine TGA. An indel upstream of the PTC shifts both positions by the same amount,
-    so the distance is the same as in ref CDS coordinates.
+    The reference stop codon is the annotated one. The first in-frame stop of the reference is not used, because it
+    can be an internal one, e.g. a selenocysteine TGA. With an alt transcript, the distance is the one by which
+    analyze_transcript classifies the first in-frame stop codon of the alt transcript (see annotated_stop_distance).
+    A row that keeps the flags from the CDS there takes alt_first_stop_pos, the first stop codon of the alt CDS.
+    Without an alt transcript or cds_start_in_transcript, both positions are in alt CDS coordinates, and the reference
+    stop codon is the last codon of the alt coding region, at alt_cds_len - 3. That holds only for a variant upstream of the stop codon: an
+    insertion inside it (TAA>TGAA) lengthens the alt coding region but leaves the stop codon in place. An indel
+    upstream of the PTC shifts both positions by the same amount, so the distance is the same as in ref CDS
+    coordinates.
     Without an annotated stop codon (has_stop_codon False), there is no reference stop codon and the distance is None.
     """
 
     if not row["has_stop_codon"]:
         return None
 
-    alt_cds_len = row.get("alt_cds_len")
+    alt_seq = row.get("alt_transcript_seq")
     alt_stop = row.get("alt_first_stop_pos")
+    cds_start = row.get("cds_start_in_transcript")
+    if not isinstance(alt_seq, str) or cds_start is None:
+        alt_cds_len = row.get("alt_cds_len")
+        if alt_cds_len is None or alt_stop is None:
+            return None
+        return alt_cds_len - 3 - alt_stop
 
-    if alt_cds_len is None or alt_stop is None:
-        return None
-
-    return alt_cds_len - 3 - alt_stop
+    if ends_at_annotated_stop(row):
+        first_stop = first_stop_codon(alt_seq, cds_start)
+    else:
+        first_stop = None if alt_stop is None else cds_start + alt_stop
+    return annotated_stop_distance(row, first_stop)
 
 
 def exon_end_in_alt_cds(row, exon):

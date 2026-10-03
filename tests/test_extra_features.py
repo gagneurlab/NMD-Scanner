@@ -412,6 +412,35 @@ def test_calculate_stop_codon_dist():
     assert row6["alt_first_stop_pos"] == 6
     assert calculate_stop_codon_dist(row6) == 8
 
+    # Case 7: TAA>TGAA, an insertion inside the stop codon: TGA sits at the position of the reference stop codon,
+    #         although the alt CDS is 1 nt longer. Without the alt transcript or the CDS position in the transcript, the
+    #         last codon of the alt CDS stands in.
+    row7 = {
+        "alt_cds_len": 13,
+        "alt_first_stop_pos": 9,
+        "has_stop_codon": True,
+        "transcript_seq": "CCATGAAACCCTAAGG",
+        "alt_transcript_seq": "CCATGAAACCCTGAAGG",
+        "cds_start_in_transcript": 2,
+        "cds_end_in_transcript": 14,
+    }
+    assert calculate_stop_codon_dist(row7) == 0
+    assert calculate_stop_codon_dist({**row7, "alt_transcript_seq": None}) == 1
+    assert calculate_stop_codon_dist({**row7, "cds_start_in_transcript": None}) == 1
+
+    # Case 8: TA>T deletes one A of the stop codon TAA before a 3'UTR A. The alt CDS ends in TA and has no stop codon,
+    #         but the alt transcript still reads TAA at the annotated position.
+    row8 = {
+        "alt_cds_len": 11,
+        "alt_first_stop_pos": None,
+        "has_stop_codon": True,
+        "transcript_seq": "CCATGAAATGGTAAACTGG",
+        "alt_transcript_seq": "CCATGAAATGGTAACTGG",
+        "cds_start_in_transcript": 2,
+        "cds_end_in_transcript": 14,
+    }
+    assert calculate_stop_codon_dist(row8) == 0
+
 
 def test_evaluate_nmd_escape_rules():
 
