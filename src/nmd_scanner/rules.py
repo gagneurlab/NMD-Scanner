@@ -1,5 +1,6 @@
 # Import dependencies
 
+import itertools
 import logging
 
 import numpy as np
@@ -159,7 +160,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     loss_df["transcript_seq"] = loss_df["transcript_id"].map(transcript_sequences)
     transcript_lengths = exon_seqs.set_index("transcript_id")["transcript_length"].to_dict()
     loss_df["transcript_length"] = loss_df["transcript_id"].map(transcript_lengths)
-    # The variant changes only the CDS, so the alt CDS starts at the same position in the alt transcript.
+    # The variant changes only the CDS and the 3'UTR, so the alt CDS starts at the same position in the alt transcript.
     # Object dtype keeps the positions as int next to None.
     loss_df[["cds_start_in_transcript", "cds_end_in_transcript"]] = pd.DataFrame(
         [cds_ranges.get(transcript_id) or (None, None) for transcript_id in loss_df["transcript_id"]],
@@ -168,7 +169,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         dtype=object,
     )
 
-    # In case of start or stop loss:
+    # Add exon information to dataframe. splice_alt_cds_into_transcript reads it.
+    transcript_exon_info = exon_seqs.set_index("transcript_id")["transcript_exon_info"].to_dict()
+    loss_df["transcript_exon_info"] = loss_df["transcript_id"].map(transcript_exon_info)
+
     # Splice alternative CDS into reference transcript sequence to create alternative transcript sequence and measure new length
     loss_df["alt_transcript_seq"] = loss_df.apply(
         lambda row: (
@@ -180,11 +184,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         lambda x: len(x) if pd.notnull(x) else None
     )  # fmt: skip
 
-    # Add exon information to dataframe
-    transcript_exon_info = exon_seqs.set_index("transcript_id")["transcript_exon_info"].to_dict()
-    loss_df["transcript_exon_info"] = loss_df["transcript_id"].map(transcript_exon_info)
-
-    # Analyze transcript sequence (e.g., frame, length, stop codon position, etc.) in case of start or stop loss
+    # Classify the first in-frame stop codon of the alternative transcript, and analyze the transcript sequence
+    # (e.g., frame, length, stop codon position, etc.) in case of start or stop loss
     analyze_transcript_df = analyze_transcript(loss_df)
 
     return apply_schema(analyze_transcript_df, PTC_COLUMN_KINDS)
@@ -736,14 +737,46 @@ def start_stop_loss(df):
     return df
 
 
+def variant_part_in_utr3(row):
+    """
+    Return the part of the variant that lies past the 3' end of the coding region, in the 3'UTR, as (ref, alt) in
+    transcript orientation. Both are empty if the variant ends inside the coding region.
+
+    apply_variant_edge_aware_with_lengths applies only the part inside the coding region: there, the alt allele
+    replaces the ref bases position by position. The 3'UTR part gets the remaining alt bases. On the plus strand, the
+    3'UTR follows the coding region in genomic order; on the minus strand, it precedes it.
+
+    :param row: A pd.Series row containing strand, start_variant, end_variant, ref and alt (VCF alleles, plus strand),
+                and ref_cds_start and ref_cds_stop (genomic bounds of the coding region)
+    :return: Tuple (ref, alt) of the 3'UTR part in transcript orientation
+    """
+
+    ref, alt = str(row["ref"]).upper(), str(row["alt"]).upper()
+
+    if row["strand"] == "+":
+        utr3_length = row["end_variant"] - row["ref_cds_stop"]
+        if utr3_length <= 0:
+            return "", ""
+        cds_length = len(ref) - utr3_length
+        return ref[cds_length:], alt[cds_length:]
+
+    utr3_length = row["ref_cds_start"] - row["start_variant"]
+    if utr3_length <= 0:
+        return "", ""
+    return str(Seq(ref[:utr3_length]).reverse_complement()), str(Seq(alt[:utr3_length]).reverse_complement())
+
+
 def splice_alt_cds_into_transcript(row, transcript_seq):
     """
-    Splice the alternative CDS sequence into the full transcript sequence to create the alternative transcript
+    Splice the alternative CDS sequence into the full transcript sequence to create the alternative transcript.
+    A variant that reaches past the coding region into the 3'UTR changes the 3'UTR, too.
     :param row: A pd.Series row containing "ref_cds_seq" (Reference CDS), "alt_cds_seq" (Alternative / Variant-modified CDS),
-                and "cds_start_in_transcript" and "cds_end_in_transcript" (from cds_range_in_transcript)
+                "cds_start_in_transcript" and "cds_end_in_transcript" (from cds_range_in_transcript), "transcript_exon_info",
+                and the variant columns that variant_part_in_utr3 reads
     :param transcript_seq: Full transcript sequence
     :return: Modified (alternative) transcript sequence with the alternative CDS spliced in the correct position,
-             or None if the CDS position is unknown or the transcript does not hold the ref CDS there
+             or None if the CDS position is unknown, the transcript does not hold the ref CDS or the ref allele there,
+             or the variant reaches past the end of the exon
     """
 
     ref_cds_seq = row["ref_cds_seq"].upper()
@@ -754,22 +787,183 @@ def splice_alt_cds_into_transcript(row, transcript_seq):
     if ref_start_idx is None or transcript_seq[ref_start_idx:ref_end_idx] != ref_cds_seq:
         return None  # Cannot find ref CDS, alignment problem
 
+    utr3_ref, utr3_alt = variant_part_in_utr3(row)
+    utr3_end = ref_end_idx + len(utr3_ref)
+    if utr3_ref:
+        # The part of the variant in the 3'UTR must lie in the exon that holds the end of the coding region
+        exon_ends = itertools.accumulate(int(length) for _, length in row["transcript_exon_info"])
+        exon_end = next(end for end in exon_ends if end >= ref_end_idx)
+        if transcript_seq[ref_end_idx:utr3_end] != utr3_ref or utr3_end > exon_end:
+            return None  # ref allele mismatch, or the variant reaches past the end of the exon
+
     # Replace the reference CDS with the variant-modified / alternative one
     new_transcript_seq = (
         transcript_seq[:ref_start_idx]
         + alt_cds_seq
-        + transcript_seq[ref_end_idx:]
+        + utr3_alt
+        + transcript_seq[utr3_end:]
     )  # fmt: skip
 
     return new_transcript_seq
 
 
+def in_frame_codons(seq, start, codons):
+    """
+    Yield (position, codon) for each codon of the sequence that is one of codons, reading in frame from position start
+    to the end of the sequence.
+    """
+
+    for i in range(start, len(seq) - 2, 3):
+        if seq[i : i + 3] in codons:
+            yield i, seq[i : i + 3]
+
+
+def first_stop_codon(seq, start):
+    """Return the position of the first stop codon of the sequence, reading in frame from position start, or None."""
+
+    return next((i for i, _ in in_frame_codons(seq, start, {"TAA", "TAG", "TGA"})), None)
+
+
+def _common_prefix_length(a, b):
+    """Return the length of the longest common prefix of the strings a and b."""
+
+    low, high = 0, min(len(a), len(b))
+    while low < high:
+        middle = (low + high + 1) // 2
+        if a[:middle] == b[:middle]:
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+def annotated_stop_in_alt(ref_seq, alt_seq, stop):
+    """
+    Return the positions of the annotated stop codon in the alternative sequence, as a tuple of two. A variant upstream
+    of the stop codon shifts it by its net indel length. A variant that starts in the stop codon or downstream of it
+    does not shift it.
+
+    The variant replaces the part between the longest common prefix and the longest common suffix of both sequences.
+    So the result depends on the alternative sequence only, not on how the VCF describes the variant. An indel in a
+    repeat has more than one such placement. Taking the prefix first places it 3'-most, as HGVS does; this gives the
+    second position. Taking the suffix first places it 5'-most. If that placement ends at or before the stop codon,
+    the first position is the shifted stop codon. Otherwise both positions are the same.
+    The two differ if the repeat reaches into the stop codon. E.g. TCC inserted right before the stop codon TAA can
+    also be placed after its T, inside it. Then the first position is 3 nt downstream of the annotated one, and the
+    second is the annotated one. A TAA inserted right before the stop codon TAA can also be placed right after it.
+    A variant can replace the first base of the stop codon together with bases upstream of it. If the replacement
+    reaches into the stop codon in the alternative sequence, the stop codon maps to the same offset in the replacement
+    as in the reference. Otherwise it maps to the position anchored on the unchanged sequence downstream, i.e. shifted
+    by the net indel length, so it does not depend on the placement.
+    This counts the annotated stop codon as lost only if every representation of the variant removes it. A delins is
+    not split into an SNV plus an indel. E.g. ATAG>T at the last sense codon and the stop codon in GTA TAG TAG CAT
+    gives GTT TAG CAT: a synonymous change plus the deletion of a stop codon in a stop codon repeat. The protein is
+    unchanged and the 3'UTR is 3 nt shorter, but the result is a stop loss.
+
+    :param ref_seq: Reference sequence, e.g. the transcript
+    :param alt_seq: Alternative sequence, the reference sequence with the variant applied
+    :param stop: Position of the first base of the annotated stop codon in ref_seq
+    :return: Tuple of the two positions of the annotated stop codon in alt_seq: from the 5'-most placement if it ends
+             at or before the stop codon, and from the 3'-most placement
+    """
+
+    net_length = len(alt_seq) - len(ref_seq)
+    prefix = _common_prefix_length(ref_seq, alt_seq)
+    suffix = _common_prefix_length(ref_seq[::-1], alt_seq[::-1])
+
+    # 3'-most placement: the variant replaces ref_seq[prefix:ref_end] by alt_seq[prefix:alt_end]
+    suffix_3prime = min(suffix, min(len(ref_seq), len(alt_seq)) - prefix)
+    ref_end, alt_end = len(ref_seq) - suffix_3prime, len(alt_seq) - suffix_3prime
+    if ref_end <= stop or alt_end <= stop:
+        position_3prime = stop + net_length
+    else:
+        position_3prime = stop
+
+    # 5'-most placement: the variant ends where the longest common suffix starts
+    if len(ref_seq) - suffix <= stop:
+        return stop + net_length, position_3prime
+    return position_3prime, position_3prime
+
+
+def ends_at_annotated_stop(row):
+    """
+    Return whether the reference transcript, read in frame from the annotated start codon, reads its first stop codon
+    at the annotated stop codon.
+
+    Not so if the annotated stop codon is out of the reading frame, as in a cds_start_NF CDS read from its first base,
+    or if the transcript has no stop codon there. Not so either if an in-frame stop codon lies upstream of it: a
+    selenocysteine TGA or a misannotation. The annotation marks selenocysteine codons, but the pipeline does not read
+    them, so it cannot tell the two apart.
+
+    :param row: A pd.Series row containing transcript_seq, cds_start_in_transcript and cds_end_in_transcript (from
+                cds_range_in_transcript)
+    """
+
+    first_stop = first_stop_codon(row["transcript_seq"], row["cds_start_in_transcript"])
+    return first_stop == row["cds_end_in_transcript"] - 3
+
+
+def annotated_stop_distance(row, first_stop):
+    """
+    Return how far a stop codon of the alternative transcript lies upstream of the annotated stop codon, in nt.
+    Positive means upstream, i.e. a PTC. 0 means the stop codon is the annotated one, and negative means it lies
+    downstream.
+
+    The stop codon is the annotated one if it lies at one of the two positions from annotated_stop_in_alt. Otherwise
+    the distance is to the first of them. After an in-frame indel right before the stop codon, the first position is
+    the shifted stop codon, also if the indel can be placed inside it.
+
+    :param row: A pd.Series row containing transcript_seq, alt_transcript_seq and cds_end_in_transcript (from
+                cds_range_in_transcript)
+    :param first_stop: Position of the stop codon in the alternative transcript, or None
+    :return: The distance in nt, or None if first_stop is None
+    """
+
+    if first_stop is None:
+        return None
+    positions = annotated_stop_in_alt(
+        row["transcript_seq"], row["alt_transcript_seq"], row["cds_end_in_transcript"] - 3
+    )
+    return 0 if first_stop in positions else positions[0] - first_stop
+
+
+def classify_first_stop(row, first_stop):
+    """
+    Classify the first in-frame stop codon of the alternative transcript, read from the annotated start codon.
+
+    With an annotated stop codon, compare the first stop with it in alternative transcript coordinates (see
+    annotated_stop_distance). A stop upstream of it is premature. A stop at its position is neither premature nor a
+    stop loss. A stop downstream of it, or no stop up to the transcript end (nonstop), is a stop loss.
+    Without an annotated stop codon (has_stop_codon False), there is no position to compare with. A stop inside the
+    alternative CDS is premature, and a stop past its end is neither.
+
+    :param row: A pd.Series row containing has_stop_codon, transcript_seq, alt_transcript_seq, alt_cds_seq,
+                and cds_start_in_transcript and cds_end_in_transcript (from cds_range_in_transcript)
+    :param first_stop: Position of the first in-frame stop codon in the alternative transcript, or None
+    :return: Tuple (alt_is_premature, stop_loss)
+    """
+
+    if not row["has_stop_codon"]:
+        alt_cds_end = row["cds_start_in_transcript"] + len(row["alt_cds_seq"])
+        return first_stop is not None and first_stop + 3 <= alt_cds_end, False
+
+    distance = annotated_stop_distance(row, first_stop)
+    return distance is not None and distance > 0, distance is None or distance < 0
+
+
 def analyze_transcript(results_df):
     """
-    Analyze the alternative transcript sequence in cases of start or stop codons loss due to mutations.
-    Scan for new in-frame start or stop codons in the alternative transcript sequence.
-    :param results_df: DataFrame containing transcript sequence data and annotations, including start_loss and stop_loss flags
-                       and cds_start_in_transcript (from cds_range_in_transcript)
+    Analyze the alternative transcript sequence: classify its first in-frame stop codon, and in cases of start or stop
+    codon loss, scan for new in-frame start or stop codons.
+
+    The classification reads the alternative transcript in frame from the annotated start codon, through the CDS into
+    the 3'UTR (see classify_first_stop). It replaces alt_is_premature and stop_loss from analyze_sequence and
+    start_stop_loss, which see only the CDS: after a frameshift, the last codon of the alternative CDS is out of frame.
+    The comparison with the annotated stop codon needs a reference transcript that, read the same way, stops there
+    (see ends_at_annotated_stop). Rows where it does not, and rows without an alternative transcript, keep those flags.
+
+    :param results_df: DataFrame containing transcript sequence data and annotations, including start_loss and stop_loss flags,
+                       cds_start_in_transcript (from cds_range_in_transcript), and the columns that classify_first_stop reads
     :return: pandas DataFrame with additional columns for rescued start / stop codon information
     """
 
@@ -791,8 +985,8 @@ def analyze_transcript(results_df):
 
     for idx, row in df.iterrows():
         seq = row["alt_transcript_seq"]
-        # Start the analysis at the CDS start in the alt transcript. The variant changes only the CDS,
-        # so the alt CDS starts at the same transcript position as the ref CDS.
+        # The variant changes only the CDS and the 3'UTR, so the alt CDS starts at the same transcript position as
+        # the ref CDS.
         cds_start = row["cds_start_in_transcript"]
 
         exon_info = row["transcript_exon_info"]  # for exon number
@@ -801,14 +995,26 @@ def analyze_transcript(results_df):
         if not isinstance(seq, str) or len(seq) < 3 or pd.isna(cds_start):
             continue
 
+        # Read codons in frame from the annotated start codon to the end of the transcript
+        scan_start = cds_start
+        stop_codons_in_frame = list(in_frame_codons(seq, scan_start, valid_stop_codons))
+
+        # The comparison needs a reference transcript that reads its first stop codon at the annotated one. Otherwise,
+        # e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the row keeps the flags from the CDS.
+        stop_loss = row["stop_loss"]
+        if not row["has_stop_codon"] or ends_at_annotated_stop(row):
+            first_stop = stop_codons_in_frame[0][0] if stop_codons_in_frame else None
+            is_premature, stop_loss = classify_first_stop(row, first_stop)
+            df.at[idx, "alt_is_premature"] = is_premature
+            df.at[idx, "stop_loss"] = stop_loss
+
         start_pos = None
         start_exon = None  # for exon number
         stop_codons = []
-        stop_exons = []  # for exon number
 
         # only analyze rows flagged with start or stop codon loss: skip the others and fill with None values
         # Skips only if we have both start_loss = FALSE and stop_loss = FALSE. If one is true, then don't skip.
-        if not (row["start_loss"] or row["stop_loss"]):
+        if not (row["start_loss"] or stop_loss):
             continue
 
         # START LOSS rescue search
@@ -822,25 +1028,17 @@ def analyze_transcript(results_df):
                     start_exon = get_exon(start_pos, exon_info)  # for exon number
 
                     # From new start codon, scan codons in frame
-                    for j in range(i, len(seq) - 2, 3):
-                        codon2 = seq[j : j + 3]
-                        if codon2 in valid_stop_codons:
-                            stop_codons.append((j, codon2))
-                            stop_exons.append(get_exon(j, exon_info))  # for exon number
+                    stop_codons = list(in_frame_codons(seq, i, valid_stop_codons))
 
                     break
 
-        # STOP LOSS rescue search
-        elif row["stop_loss"]:
-            # Start at cds_start, scan codons in frame to end --> lets start at cds start so we are in frame
-            for i in range(cds_start, len(seq) - 2, 3):
-                codon = seq[i : i + 3]
-                if codon == start_codon and start_pos is None:
-                    start_pos = i
-                    start_exon = get_exon(start_pos, exon_info)  # for exon number
-                if codon in valid_stop_codons:
-                    stop_codons.append((i, codon))
-                    stop_exons.append(get_exon(i, exon_info))  # for exon number
+        # STOP LOSS readthrough: the in-frame stop codons from the annotated start codon on
+        else:
+            start_pos = next((i for i, _ in in_frame_codons(seq, scan_start, {start_codon})), None)
+            start_exon = get_exon(start_pos, exon_info) if start_pos is not None else None  # for exon number
+            stop_codons = stop_codons_in_frame
+
+        stop_exons = [get_exon(i, exon_info) for i, _ in stop_codons]  # for exon number
 
         # Set last codon in transcript (use last full codon)
         last_codon = seq[-3:] if len(seq) >= 3 else None
