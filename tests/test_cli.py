@@ -189,3 +189,93 @@ def test_to_parquet_safe_leaves_other_columns_untouched():
     df = pd.DataFrame({"transcript_id": ["t1"], "nmd_escape": [True]})
     safe = to_parquet_safe(df)
     assert safe is df
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), pd.NA])
+def test_write_results_parquet_keeps_any_missing_stop_codon_value_null(tmp_path, missing):
+    """None, np.nan and pd.NA in a stop-codon column are all written as null."""
+
+    pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+
+    df = pd.DataFrame({"transcript_id": ["t1", "t2"], "alt_all_stop_codons": [[(3, "TGA")], missing]})
+    out = tmp_path / "missing.parquet"
+
+    write_results(df, str(out))
+
+    assert pq.read_table(out).column("alt_all_stop_codons").to_pylist() == [[{"position": 3, "codon": "TGA"}], None]
+
+
+def _results_schema(tmp_path, vcf_path, name):
+    import pyarrow.parquet as pq
+
+    out = tmp_path / name
+    main(
+        vcf_path=vcf_path,
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+    return pq.read_schema(str(out)), pd.read_parquet(out)
+
+
+def test_parquet_schema_is_the_same_for_every_run(tmp_path):
+    """
+    Without an explicit schema, columns that are only None in a run (e.g. the transcript_*
+    stop-codon columns when no variant has a start or stop loss) are written as ``null``.
+    A run without start or stop loss, a run with them and an empty table must agree.
+    """
+
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa
+
+    schema_without, _ = _results_schema(tmp_path, "resources/test_files/test_variants.vcf", "without.parquet")
+    schema_with, loaded = _results_schema(tmp_path, "resources/test_files/variants.vcf", "with.parquet")
+    assert loaded["start_loss"].any() or loaded["stop_loss"].any()
+
+    empty = pd.DataFrame(columns=schema_with.names)
+    empty_out = tmp_path / "empty.parquet"
+    write_results(empty, str(empty_out))
+    import pyarrow.parquet as pq
+
+    schema_empty = pq.read_schema(str(empty_out))
+
+    assert schema_without.equals(schema_with)
+    assert schema_empty.equals(schema_with)
+    for field in schema_with:
+        assert not pa.types.is_null(field.type), field.name
+    assert schema_with.field("transcript_all_stop_codons").type.equals(
+        pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())]))
+    )
+    assert schema_with.field("transcript_stop_codon_exons").type.equals(pa.list_(pa.int64()))
+    assert schema_with.field("transcript_start_codon_exon").type.equals(pa.int64())
+    assert schema_with.field("transcript_valid_stop").type.equals(pa.bool_())
+
+
+def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
+    pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+
+    out = tmp_path / "roundtrip.parquet"
+    results = main(
+        vcf_path="resources/test_files/variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+    table = pq.read_table(out)
+
+    assert table.column_names == list(results.columns)
+    for column in results.columns:
+        expected = results[column].tolist()
+        actual = table.column(column).to_pylist()
+        assert len(actual) == len(expected)
+        for exp, act in zip(expected, actual):
+            if pd.api.types.is_scalar(exp) and pd.isna(exp):
+                assert act is None, column
+            elif column in ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons"):
+                assert act == [{"position": p, "codon": c} for p, c in exp], column
+            elif isinstance(exp, list):
+                assert [list(x) if isinstance(x, tuple) else x for x in exp] == act, column
+            else:
+                assert exp == act, column
