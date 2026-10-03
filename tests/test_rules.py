@@ -521,6 +521,7 @@ def test_extract_ptc_locates_cds_in_transcript(tmp_path_factory):
         assert row["alt_transcript_seq"] == transcript_seq[:324] + "T" + transcript_seq[325:]
         assert row["alt_first_stop_pos"] == 174
         assert row["alt_is_premature"] == True
+        assert row["ptc_to_intron"] == 76
 
 
 def test_get_exon():

@@ -215,33 +215,26 @@ def calculate_stop_codon_dist(row):
 
 def exon_end_in_alt_cds(row, exon):
     """
-    Return where a transcript exon ends in alt CDS coordinates (as alt_first_stop_pos), or None if the lengths
-    do not determine it. The value is the CDS position of the first base after the exon, i.e. of its downstream
-    exon junction.
+    Return where a transcript exon ends in alt CDS coordinates (as alt_first_stop_pos), or None if the CDS position
+    in the transcript is unknown. The value is the CDS position of the first base after the exon, i.e. of its
+    downstream exon junction. It is negative for an exon upstream of the CDS.
 
-    Exon numbers follow transcript order. Up to the last CDS exon, an exon ends where its CDS part ends.
-    The last CDS exon ends after its 3' UTR part, and each exon after it adds its full length.
-    The result is None for an exon upstream of the CDS. It is also None for an exon at or after the CDS if the CDS
-    lies in a single exon: the lengths do not tell how the UTR of that exon splits into 5' and 3' UTR.
+    Exon numbers follow transcript order. The exon end in transcript coordinates, minus cds_start_in_transcript,
+    gives the position in ref CDS coordinates. The length change of the CDS up to this exon converts it to alt CDS
+    coordinates.
     """
 
+    cds_start = row.get("cds_start_in_transcript")
+    tx_exons = row.get("transcript_exon_info") or []
     alt_cds = {int(e): int(length) for e, length in row.get("alt_cds_info") or []}
     ref_cds = {int(e): int(length) for e, length in row.get("ref_cds_info") or []}
-    tx_exons = {int(e): int(length) for e, length in row.get("transcript_exon_info") or []}
 
-    if not alt_cds or exon < min(alt_cds):
+    if cds_start is None or not tx_exons or alt_cds.keys() != ref_cds.keys():
         return None
 
-    end = sum(length for e, length in alt_cds.items() if e <= exon)
-
-    last_cds_exon = max(alt_cds)
-    if exon >= last_cds_exon:
-        if last_cds_exon == min(alt_cds) or last_cds_exon not in ref_cds or last_cds_exon not in tx_exons:
-            return None
-        end += tx_exons[last_cds_exon] - ref_cds[last_cds_exon]
-        end += sum(length for e, length in tx_exons.items() if last_cds_exon < e <= exon)
-
-    return end
+    exon_end = sum(int(length) for e, length in tx_exons if int(e) <= exon)
+    cds_length_change = sum(alt_cds[e] - ref_cds[e] for e in alt_cds if e <= exon)
+    return exon_end - cds_start + cds_length_change
 
 
 def evaluate_nmd_escape_rules(row):
@@ -258,7 +251,8 @@ def evaluate_nmd_escape_rules(row):
 
     :param row: A row of the DataFrame including alt_is_premature (bool), alt_first_stop_pos (int),
                 alt_stop_codon_exons (list[int]), transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]),
-                alt_cds_info and ref_cds_info (same format, CDS part per exon), alt_start_codon_pos (int)
+                alt_cds_info and ref_cds_info (same format, CDS part per exon), cds_start_in_transcript (int),
+                alt_start_codon_pos (int)
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
