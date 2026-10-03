@@ -1,4 +1,6 @@
+import gzip
 import logging
+import pathlib
 import sys
 from pathlib import Path
 
@@ -7,7 +9,15 @@ import pytest
 
 import nmd_scanner.cli as cli_module
 import nmd_scanner.scan
-from nmd_scanner.cli import OUTPUT_COLUMN_KINDS, is_valid_output_path, main, main_cli, to_parquet_safe, write_results
+from nmd_scanner.cli import (
+    OUTPUT_COLUMN_KINDS,
+    annotate,
+    is_valid_output_path,
+    main,
+    main_cli,
+    to_parquet_safe,
+    write_results,
+)
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
@@ -610,3 +620,110 @@ def test_main_needs_exactly_one_of_gtf_path_and_annotation_path():
         main("in.vcf", None, "ref.fa", "out.csv")
     with pytest.raises(ValueError, match="exactly one"):
         main("in.vcf", "a.gtf", "ref.fa", "out.csv", annotation_path="b.gtf")
+
+
+_TUBB8B_GFF3 = """\
+##gff-version 3
+chr18\tensembl\tgene\t47221\t49615\t.\t-\t.\tID=gene:G1;biotype=protein_coding
+chr18\tensembl\tmRNA\t47221\t49615\t.\t-\t.\tID=transcript:T1;Parent=gene:G1;biotype=protein_coding
+chr18\tensembl\texon\t49501\t49615\t.\t-\t.\tParent=transcript:T1;rank=1
+chr18\tensembl\texon\t49129\t49237\t.\t-\t.\tParent=transcript:T1;rank=2
+chr18\tensembl\texon\t48940\t49050\t.\t-\t.\tParent=transcript:T1;rank=3
+chr18\tensembl\texon\t47221\t48447\t.\t-\t.\tParent=transcript:T1;rank=4
+chr18\tensembl\tCDS\t49501\t49557\t.\t-\t0\tID=CDS:P1;Parent=transcript:T1
+chr18\tensembl\tCDS\t49129\t49237\t.\t-\t0\tID=CDS:P1;Parent=transcript:T1
+chr18\tensembl\tCDS\t48940\t49050\t.\t-\t2\tID=CDS:P1;Parent=transcript:T1
+chr18\tensembl\tCDS\t47393\t48447\t.\t-\t2\tID=CDS:P1;Parent=transcript:T1
+"""
+
+
+def test_annotate_returns_what_main_writes(tmp_path):
+    out = tmp_path / "main.csv"
+    expected = main(
+        vcf_path="resources/test_files/test_variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+
+    results = annotate(
+        "resources/test_files/test_variants.vcf",
+        "resources/chr18.gtf.gz",
+        "resources/chr18.fa.gz",
+    )
+
+    assert isinstance(results, pd.DataFrame)
+    assert not results.empty
+    assert list(results.columns) == list(expected.columns)
+    pd.testing.assert_frame_equal(results, expected)
+    written = tmp_path / "annotate.csv"
+    write_results(results, str(written))
+    assert written.read_bytes() == out.read_bytes()
+
+
+def test_annotate_does_not_write_files_or_configure_logging(tmp_path, monkeypatch):
+    resources = pathlib.Path(__file__).resolve().parent.parent / "resources"
+    monkeypatch.chdir(tmp_path)
+    root_handlers = list(logging.getLogger().handlers)
+
+    annotate(
+        str(resources / "test_files" / "test_variants.vcf"),
+        str(resources / "chr18.gtf.gz"),
+        str(resources / "chr18.fa.gz"),
+    )
+
+    assert list(tmp_path.iterdir()) == []
+    assert logging.getLogger().handlers == root_handlers
+
+
+def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic_vcf):
+    results = annotate(intergenic_vcf, "resources/chr18.gtf.gz", "resources/chr18.fa.gz")
+
+    assert isinstance(results, pd.DataFrame)
+    assert results.empty
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+
+
+def test_annotate_reassign_exons_matches_main(tmp_path):
+    args = ("resources/test_files/test_variants.vcf", "resources/chr18.gtf.gz", "resources/chr18.fa.gz")
+    expected = main(*args, str(tmp_path / "main.csv"), reassign_exons=True)
+
+    results = annotate(*args, reassign_exons=True)
+
+    pd.testing.assert_frame_equal(results, expected)
+
+
+def test_annotate_reads_gff3_with_the_fasta(tmp_path):
+    from pyfaidx import Fasta
+
+    fasta_path = "resources/chr18.fa.gz"
+    ref = str(Fasta(fasta_path)["chr18"][48000:48001]).upper()
+    alt = "A" if ref != "A" else "C"
+    vcf = tmp_path / "in_cds.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"chr18\t48001\tin_cds\t{ref}\t{alt}\t.\t.\t.\n"
+    )
+    gff3 = tmp_path / "tubb8b.gff3"
+    gff3.write_text(_TUBB8B_GFF3)
+
+    results = annotate(str(vcf), str(gff3), fasta_path)
+    expected = main(str(vcf), None, fasta_path, str(tmp_path / "main.csv"), annotation_path=str(gff3))
+
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+    assert list(results["transcript_id"]) == ["T1"]
+    pd.testing.assert_frame_equal(results, expected)
+
+
+def test_annotate_annotation_format_overrides_the_suffix(tmp_path):
+    vcf = "resources/test_files/test_variants_minus.vcf"
+    gtf = tmp_path / "annotation.txt"
+    with gzip.open("resources/chr18.gtf.gz", "rb") as src:
+        gtf.write_bytes(src.read())
+    expected = annotate(vcf, "resources/chr18.gtf.gz", "resources/chr18.fa.gz")
+
+    results = annotate(vcf, str(gtf), "resources/chr18.fa.gz", annotation_format="gtf")
+
+    pd.testing.assert_frame_equal(results, expected)
+    with pytest.raises(ValueError):
+        annotate(vcf, str(gtf), "resources/chr18.fa.gz")
