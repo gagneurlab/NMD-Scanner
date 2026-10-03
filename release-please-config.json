@@ -4,6 +4,7 @@
   "packages": {
     ".": {
       "release-type": "python",
+      "bump-minor-pre-major": true,
       "package-name": "nmd_scanner",
       "include-component-in-tag": false,
       "include-v-in-tag": true
