@@ -63,7 +63,8 @@ Versioning and tagging are automated by [release-please](https://github.com/goog
 
 - release-please watches commits on `main` and opens/maintains a release PR that bumps `pyproject.toml` and updates `CHANGELOG.md`.
 - Merging the release PR cuts a `vX.Y.Z` tag and a GitHub release.
-- The tag triggers `publish.yml`, which builds sdist + wheel and uploads to PyPI via trusted publishing (OIDC).
+- `release-please.yml` then starts `publish.yml` with `workflow_dispatch` for the new tag. `publish.yml` builds sdist + wheel and uploads to PyPI via trusted publishing (OIDC). It can also be triggered by hand from the Actions tab.
+- `release-please.yml` does not call `publish.yml` via `workflow_call`, because PyPI then rejects the upload's attestation: the attestation names `release-please.yml`, but the trusted publisher on PyPI is `publish.yml`.
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) on `main` so release-please can pick the next version (`fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major).
 
