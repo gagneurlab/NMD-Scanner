@@ -244,21 +244,27 @@ def calculate_ptc_exon_length(row):
 
 def calculate_stop_codon_dist(row):
     """
-    Calculate the distance between the reference stop codon and the alternative stop codon.
-    Positive means the PTC is upstream of the reference stop codon.
+    Calculate the distance in nt between the reference stop codon and the alternative stop codon (alt_first_stop_pos).
+    Positive means the PTC is upstream of the reference stop codon, 0 means the alternative stop codon is the
+    reference stop codon.
+
+    Both positions are in alt CDS coordinates. The reference stop codon is the annotated one: the last codon of the
+    alt coding region, at alt_cds_len - 3. The first in-frame stop of the reference is not used, because it can be an
+    internal one, e.g. a selenocysteine TGA. An indel upstream of the PTC shifts both positions by the same amount,
+    so the distance is the same as in ref CDS coordinates.
     Without an annotated stop codon (has_stop_codon False), there is no reference stop codon and the distance is None.
     """
 
     if not row.get("has_stop_codon"):
         return None
 
-    ref_stop = row.get("ref_first_stop_pos")
+    alt_cds_len = row.get("alt_cds_len")
     alt_stop = row.get("alt_first_stop_pos")
 
-    if ref_stop is None or alt_stop is None:
+    if alt_cds_len is None or alt_stop is None:
         return None
 
-    return ref_stop - alt_stop
+    return alt_cds_len - 3 - alt_stop
 
 
 def evaluate_nmd_escape_rules(row):
