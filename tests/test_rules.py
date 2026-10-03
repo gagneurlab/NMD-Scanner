@@ -573,6 +573,7 @@ def test_analyze_sequence():
                 "alt_cds_seq": "ATGAAATAA",
                 "ref_cds_info": [(1, 9)],
                 "alt_cds_info": [(1, 9)],
+                "has_start_codon": True,
                 "has_stop_codon": True,
                 "cds_frame": 0,
             }
@@ -594,6 +595,7 @@ def test_analyze_sequence_without_stop_codon():
                 "alt_cds_seq": "ATGAAATAG",
                 "ref_cds_info": [(1, 9)],
                 "alt_cds_info": [(1, 9)],
+                "has_start_codon": True,
                 "has_stop_codon": False,
                 "cds_frame": 0,
             },
@@ -603,6 +605,7 @@ def test_analyze_sequence_without_stop_codon():
                 "alt_cds_seq": "ATGAAAGTAA",
                 "ref_cds_info": [(1, 10)],
                 "alt_cds_info": [(1, 10)],
+                "has_start_codon": True,
                 "has_stop_codon": False,
                 "cds_frame": 0,
             },
@@ -644,7 +647,8 @@ def test_analyze_sequence_reads_codons_in_the_cds_frame():
 
     result = start_stop_loss(analyze_sequence(df))
 
-    # The out-of-frame ATG at CDS position 0 is no start codon, so changing it is no start loss
+    # Without an annotated start codon, the out-of-frame ATG at CDS position 0 is no start codon, so changing it is no
+    # start loss
     assert result["ref_start_codon_pos"].tolist() == [None] * 3
     assert result["start_loss"].tolist() == [False] * 3
     # Out-of-frame stop codon: the first in-frame stop codon is still the one at the CDS end
@@ -659,9 +663,8 @@ def test_start_stop_loss():
     df = pd.DataFrame(
         [
             {
-                "has_start_codon": True,
-                "ref_cds_seq": "ATGAAATAG",
-                "alt_cds_seq": "ACGAAAGGA",
+                "ref_start_codon_pos": 0,
+                "alt_start_codon_pos": None,
                 "ref_valid_stop": True,
                 "alt_valid_stop": False,
                 "ref_last_codon": "TAG",
@@ -669,9 +672,8 @@ def test_start_stop_loss():
             },
             # stop codon swap: the last codon changes but still encodes a stop
             {
-                "has_start_codon": True,
-                "ref_cds_seq": "ATGAAATAA",
-                "alt_cds_seq": "ATGAAATAG",
+                "ref_start_codon_pos": 0,
+                "alt_start_codon_pos": 0,
                 "ref_valid_stop": True,
                 "alt_valid_stop": True,
                 "ref_last_codon": "TAA",
@@ -707,14 +709,51 @@ def test_start_loss_judges_the_annotated_start_codon():
                 "ATGCAAACCCTAA",  # insertion after the start codon
                 "GTGAAACCCTAA",  # A>G at the first base, without an annotated start codon
             ],
-            "ref_valid_stop": [True] * 5,
-            "alt_valid_stop": [True] * 5,
+            "ref_cds_info": [[(1, 12)]] * 5,
+            "alt_cds_info": [[(1, 12)]] * 3 + [[(1, 13)]] + [[(1, 12)]],
+            "has_stop_codon": [True] * 5,
+            "cds_frame": [0] * 5,
         }
     )
 
-    result = start_stop_loss(df)
+    result = start_stop_loss(analyze_sequence(df))
 
     assert result["start_loss"].tolist() == [True, False, True, False, False]
+
+
+def test_start_codon_pos_is_the_annotated_start_codon():
+    """
+    The start codon position is the annotated start codon at CDS position 0, also if it is CTG and an in-frame ATG
+    follows. Without an annotated start codon, the true start lies upstream of the CDS, and an in-frame ATG is an
+    internal Met.
+
+    ref CDS  CTG AAA ATG CCC TAA    annotated start codon CTG: ref_start_codon_pos 0, not 6
+             0       6
+    """
+    df = pd.DataFrame(
+        {
+            # the last 2 CDS have no annotated start codon (e.g. cds_start_NF)
+            "has_start_codon": [True, True, False, False],
+            "ref_cds_seq": ["CTGAAAATGCCCTAA", "ATGAAAATGCCCTAA", "ATGAAAATGCCCTAA", "CTGAAAATGCCCTAA"],
+            "alt_cds_seq": [
+                "CTGAAAATGCCATAA",  # CCC>CCA
+                "ACGAAAATGCCCTAA",  # ATG>ACG
+                "ATGAAAATGCCATAA",  # CCC>CCA
+                "CTGAAAATGCCATAA",  # CCC>CCA
+            ],
+            "ref_cds_info": [[(1, 15)]] * 4,
+            "alt_cds_info": [[(1, 15)]] * 4,
+            "has_stop_codon": [True] * 4,
+            "cds_frame": [0] * 4,
+        }
+    )
+
+    result = analyze_sequence(df)
+
+    assert result["ref_start_codon_pos"].tolist() == [0, 0, None, None]
+    assert result["ref_start_codon_exon"].tolist() == [1, 1, None, None]
+    # ATG>ACG changes the annotated start codon, so the alt CDS has none
+    assert result["alt_start_codon_pos"].tolist() == [0, None, None, None]
 
 
 def test_start_and_stop_loss_reads_from_the_next_atg_into_the_3utr():
@@ -869,6 +908,7 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
         "cds_end_in_transcript": 12,
         "alt_cds_start_in_transcript": 2,
         "cds_frame": 0,
+        "has_start_codon": True,
         "has_stop_codon": True,
         "ref_cds_seq": "ATGAAATAA",
         "alt_cds_seq": "ATGAAACAA",

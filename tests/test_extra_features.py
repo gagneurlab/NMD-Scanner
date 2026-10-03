@@ -366,6 +366,7 @@ def _analyzed(ref_cds_seq, alt_cds_seq):
                 "alt_cds_len": len(alt_cds_seq),
                 "ref_cds_info": [(1, len(ref_cds_seq))],
                 "alt_cds_info": [(1, len(alt_cds_seq))],
+                "has_start_codon": True,
                 "has_stop_codon": True,
                 "cds_frame": 0,
             }

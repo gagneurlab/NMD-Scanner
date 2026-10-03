@@ -163,6 +163,12 @@ def calculate_exon_features(row):
 
 
 def calculate_ptc_to_start_distance(row):
+    """
+    Calculate the distance in nt from the start codon to the PTC in the alternative CDS.
+    The start codon is the annotated one at CDS position 0 (alt_start_codon_pos). The distance is None if the transcript
+    has no annotated start codon (e.g. cds_start_NF: the true start lies upstream of the CDS, at an unknown distance)
+    or if the variant changed it (start loss).
+    """
 
     if not row.get("alt_is_premature"):
         return None
@@ -294,7 +300,8 @@ def evaluate_nmd_escape_rules(row):
     :param row: A row of the DataFrame including alt_is_premature (bool), alt_first_stop_pos (int),
                 alt_stop_codon_exons (list[int]), transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]),
                 alt_cds_info and ref_cds_info (same format, CDS part per exon), cds_start_in_transcript (int),
-                alt_start_codon_pos (int)
+                alt_start_codon_pos (int: the annotated start codon at CDS position 0, None if there is none or the
+                variant changed it)
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
@@ -350,7 +357,8 @@ def evaluate_nmd_escape_rules(row):
     # Long exon rule (with exon longer than >407nt)
     rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
 
-    # Start-proximal rule (closer than 150nt from the start codon)
+    # Start-proximal rule (closer than 150nt from the start codon). Without a known start codon, the rule does not
+    # apply.
     rule_start_proximal = (
         start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
     )
@@ -402,7 +410,8 @@ def add_likely_misannotated_flag(row):
     Flag rows that look inconsistent between CDS and transcript annotations and might be likely misannotated.
     A row is flagged as likely misannotated if any of these conditions apply:
         cds_in_transcript = False (the assembled CDS is not found in the transcript sequence)
-        ref_start_codon_pos is defined and not 0 (reference CDS has a start codon not at the very start)
+        ref_start_codon_pos is None or not 0 (the reference CDS does not start with an annotated start codon, e.g.
+        cds_start_NF)
         ref_valid_stop is False (the reference does not end in a valid annotated stop codon, e.g. for a transcript
         without stop_codon rows such as one tagged cds_end_NF)
 
@@ -411,7 +420,7 @@ def add_likely_misannotated_flag(row):
 
     # Add likely_misannotated flag: when
     # "cds_in_transcript" is FALSE
-    # "ref_start_codon_pos" is not 0
+    # "ref_start_codon_pos" is not 0 (None: no annotated start codon)
     # "ref_valid_stop" is FALSE
 
     cds_in_transcript = row.get("cds_in_transcript")

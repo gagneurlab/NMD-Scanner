@@ -751,18 +751,18 @@ def analyze_sequence(results_df):
     Analyzes reference and alternative CDS for start and stop codons, their positions, and potential premature termination codons (PTCs)
 
     :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative sequences, per variant,
-                       has_stop_codon (whether the coding region ends in an annotated stop codon) and cds_frame (the
-                       number of bases before the first complete codon). All codon scans start at the first complete
-                       codon.
+                       has_start_codon (whether the CDS starts with an annotated start codon), has_stop_codon (whether
+                       the coding region ends in an annotated stop codon) and cds_frame (the number of bases before the
+                       first complete codon). All codon scans start at the first complete codon.
     :return: DataFrame with added annotation columns for reference and alternative sequence separately:
-             such as start codon position / exon, last codon and its validity as stop codon, first in-frame stop codon + position,
+             such as position / exon of the annotated start codon (None if there is none or the variant changed it),
+             last codon and its validity as stop codon, first in-frame stop codon + position,
              number and information of all available stop codons, premature stop codon flag.
              The last codon is a valid stop only if it is an annotated stop codon. An in-frame stop codon is premature if it
              lies upstream of the annotated stop codon; without an annotated stop codon, every in-frame stop codon is premature.
     """
 
     valid_stop_codons = {"TAA", "TAG", "TGA"}
-    start_codon = "ATG"
 
     df = results_df.copy()
 
@@ -783,6 +783,9 @@ def analyze_sequence(results_df):
     for idx, row in df.iterrows():
         has_stop_codon = bool(row["has_stop_codon"])
         frame = int(row["cds_frame"])
+        # The annotated start codon forms the first 3 bases of the reference CDS and can be a non-ATG codon such as
+        # CTG. Without one (e.g. cds_start_NF), the true start lies upstream of the CDS.
+        start_codon = row["ref_cds_seq"][:3] if row["has_start_codon"] else None
         for label in ["ref", "alt"]:
             seq = row[f"{label}_cds_seq"]
 
@@ -792,15 +795,14 @@ def analyze_sequence(results_df):
             if not isinstance(seq, str) or len(seq) < 3:
                 continue
 
-            start_pos = None
+            # Start codon position: the annotated start codon at CDS position 0, unless the variant changed it
+            start_pos = 0 if start_codon is not None and seq[:3] == start_codon else None
             stop_codons = []
             stop_exons = []  # for exon number
 
             # Scan in codons (step=3), from the first complete codon
             for i in range(frame, len(seq) - 2, 3):
                 codon = seq[i : i + 3]
-                if codon == start_codon and start_pos is None:  # first start codon position
-                    start_pos = i
                 if codon in valid_stop_codons:  # record all stop codons with their positions and exons
                     stop_codons.append((i, codon))
                     stop_exons.append(get_exon(i, exon_info))  # for exon number
@@ -833,17 +835,15 @@ def analyze_sequence(results_df):
 def start_stop_loss(df):
     """
     Annotates whether a variant caused a start or stop codon loss
-    :param df: DataFrame with start & stop codon analysis columns, reference and alternative CDS, and whether the
-               transcript has an annotated start codon (has_start_codon)
+    :param df: DataFrame with start & stop codon analysis columns
     :return: Original DataFrames with added columns for "start_loss" and "stop_loss"
     """
 
     df = df.copy()
 
-    # Start codon loss: the variant changes the annotated start codon (start_codon rows of the GFF3), which forms the
-    # first 3 bases of the CDS and can be a non-ATG codon such as CTG. A CDS without an annotated start codon (e.g.
-    # cds_start_NF) has no start codon to lose.
-    df["start_loss"] = df["has_start_codon"].astype(bool) & (df["ref_cds_seq"].str[:3] != df["alt_cds_seq"].str[:3])
+    # Start codon loss: the reference CDS has an annotated start codon, and the variant changed it, so the alternative
+    # CDS has none. A CDS without an annotated start codon (e.g. cds_start_NF) has no start codon to lose.
+    df["start_loss"] = df["ref_start_codon_pos"].notna() & df["alt_start_codon_pos"].isna()
 
     # Stop codon loss: the annotated stop codon no longer encodes a stop in the alternative sequence. A swap to another
     # stop codon, e.g. TAA>TAG, is no loss. Without an annotated stop codon, ref_valid_stop is False: there is no stop
@@ -1059,7 +1059,7 @@ def analyze_transcript(results_df):
     (see ends_at_annotated_stop). Rows where it does not, and rows without an alternative transcript, keep those flags.
 
     :param results_df: DataFrame containing transcript sequence data and annotations, including start_loss and stop_loss flags,
-                       alt_cds_start_in_transcript, and the columns that classify_first_stop reads
+                       alt_cds_start_in_transcript, has_start_codon, and the columns that classify_first_stop reads
     :return: pandas DataFrame with additional columns for rescued start / stop codon information
     """
 
@@ -1129,8 +1129,10 @@ def analyze_transcript(results_df):
         # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on. Only without a start
         # loss: after a start loss, the scan above already reads on to the transcript end (3'UTR).
         else:
-            start_pos = next((i for i, _ in in_frame_codons(seq, scan_start, {start_codon})), None)
-            start_exon = get_exon(start_pos, exon_info) if start_pos is not None else None  # for exon number
+            # The start codon is the annotated one at the CDS start. Without one (e.g. cds_start_NF), it is unknown.
+            if row["has_start_codon"]:
+                start_pos = cds_start
+                start_exon = get_exon(start_pos, exon_info)  # for exon number
             stop_codons = stop_codons_in_frame
 
         stop_exons = [get_exon(i, exon_info) for i, _ in stop_codons]  # for exon number
