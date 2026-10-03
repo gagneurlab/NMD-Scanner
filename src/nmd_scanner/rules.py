@@ -83,6 +83,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].notna()].copy()
     ################
 
+    if intersection_cds_vcf.empty:
+        logger.info("No variant left after the reference check; there are no results to compute.")
+        return pd.DataFrame()
+
     # Limit to relevant transcript (to save time)
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
     cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()

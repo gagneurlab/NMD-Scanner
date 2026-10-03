@@ -342,3 +342,56 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
 
     assert pq.read_table(empty_out).num_rows == 0
     assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
+
+
+@pytest.fixture
+def reference_mismatch_vcf(tmp_path):
+    """A VCF with one variant inside a CDS whose REF does not match the FASTA (it is ATG there)."""
+
+    path = tmp_path / "mismatch.vcf"
+    path.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383518\tmismatch\tCCC\tTTT\t.\t.\t.\n"
+    )
+    return str(path)
+
+
+def test_main_with_only_reference_mismatches_writes_empty_csv(tmp_path, reference_mismatch_vcf, caplog):
+    out = tmp_path / "mismatch.csv"
+    with caplog.at_level(logging.INFO):
+        results = main(
+            vcf_path=reference_mismatch_vcf,
+            gtf_path="resources/chr18.gtf.gz",
+            fasta_path="resources/chr18.fa.gz",
+            output=str(out),
+        )
+
+    assert results.empty
+    loaded = pd.read_csv(out)
+    assert list(loaded.columns) == list(OUTPUT_COLUMN_KINDS)
+    assert len(loaded) == 0
+    assert "No variant left after the reference check" in caplog.text
+
+
+def test_main_with_only_reference_mismatches_writes_empty_parquet_with_the_usual_schema(
+    tmp_path, reference_mismatch_vcf
+):
+    pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+
+    empty_out = tmp_path / "mismatch.parquet"
+    main(
+        vcf_path=reference_mismatch_vcf,
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(empty_out),
+    )
+    full_out = tmp_path / "full.parquet"
+    main(
+        vcf_path="resources/test_files/variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(full_out),
+    )
+
+    assert pq.read_table(empty_out).num_rows == 0
+    assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
