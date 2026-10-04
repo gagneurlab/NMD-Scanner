@@ -1,7 +1,9 @@
 # Import dependencies
+import gzip
 import itertools
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -247,33 +249,62 @@ def _read_gff3_rows(gff3_path):
         none). Start and End are 0-based half-open int64. polars-bio percent-decodes the escapes of
         the reserved and control characters in attribute values, e.g. %3B, %3D, %26, %2C and %09,
         as the GFF3 specification says. It leaves %25 as it is.
-    :raises ValueError: if polars-bio cannot read the file
+    :raises ValueError: if polars-bio cannot read the file, or if it skips a data line of the file
     """
     try:
-        rows = (
-            pb.scan_gff(os.fspath(gff3_path), attr_fields=list(GFF3_ATTRIBUTES), use_zero_based=True)
-            .filter(pl.col("type").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
-            # polars-bio's GFF frame takes the columns of select as one list
-            .select(
-                [
-                    pl.col("chrom").alias("Chromosome"),
-                    pl.col("source").alias("Source"),
-                    pl.col("type").cast(pl.Categorical).alias("Feature"),
-                    pl.col("start").cast(pl.Int64).alias("Start"),
-                    pl.col("end").cast(pl.Int64).alias("End"),
-                    pl.col("score").alias("Score"),
-                    pl.col("strand").alias("Strand"),
-                    pl.col("phase").cast(pl.String).fill_null(".").alias("Frame"),
-                    *GFF3_ATTRIBUTES,
-                ]
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            # the data lines are counted while polars-bio reads the file
+            data_lines = executor.submit(_count_gff3_data_lines, gff3_path)
+            # All rows are collected and filtered afterwards: polars-bio filters this predicate in
+            # Python, which takes longer, and the row count shows the lines that polars-bio skipped.
+            rows = (
+                pb.scan_gff(os.fspath(gff3_path), attr_fields=list(GFF3_ATTRIBUTES), use_zero_based=True)
+                # polars-bio's GFF frame takes the columns of select as one list
+                .select(
+                    [
+                        pl.col("chrom").alias("Chromosome"),
+                        pl.col("source").alias("Source"),
+                        pl.col("type").cast(pl.Categorical).alias("Feature"),
+                        pl.col("start").cast(pl.Int64).alias("Start"),
+                        pl.col("end").cast(pl.Int64).alias("End"),
+                        pl.col("score").alias("Score"),
+                        pl.col("strand").alias("Strand"),
+                        pl.col("phase").cast(pl.String).fill_null(".").alias("Frame"),
+                        *GFF3_ATTRIBUTES,
+                    ]
+                )
+                .collect()
             )
-            .collect()
-        )
     except (ValueError, pl.exceptions.ComputeError) as error:
         raise ValueError(f"Cannot read {os.fspath(gff3_path)!r} as GFF3 ({error}).") from error
+    # polars-bio skips a line that it cannot parse, and logs it at DEBUG only
+    if rows.height < data_lines.result():
+        raise ValueError(
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: polars-bio read {rows.height} of its "
+            f"{data_lines.result()} data lines. It skips a line that it cannot parse, e.g. a line whose Start or "
+            "Score is not a number or whose columns are not separated by tabs."
+        )
+    rows = rows.filter(pl.col("Feature").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
     # polars-bio gives an attribute that no row has as a column without values
     absent = [name for name in GFF3_ATTRIBUTES if rows[name].null_count() == rows.height]
     return rows.drop(absent).to_pandas()
+
+
+def _count_gff3_data_lines(gff3_path):
+    """
+    Counts the data lines of a GFF3 file, plain or gzip-compressed: the lines before a ##FASTA
+    directive that are not blank and do not start with "#". polars-bio skips blank lines too.
+    """
+    count = 0
+    with open(gff3_path, "rb") as file:
+        gzipped = file.read(2) == b"\x1f\x8b"
+        file.seek(0)
+        for line in gzip.GzipFile(fileobj=file) if gzipped else file:
+            if line.startswith(b"##FASTA"):
+                break
+            if not line.startswith(b"#") and not line.isspace():
+                count += 1
+    return count
 
 
 def _has_stop_codon_from_sequence(df, fasta):

@@ -1,5 +1,6 @@
 # Import dependencies
 import gzip
+import random
 import re
 from pathlib import Path
 
@@ -816,6 +817,48 @@ chr1\tsource\ttranscript\t1000\t2000\t.\t+\t.\tID=T1;Parent=G1
     gff3_path = _write(tmp_path, "unknown.gff3", content)
     with pytest.raises(ValueError, match="Unrecognized GFF3 flavor"):
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+
+_CDS_LINE = "chr1\tHAVANA\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENST001.1;"
+
+
+# polars-bio skips these lines without an error
+@pytest.mark.parametrize(
+    "line",
+    [
+        _CDS_LINE.replace("\t.\t+", "\tabc\t+"),
+        _CDS_LINE.replace("1051", "abc"),
+        _CDS_LINE.replace("1051", "-1051"),
+        _CDS_LINE.replace("1051", str(2**32)),
+        _CDS_LINE.replace("\t", " "),
+    ],
+    ids=["text_score", "text_start", "negative_start", "start_of_2_to_the_32", "space_separated"],
+)
+def test_read_gff3_raises_for_a_line_that_polars_bio_skips(tmp_path, line):
+    assert _GENCODE_GFF3.count(_CDS_LINE) == 1
+    data_lines = len(_GENCODE_GFF3.splitlines()) - 1
+    gff3_path = _write(tmp_path, "malformed.gff3", _GENCODE_GFF3.replace(_CDS_LINE, line))
+    with pytest.raises(
+        ValueError, match=rf"malformed\.gff3.*polars-bio read {data_lines - 1} of its {data_lines} data lines"
+    ):
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+
+def test_read_gff3_does_not_count_blank_lines_comments_and_the_fasta_section(tmp_path):
+    lines = _GENCODE_GFF3.splitlines()
+    content = (
+        "\n".join(lines[:3] + ["", "  \t", "# a comment", "###"] + lines[3:] + ["##FASTA", ">chr1", "ACGT"]) + "\n\n"
+    )
+    fasta = _fasta(tmp_path)
+    expected = nmd_scanner.scan.read_gff3(_write(tmp_path, "plain.gff3", _GENCODE_GFF3), fasta)
+    pd.testing.assert_frame_equal(nmd_scanner.scan.read_gff3(_write(tmp_path, "extra.gff3", content), fasta), expected)
+
+
+def test_read_gff3_raises_an_error_naming_the_file_if_polars_bio_cannot_read_it(tmp_path):
+    path = tmp_path / "random.gff3"
+    path.write_bytes(random.Random(0).randbytes(300))
+    with pytest.raises(ValueError, match=r"Cannot read '.*random\.gff3' as GFF3 \("):
+        nmd_scanner.scan.read_gff3(str(path), _fasta(tmp_path))
 
 
 # GFF3 exon numbers, ids, file names
