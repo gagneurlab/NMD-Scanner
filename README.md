@@ -85,7 +85,9 @@ fasta = Fasta("reference.fa")
 gtf_pr = nmd_scanner.compute_exon_numbers(gtf_pr)
 
 gtf_df = gtf_pr.df
-cds_df = gtf_df[gtf_df["Feature"] == "CDS"]
+# the coding regions: a GTF CDS excludes the stop codon, so its stop_codon rows are merged into the CDS rows.
+# The merge keys on exon_number, so it runs after compute_exon_numbers.
+cds_df = nmd_scanner.merge_stop_codons_into_cds(gtf_df)
 exons_df = gtf_df[gtf_df["Feature"] == "exon"].copy()
 exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 

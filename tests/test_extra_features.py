@@ -1,3 +1,6 @@
+import pandas as pd
+import pytest
+
 from nmd_scanner.extra_features import (
     add_likely_misannotated_flag,
     calculate_exon_features,
@@ -8,12 +11,14 @@ from nmd_scanner.extra_features import (
     calculate_utr_lengths,
     evaluate_nmd_escape_rules,
 )
+from nmd_scanner.rules import analyze_sequence
 
 
 def test_calculate_utr_lengths():
     # Example 1: - strand, CDS spans exon 8 to 1
     row1 = {
         "strand": "-",
+        "has_stop_codon": True,
         "ref_cds_info": [(8, 30), (7, 105), (6, 173), (5, 70), (4, 123), (3, 174), (2, 97), (1, 98)],
         "transcript_exon_info": [
             ("1", 250),
@@ -39,6 +44,7 @@ def test_calculate_utr_lengths():
     # Example 2: + strand, CDS starts in exon 3
     row2 = {
         "strand": "+",
+        "has_stop_codon": True,
         "ref_cds_info": [(3, 50), (4, 120), (5, 80)],
         "transcript_exon_info": [("1", 200), ("2", 150), ("3", 100), ("4", 120), ("5", 80), ("6", 300)],
         "ref_cds_start": 100500,
@@ -58,6 +64,7 @@ def test_calculate_utr_lengths():
     # Example 3: single exon on plus strand, CDS fully inside it
     row3 = {
         "strand": "+",
+        "has_stop_codon": True,
         "ref_cds_info": [(2, 60)],
         "transcript_exon_info": [("2", 150)],
         "ref_cds_start": 5000,
@@ -74,6 +81,7 @@ def test_calculate_utr_lengths():
     # Example 4: single exon minus strand, CDS fully inside it
     row = {
         "strand": "-",
+        "has_stop_codon": True,
         "ref_cds_info": [(1, 60)],
         "transcript_exon_info": [("1", 150)],
         "ref_cds_start": 5060,
@@ -89,6 +97,7 @@ def test_calculate_utr_lengths():
     # Example 5.1: missing ref_cds_info
     row = {
         "strand": "+",
+        "has_stop_codon": True,
         "transcript_exon_info": [("1", 200), ("2", 300)],
     }
     result = calculate_utr_lengths(row)
@@ -97,6 +106,7 @@ def test_calculate_utr_lengths():
     # Example 5.2: missing transcript_exon_info
     row = {
         "strand": "-",
+        "has_stop_codon": True,
         "ref_cds_info": [(1, 100), (2, 150)],
     }
     result = calculate_utr_lengths(row)
@@ -106,6 +116,7 @@ def test_calculate_utr_lengths():
     # Example 6: not continuous exons, plus strand
     row = {
         "strand": "+",
+        "has_stop_codon": True,
         "ref_cds_info": [(1, 60), (3, 80), (5, 100)],
         "transcript_exon_info": [("1", 100), ("2", 100), ("3", 100), ("4", 100), ("5", 100)],
         "ref_cds_start": 5000,
@@ -119,6 +130,17 @@ def test_calculate_utr_lengths():
     # 3'UTR = 100 (exon 5)
     assert result["utr5_length"] == 40
     assert result["utr3_length"] == 0
+
+    # Example 7: no annotated stop codon (cds_end_NF): the 3'UTR starts after the stop codon, so its length is unknown
+    row = {**row2, "has_stop_codon": False}
+    result = calculate_utr_lengths(row)
+    assert result["utr5_length"] == 400
+    assert result["utr3_length"] is None
+    # single exon
+    row = {**row3, "has_stop_codon": False}
+    result = calculate_utr_lengths(row)
+    assert result["utr5_length"] == 50
+    assert result["utr3_length"] is None
 
 
 def test_calculate_exon_features():
@@ -347,26 +369,62 @@ def test_calculate_ptc_exon_length():
     assert calculate_ptc_exon_length(row4) is None
 
 
+def _analyzed(ref_cds_seq, alt_cds_seq):
+    """analyze_sequence row of a single exon CDS with an annotated stop codon."""
+    df = pd.DataFrame(
+        [
+            {
+                "ref_cds_seq": ref_cds_seq,
+                "alt_cds_seq": alt_cds_seq,
+                "ref_cds_len": len(ref_cds_seq),
+                "alt_cds_len": len(alt_cds_seq),
+                "ref_cds_info": [(1, len(ref_cds_seq))],
+                "alt_cds_info": [(1, len(alt_cds_seq))],
+                "has_stop_codon": True,
+            }
+        ]
+    )
+    return analyze_sequence(df).iloc[0]
+
+
+def test_has_stop_codon_is_required():
+    row = {"strand": "+", "ref_cds_info": [(1, 60)], "transcript_exon_info": [("1", 100)]}
+    with pytest.raises(KeyError, match="has_stop_codon"):
+        calculate_utr_lengths(row)
+    row = {"alt_cds_len": 903, "alt_first_stop_pos": 900, "alt_is_premature": False}
+    with pytest.raises(KeyError, match="has_stop_codon"):
+        calculate_stop_codon_dist(row)
+
+
 def test_calculate_stop_codon_dist():
+    # Positions are in alt CDS coordinates: the reference stop codon is the last codon of the alt CDS.
     # Case 1: PTC upstream of reference stop
-    row1 = {"ref_first_stop_pos": 1000, "alt_first_stop_pos": 800, "alt_is_premature": True}
+    row1 = {"alt_cds_len": 1003, "alt_first_stop_pos": 800, "alt_is_premature": True, "has_stop_codon": True}
     assert calculate_stop_codon_dist(row1) == 200
 
-    # Case 2: PTC downstream of reference stop (rare, negative distance)
-    row2 = {"ref_first_stop_pos": 800, "alt_first_stop_pos": 1000, "alt_is_premature": True}
-    assert calculate_stop_codon_dist(row2) == -200
+    # Case 2: no PTC, the first stop codon of the alt is the reference stop codon
+    row2 = {"alt_cds_len": 903, "alt_first_stop_pos": 900, "alt_is_premature": False, "has_stop_codon": True}
+    assert calculate_stop_codon_dist(row2) == 0
 
-    # Case 3: PTC exactly at reference stop
-    row3 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": 900, "alt_is_premature": True}
-    assert calculate_stop_codon_dist(row3) == 0
+    # Case 3: Missing alt stop codon
+    row3 = {"alt_cds_len": 903, "alt_first_stop_pos": None, "alt_is_premature": False, "has_stop_codon": True}
+    assert calculate_stop_codon_dist(row3) is None
 
-    # Case 4: Missing alt stop codon
-    row4 = {"ref_first_stop_pos": 900, "alt_first_stop_pos": None, "alt_is_premature": True}
+    # Case 4: no annotated stop codon (cds_end_NF): there is no reference stop codon
+    row4 = {"alt_cds_len": 903, "alt_first_stop_pos": 600, "alt_is_premature": True, "has_stop_codon": False}
     assert calculate_stop_codon_dist(row4) is None
 
-    # Case 5: Missing ref stop codon
-    row5 = {"ref_first_stop_pos": None, "alt_first_stop_pos": 750, "alt_is_premature": True}
-    assert calculate_stop_codon_dist(row5) is None
+    # Case 5: internal in-frame TGA in the reference (selenocysteine): the reference stop codon is the annotated TAA
+    #         ATG AAA TGA AAA CCC AAA TAA, PTC from AAA>TAA in codon 2
+    row5 = _analyzed("ATGAAATGAAAACCCAAATAA", "ATGTAATGAAAACCCAAATAA")
+    assert row5["ref_first_stop_pos"] == 6
+    assert calculate_stop_codon_dist(row5) == 15
+
+    # Case 6: frameshift deletion upstream of the PTC: deleting the C of CTG shifts the PTC by -1 in the alt CDS
+    #         ref ATG AAA CTG ACC CCC TAA, alt ATG AAA TGA CCC CCT AA: PTC at ref position 7, alt position 6
+    row6 = _analyzed("ATGAAACTGACCCCCTAA", "ATGAAATGACCCCCTAA")
+    assert row6["alt_first_stop_pos"] == 6
+    assert calculate_stop_codon_dist(row6) == 8
 
 
 def test_evaluate_nmd_escape_rules():

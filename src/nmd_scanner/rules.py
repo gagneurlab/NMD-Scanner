@@ -18,20 +18,28 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     Main function for extracting reference coding sequence, alternative coding sequence by incorporating the variant, analyzing for premature termination codons (PTCs),
     start and stop loss, and getting the transcript information.
 
-    :param cds_df: CDS entries from the GTF file (Dataframe)
+    :param cds_df: Coding regions of the annotation (DataFrame): CDS rows that include the stop codon, one row per
+                   transcript and exon, with exon_number and the column has_stop_codon. has_stop_codon says whether
+                   the coding region of the transcript ends in an annotated stop codon. A GTF CDS excludes the stop
+                   codon; ``scan.merge_stop_codons_into_cds`` builds the coding regions from its CDS and stop_codon rows.
     :param vcf: Parsed VCF variant entries (PyRanges object)
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: All exonic entries from the GTF file (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
              It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has zero rows if no
              variant overlaps a CDS or every variant has a reference mismatch.
+    :raises ValueError: if cds_df has no has_stop_codon column, e.g. because it holds the GTF CDS rows as they are.
     """
 
-    # Adjust the last 3 CDS positions to include stop codons
-    cds_df_adj = adjust_last_cds_for_stop_codon(cds_df)
-    logger.info("Adjusting last CDS for stop codon: done.")
+    if "has_stop_codon" not in cds_df.columns:
+        raise ValueError(
+            "cds_df has no has_stop_codon column. extract_ptc takes the coding regions: CDS rows that include the "
+            "stop codon, with has_stop_codon. For a GTF, scan.merge_stop_codons_into_cds builds them from the CDS "
+            "and stop_codon rows."
+        )
 
-    # adjust exon_number as int datatype
+    cds_df_adj = cds_df.copy()
+    # GTF attributes are parsed as strings; exon numbers are int in the output tuples (e.g. ref_cds_info)
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
 
     # Intersect variants with CDS regions
@@ -176,38 +184,6 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 # Functions used for extracting PTC:
 
 
-def adjust_last_cds_for_stop_codon(df, transcript_col="transcript_id"):
-    """
-    Adjusts the genomic coordinates of the last CDS exon in each transcript by adding 3 positions,
-    thus to include the stop codon.
-    Plus strand: extend last exon (largest start position) at the END (+3 to End)
-    Minus strand: extend last exon (smallest start position) at the START (-3 from Start)
-    :param df: Dataframe containing CDS annotation
-    :param exon_col: The name of the column that indicated the exon number, so we can find out which is the last CDS snippet
-    :param transcript_col: The name of the column that indicates the transcript ID
-    :return: Modified pandas DataFrame where the last exon of each transcript is extended by 3 bases to include the stop codon.
-    """
-
-    df = df.copy()
-
-    adjusted_idx = []
-    for tx, group in df.groupby(transcript_col):
-        strand = group["Strand"].iloc[0]
-
-        if strand == "+":
-            # last exon has max Start position
-            idx = group["Start"].idxmax()
-            df.at[idx, "End"] += 3
-        elif strand == "-":
-            # last exon has min Start position
-            idx = group["Start"].idxmin()
-            df.at[idx, "Start"] -= 3
-
-        adjusted_idx.append(idx)
-
-    return df
-
-
 def apply_variant_edge_aware_with_lengths(row):
     """
     Applies a variant to a CDS exon sequence, taking into account not only SNVs but also partial overlaps at exon
@@ -336,9 +312,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     :param intersection_cds_vcf: DataFrame containing variant-CDS intersection and corresponding alternative CDS sequences
                                  includes: transcript_id, Exon_CDS_seq + length, Exon_ALT_CDS_seq + length
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
-                        includes: transcript_id, exon_number, Start, End, Strand, Exon_CDS_seq
+                        includes: transcript_id, exon_number, Start, End, Strand, Exon_CDS_seq, has_stop_codon
     :return: DataFrame with one row per variant-transcript pair, containing full reference and alternative CDS + lengths,
-             exon-wise CDS information as tuple (exon number, exon-wise CDS length)
+             exon-wise CDS information as tuple (exon number, exon-wise CDS length), and has_stop_codon
     """
 
     results = []
@@ -381,6 +357,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
         # Get strand info (all should be the same within transcript)
         strand = ref_exons["Strand"].iloc[0]
+        # whether the coding region ends in an annotated stop codon (same within transcript)
+        has_stop_codon = bool(ref_exons["has_stop_codon"].iloc[0])
 
         for variant, cds_df in var_df.groupby(
             ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"], observed=True
@@ -457,6 +435,7 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                     "chromosome": chromosome,
                     "gene_id": gene_id,
                     "strand": strand,
+                    "has_stop_codon": has_stop_codon,
                     "ref": ref_allele,
                     "alt": alt_allele,
                     "start_variant": start_variant,
@@ -558,10 +537,13 @@ def analyze_sequence(results_df):
     """
     Analyzes reference and alternative CDS for start and stop codons, their positions, and potential premature termination codons (PTCs)
 
-    :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative sequences, per variant
+    :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative sequences, per variant,
+                       and has_stop_codon (whether the coding region ends in an annotated stop codon)
     :return: DataFrame with added annotation columns for reference and alternative sequence separately:
              such as start codon position / exon, last codon and its validity as stop codon, first in-frame stop codon + position,
-             number and information of all available stop codons, premature stop codon flag
+             number and information of all available stop codons, premature stop codon flag.
+             The last codon is a valid stop only if it is an annotated stop codon. An in-frame stop codon is premature if it
+             lies upstream of the annotated stop codon; without an annotated stop codon, every in-frame stop codon is premature.
     """
 
     valid_stop_codons = {"TAA", "TAG", "TGA"}
@@ -584,6 +566,7 @@ def analyze_sequence(results_df):
 
     # Row-wise codon scanning
     for idx, row in df.iterrows():
+        has_stop_codon = bool(row["has_stop_codon"])
         for label in ["ref", "alt"]:
             seq = row[f"{label}_cds_seq"]
 
@@ -607,10 +590,13 @@ def analyze_sequence(results_df):
                     stop_exons.append(get_exon(i, exon_info))  # for exon number
 
             last_codon = seq[-3:]
-            is_valid_stop = last_codon in valid_stop_codons
+            # without an annotated stop codon, the last codon is a sense codon or an incomplete one
+            is_valid_stop = has_stop_codon and last_codon in valid_stop_codons
             first_stop_pos = stop_codons[0][0] if stop_codons else None
             first_stop = stop_codons[0][1] if stop_codons else None
-            is_premature = first_stop_pos is not None and first_stop_pos < len(seq) - 3
+            # the annotated stop codon is the last codon. Without one, the real stop codon lies downstream of the
+            # coding region, so every in-frame stop codon is premature.
+            is_premature = first_stop_pos is not None and (not has_stop_codon or first_stop_pos < len(seq) - 3)
             start_exon = get_exon(start_pos, exon_info) if start_pos is not None else None  # for exon number
 
             # Store results
@@ -644,12 +630,10 @@ def start_stop_loss(df):
         df["ref_start_codon_pos"] != df["alt_start_codon_pos"]
     )  # fmt: skip
 
-    # Stop codon loss: reference sequence had a valid stop codon, the alternative sequence does not or the position is changed
-    df["stop_loss"] = (
-        (df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)
-    ) | (
-        df["ref_last_codon"] != df["alt_last_codon"]  # Or take this out?
-    )  # fmt: skip
+    # Stop codon loss: the annotated stop codon no longer encodes a stop in the alternative sequence. A swap to another
+    # stop codon, e.g. TAA>TAG, is no loss. Without an annotated stop codon, ref_valid_stop is False: there is no stop
+    # codon to lose.
+    df["stop_loss"] = (df["ref_valid_stop"] == True) & (df["alt_valid_stop"] != True)
 
     return df
 

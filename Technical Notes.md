@@ -3,9 +3,9 @@ Summary of the NMD-Scanner Script:
 1. Command Line argument Parser
 2. Check that Output Path is valid
 3. Reads genomic data files (VCF for variants, GTF for annotations, FASTA for sequences)
-4. Extracts coding sequences and exons + exon length
+4. Extracts coding regions and exons + exon length. A GTF CDS excludes the stop codon, so the stop_codon rows are merged into the CDS rows, per transcript and exon -> scan.merge_stop_codons_into_cds(). The merge keys on exon_number, so it runs after the optional reassignment of exon numbers
 5. Identifies premature termination codons (PTCs) —> extract_ptc()
-    1. Adjust the last 3 CDS positions to include stop codons in the sequence —> adjust_last_cds_for_stop_codon()
+    1. Check that the CDS rows are coding regions (column has_stop_codon)
     2. Intersect variants with CDS regions
     3. (in TCGA & MMRF only: adjust minus strand variants)
     4. Fetch reference CDS sequence for each variant region (on variant level: only CDS where a variant is located on) —> catch_sequence.add_exon_cds_sequence()
@@ -59,6 +59,7 @@ for ref_cds and alt_cds:
 - info: List of tuples (exon_number, exon_lengths)
 ————————————————————————————————————————————————————————————
 - cds_in_transcript: computed to check if the CDS sequence is in the transcript sequence
+- has_stop_codon: whether the coding region ends in an annotated stop codon, i.e. whether the transcript has stop_codon rows. Without one (e.g. cds_end_NF), valid_stop and stop loss are False, every in-frame stop codon is premature, and utr3_length and stop_codon_distance are empty
 ————————————————————————————————————————————————————————————
 analyzing ref_ and alt_  (CDS)
 - start_codon_pos

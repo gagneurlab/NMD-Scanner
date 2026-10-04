@@ -86,10 +86,15 @@ def add_nmd_features(row):
 
 
 def calculate_utr_lengths(row):
+    """
+    Calculate the 5' and 3' UTR lengths of the transcript. The 3'UTR starts after the stop codon, so its length is
+    None without an annotated stop codon (has_stop_codon False).
+    """
 
     strand = row.get("strand")
     ref_cds_info = row.get("ref_cds_info") or []
     transcript_exon_info = row.get("transcript_exon_info") or []
+    has_stop_codon = bool(row["has_stop_codon"])
 
     if not ref_cds_info or not transcript_exon_info:
         return {"utr5_length": None, "utr3_length": None}
@@ -108,7 +113,7 @@ def calculate_utr_lengths(row):
             utr3 = row["ref_cds_start"] - row["transcript_start"]
 
         utr5 = utr5 if utr5 >= 0 else None
-        utr3 = utr3 if utr3 >= 0 else None
+        utr3 = utr3 if utr3 >= 0 and has_stop_codon else None
 
         return {"utr5_length": utr5, "utr3_length": utr3}
 
@@ -152,7 +157,7 @@ def calculate_utr_lengths(row):
                     utr3 += exon_len
 
     utr5 = utr5 if utr5 >= 0 else None
-    utr3 = utr3 if utr3 >= 0 else None
+    utr3 = utr3 if utr3 >= 0 and has_stop_codon else None
     return {"utr5_length": utr5, "utr3_length": utr3}
 
 
@@ -239,17 +244,27 @@ def calculate_ptc_exon_length(row):
 
 def calculate_stop_codon_dist(row):
     """
-    Calculate the distance between the reference stop codon and the alternative stop codon.
-    Positive means the PTC is upstream of the reference stop codon.
+    Calculate the distance in nt between the reference stop codon and the alternative stop codon (alt_first_stop_pos).
+    Positive means the PTC is upstream of the reference stop codon, 0 means the alternative stop codon is the
+    reference stop codon.
+
+    Both positions are in alt CDS coordinates. The reference stop codon is the annotated one: the last codon of the
+    alt coding region, at alt_cds_len - 3. The first in-frame stop of the reference is not used, because it can be an
+    internal one, e.g. a selenocysteine TGA. An indel upstream of the PTC shifts both positions by the same amount,
+    so the distance is the same as in ref CDS coordinates.
+    Without an annotated stop codon (has_stop_codon False), there is no reference stop codon and the distance is None.
     """
 
-    ref_stop = row.get("ref_first_stop_pos")
-    alt_stop = row.get("alt_first_stop_pos")
-
-    if ref_stop is None or alt_stop is None:
+    if not row["has_stop_codon"]:
         return None
 
-    return ref_stop - alt_stop
+    alt_cds_len = row.get("alt_cds_len")
+    alt_stop = row.get("alt_first_stop_pos")
+
+    if alt_cds_len is None or alt_stop is None:
+        return None
+
+    return alt_cds_len - 3 - alt_stop
 
 
 def evaluate_nmd_escape_rules(row):
@@ -379,7 +394,8 @@ def add_likely_misannotated_flag(row):
     A row is flagged as likely misannotated if any of these conditions apply:
         cds_in_transcript = False (the assembled CDS is not found in the transcript sequence)
         ref_start_codon_pos is defined and not 0 (reference CDS has a start codon not at the very start)
-        ref_valid_stop is False (the last reference codon is not a valid stop codon)
+        ref_valid_stop is False (the reference does not end in a valid annotated stop codon, e.g. for a transcript
+        without stop_codon rows such as one tagged cds_end_NF)
 
     :return: A boolean flag. True if any condition above is met and thus the row is likely misannotated, False otherwise.
     """

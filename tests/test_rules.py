@@ -1,103 +1,22 @@
 # Import dependencies
 import pandas as pd
+import pyranges as pr
+import pytest
+from Bio.Seq import Seq
+from pyfaidx import Fasta
 
 from nmd_scanner.rules import (
-    adjust_last_cds_for_stop_codon,
     analyze_sequence,
     analyze_transcript,
     apply_variant_edge_aware_with_lengths,
     create_reference_cds,
+    extract_ptc,
     get_exon,
     get_transcript_sequence,
     splice_alt_cds_into_transcript,
     start_stop_loss,
 )
-
-
-def test_adjust_last_cds_for_stop_codon():
-
-    # Since hg19 and hg38 exon numbers differ, lets only use start positions
-    # Plus strand: extend last exon  at the END (+3 to End)
-    # Minus strand: extend last exon at the START (-3 from Start)
-
-    # Multiple exons, plus strand
-
-    df_plus = pd.DataFrame(
-        {
-            "transcript_id": ["tx1", "tx1", "tx1"],
-            # "exon_number": [1, 2, 3],
-            "Start": [100, 200, 300],
-            "End": [150, 250, 350],
-            "Strand": ["+", "+", "+"],
-        }
-    )
-
-    adjusted = adjust_last_cds_for_stop_codon(df_plus)
-
-    # First 2 exons unchanged
-    assert (adjusted[(adjusted["Start"] == 100) & (adjusted["End"] == 150)].shape[0]) == 1
-    assert (adjusted[(adjusted["Start"] == 200) & (adjusted["End"] == 250)].shape[0]) == 1
-    # Last exon (+ strand): End extended
-    exon_last_plus = adjusted.loc[adjusted["Start"] == 300].iloc[0]
-    assert exon_last_plus["End"] == 353  # 350 + 3
-
-    # Multiple exons, minus strand
-
-    df_minus = pd.DataFrame(
-        {
-            "transcript_id": ["tx2", "tx2", "tx2"],
-            # "exon_number": [3, 2, 1],
-            "Start": [500, 800, 900],
-            "End": [550, 850, 950],
-            "Strand": ["-", "-", "-"],
-        }
-    )
-
-    adjusted = adjust_last_cds_for_stop_codon(df_minus)
-
-    # First 2 exons unchanged
-    assert (adjusted[(adjusted["Start"] == 800) & (adjusted["End"] == 850)].shape[0]) == 1
-    assert (adjusted[(adjusted["Start"] == 900) & (adjusted["End"] == 950)].shape[0]) == 1
-    # Last exon (- strand): Start shifted
-    last_exon_minus = adjusted.loc[adjusted["Start"].idxmin()]  # smallest Start is last exon
-    assert last_exon_minus["Start"] == 497  # 500 - 3
-    assert last_exon_minus["End"] == 550
-
-    # Single exon, plus strand:
-
-    df_single_plus = pd.DataFrame(
-        {
-            "transcript_id": ["tx_single_plus"],
-            # "exon_number": [1],
-            "Start": [1000],
-            "End": [1100],
-            "Strand": ["+"],
-        }
-    )
-
-    adjusted_single_plus = adjust_last_cds_for_stop_codon(df_single_plus)
-
-    exon = adjusted_single_plus.iloc[0]
-    assert exon["Start"] == 1000
-    assert exon["End"] == 1103  # extended at End
-
-    # Single exon, minus strand
-
-    df_single_minus = pd.DataFrame(
-        {
-            "transcript_id": ["tx_single_minus"],
-            # "exon_number": [1],
-            "Start": [2000],
-            "End": [2100],
-            "Strand": ["-"],
-        }
-    )
-
-    adjusted_single_minus = adjust_last_cds_for_stop_codon(df_single_minus)
-
-    exon = adjusted_single_minus.iloc[0]
-    assert exon["Start"] == 1997  # extended at Start
-    assert exon["End"] == 2100
+from nmd_scanner.scan import merge_stop_codons_into_cds
 
 
 def test_apply_variant_edge_aware_with_lengths():
@@ -216,6 +135,8 @@ def test_create_reference_cds_using_file():
     # Load df3 and cds_df_test from the previous step of your pipeline
     df3 = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
     cds_df_test = pd.read_csv("resources/test_output_files/cds_df_adj.tsv", sep="\t")
+    # the fixture predates the flag; it gave every transcript a stop codon
+    cds_df_test["has_stop_codon"] = True
 
     # Run the function
     actual = create_reference_cds(df3, cds_df_test)
@@ -253,6 +174,7 @@ def test_create_reference_cds():
             "End": [150, 250, 350, 450, 550],
             "Strand": ["+" for _ in range(5)],
             "Exon_CDS_seq": ["AAA", "CCC", "GGG", "TTT", "AAA"],
+            "has_stop_codon": [True] * 5,
         }
     )
 
@@ -372,6 +294,59 @@ def test_create_reference_cds():
     assert alt_lens["var_spanning"] == ref_len - 4
 
 
+def test_create_reference_cds_carries_has_stop_codon():
+    # has_stop_codon is per transcript: tx_stop ends in its stop codon TAA, tx_nf (e.g. cds_end_NF) has none
+    cds_df_test = pd.DataFrame(
+        {
+            "transcript_id": ["tx_stop", "tx_stop", "tx_nf"],
+            "exon_number": [1, 2, 1],
+            "Chromosome": ["chr1"] * 3,
+            "gene_id": ["gene1", "gene1", "gene2"],
+            "Start": [100, 200, 500],
+            "End": [103, 206, 506],
+            "Strand": ["+"] * 3,
+            "Exon_CDS_seq": ["ATG", "AAATAA", "ATGAAA"],
+            "has_stop_codon": [True, True, False],
+        }
+    )
+    variant = {"Chromosome": "chr1", "Strand": "+", "Ref": "A", "Alt": "C"}
+    variants = pd.DataFrame(
+        [
+            # A>C at the second base of exon 2 of tx_stop
+            {
+                **variant,
+                "transcript_id": "tx_stop",
+                "exon_number": 2,
+                "gene_id": "gene1",
+                "Start": 200,
+                "End": 206,
+                "ID": "var_stop",
+                "Start_variant": 201,
+                "End_variant": 202,
+                "Exon_Alt_CDS_seq": "ACATAA",
+            },
+            # A>C at the fifth base of exon 1 of tx_nf
+            {
+                **variant,
+                "transcript_id": "tx_nf",
+                "exon_number": 1,
+                "gene_id": "gene2",
+                "Start": 500,
+                "End": 506,
+                "ID": "var_nf",
+                "Start_variant": 504,
+                "End_variant": 505,
+                "Exon_Alt_CDS_seq": "ATGACA",
+            },
+        ]
+    )
+
+    result = create_reference_cds(variants, cds_df_test)
+
+    assert dict(zip(result["variant_id"], result["alt_cds_seq"])) == {"var_stop": "ATGACATAA", "var_nf": "ATGACA"}
+    assert dict(zip(result["variant_id"], result["has_stop_codon"])) == {"var_stop": True, "var_nf": False}
+
+
 def test_get_transcript_sequence():
     fasta = {
         "chr1": "AAAAAAAAAACCCCCCCCCCCCCCCCCCCCGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
@@ -421,6 +396,7 @@ def test_analyze_sequence():
                 "alt_cds_seq": "ATGAAATAA",
                 "ref_cds_info": [(1, 9)],
                 "alt_cds_info": [(1, 9)],
+                "has_stop_codon": True,
             }
         ]
     )
@@ -428,6 +404,39 @@ def test_analyze_sequence():
     assert analyzed.loc[0, "ref_start_codon_pos"] == 0
     assert analyzed.loc[0, "ref_valid_stop"] == True
     assert analyzed.loc[0, "alt_valid_stop"] == True
+
+
+def test_analyze_sequence_without_stop_codon():
+    # without an annotated stop codon, the real stop lies downstream of the coding region
+    df = pd.DataFrame(
+        [
+            # stop gained in the last codon: TGG>TAG
+            {
+                "ref_cds_seq": "ATGAAATGG",
+                "alt_cds_seq": "ATGAAATAG",
+                "ref_cds_info": [(1, 9)],
+                "alt_cds_info": [(1, 9)],
+                "has_stop_codon": False,
+            },
+            # coding region that ends in an incomplete codon: the last 3 bases TAA are out of frame
+            {
+                "ref_cds_seq": "ATGAAAGTAA",
+                "alt_cds_seq": "ATGAAAGTAA",
+                "ref_cds_info": [(1, 10)],
+                "alt_cds_info": [(1, 10)],
+                "has_stop_codon": False,
+            },
+        ]
+    )
+    analyzed = analyze_sequence(df)
+
+    # every in-frame stop is premature, including one in the last codon
+    assert analyzed.loc[0, "alt_first_stop_pos"] == 6
+    assert analyzed.loc[0, "alt_is_premature"] == True
+    assert analyzed.loc[0, "ref_is_premature"] == False
+    # the last codon is not an annotated stop codon, whatever its bases
+    assert analyzed["ref_valid_stop"].tolist() == [False, False]
+    assert analyzed["alt_valid_stop"].tolist() == [False, False]
 
 
 def test_start_stop_loss():
@@ -440,12 +449,23 @@ def test_start_stop_loss():
                 "alt_valid_stop": False,
                 "ref_last_codon": "TAG",
                 "alt_last_codon": "GGA",
-            }
+            },
+            # stop codon swap: the last codon changes but still encodes a stop
+            {
+                "ref_start_codon_pos": 0,
+                "alt_start_codon_pos": 0,
+                "ref_valid_stop": True,
+                "alt_valid_stop": True,
+                "ref_last_codon": "TAA",
+                "alt_last_codon": "TAG",
+            },
         ]
     )
     result = start_stop_loss(df)
     assert result["start_loss"].iloc[0] == True
     assert result["stop_loss"].iloc[0] == True
+    assert result["start_loss"].iloc[1] == False
+    assert result["stop_loss"].iloc[1] == False
 
 
 def test_splice_alt_cds_into_transcript():
@@ -484,3 +504,155 @@ def test_analyze_transcript():
     assert row["transcript_num_stop_codons"] == 2
     assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
     assert row["transcript_stop_codon_exons"] == [1, 2]
+
+
+# Synthetic transcript in transcript orientation: a 5' UTR, a 48 bp CDS that ends in the sense codon TGG, the stop
+# codon TAA and a 3' UTR. Exon 1 holds the 5' UTR and the first 30 CDS bases, exon 2 the rest.
+_UTR5 = "GCCGCCACC"
+_CDS = "ATGGCTAGCAAAGGCGAAGAGCTGTTCACCGGCGTGGTGCCCATCTGG"
+_STOP = "TAA"
+_UTR3 = "GGCTGAATTCCCGGG"
+_INTRON = "GTAAGTCCCCCCCCTTTCAG"
+_FLANK = "CCCCCCCCCC"
+
+
+def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_stop_codon=False):
+    """
+    Runs extract_ptc on the coding regions of the synthetic transcript, which merge_stop_codons_into_cds builds
+    from its GTF rows, and returns the result indexed by variant_id.
+
+    :param strand: strand of the transcript; on the minus strand, the genome is the reverse complement
+    :param has_stop_codon: whether the transcript has a stop_codon row. Without it, the transcript ends with its CDS,
+        as one tagged cds_end_NF does.
+    :param variants: {variant_id: (position, alt)}: SNVs at a 0-based position in the coding region (CDS plus stop
+        codon), with the alt base in transcript orientation
+    :param split_stop_codon: split the stop codon across an intron. Its first 2 bases end exon 2, its last base
+        starts exon 3, which has no CDS row.
+    """
+    stop = _STOP[:2] + _INTRON + _STOP[2:] if split_stop_codon else _STOP
+    genome = _FLANK + _UTR5 + _CDS[:30] + _INTRON + _CDS[30:] + stop + _UTR3 + _FLANK
+    cds_start = len(_FLANK) + len(_UTR5)
+    exon2_start = cds_start + 30 + len(_INTRON)
+    stop_start = exon2_start + 18
+    exon3_start = stop_start + 2 + len(_INTRON)
+    rows = [("exon", 1, len(_FLANK), cds_start + 30)]
+    if split_stop_codon:
+        rows += [
+            ("exon", 2, exon2_start, stop_start + 2),
+            ("exon", 3, exon3_start, exon3_start + 1 + len(_UTR3)),
+            ("stop_codon", 2, stop_start, stop_start + 2),
+            ("stop_codon", 3, exon3_start, exon3_start + 1),
+        ]
+    elif has_stop_codon:
+        rows += [("exon", 2, exon2_start, stop_start + 3 + len(_UTR3)), ("stop_codon", 2, stop_start, stop_start + 3)]
+    else:
+        rows += [("exon", 2, exon2_start, stop_start)]
+    rows += [("CDS", 1, cds_start, cds_start + 30), ("CDS", 2, exon2_start, stop_start)]
+
+    def genomic(pos):
+        # 0-based plus strand position of a position in the coding region
+        if pos < 30:
+            return cds_start + pos
+        return exon3_start + pos - 50 if split_stop_codon and pos >= 50 else exon2_start + pos - 30
+
+    coding = _CDS + _STOP
+    snvs = [(variant_id, genomic(pos), coding[pos], alt) for variant_id, (pos, alt) in variants.items()]
+    if strand == "-":
+        length = len(genome)
+        genome = str(Seq(genome).reverse_complement())
+        rows = [(f, e, length - end, length - start) for f, e, start, end in rows]
+        snvs = [(v, length - 1 - g, str(Seq(r).complement()), str(Seq(a).complement())) for v, g, r, a in snvs]
+
+    (tmp_path / "genome.fa").write_text(f">chrT\n{genome}\n")
+    gtf_df = pd.DataFrame(
+        [
+            {
+                "Chromosome": "chrT",
+                "Start": start,
+                "End": end,
+                "Strand": strand,
+                "Feature": f,
+                "exon_number": str(e),
+                "transcript_id": "tx",
+                "gene_id": "gene",
+            }
+            for f, e, start, end in rows
+        ]
+    )
+    vcf = pr.PyRanges(
+        pd.DataFrame(
+            [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
+        )
+    )
+    fasta = Fasta(str(tmp_path / "genome.fa"))
+    coding = merge_stop_codons_into_cds(gtf_df)
+    result = extract_ptc(coding, vcf, fasta, gtf_df[gtf_df["Feature"] == "exon"])
+    return result.set_index("variant_id")
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
+def test_extract_ptc_without_stop_codon(tmp_path, strand):
+    # cds_end_NF: no stop_codon row, the CDS ends in the sense codon TGG
+    result = _extract_ptc_synthetic(tmp_path, strand, False, {"TGG>TAG": (46, "A"), "TGG>TGC": (47, "C")})
+    variants = ["TGG>TAG", "TGG>TGC"]
+
+    assert result.loc[variants, "has_stop_codon"].tolist() == [False, False]
+    assert result.loc[variants, "ref_valid_stop"].tolist() == [False, False]
+    # the real stop lies downstream of the CDS, so a stop gained in the last codon is premature
+    assert result.loc["TGG>TAG", "alt_is_premature"] == True
+    assert result.loc["TGG>TGC", "alt_is_premature"] == False
+    # there is no stop codon to lose
+    assert result.loc[variants, "stop_loss"].tolist() == [False, False]
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
+def test_extract_ptc_stop_codon_change(tmp_path, strand):
+    variants = {"TAA>TAG": (50, "G"), "TAA>TGA": (49, "G"), "TAA>CAA": (48, "C"), "TGG>TAG": (46, "A")}
+    result = _extract_ptc_synthetic(tmp_path, strand, True, variants)
+
+    # a swap to another stop codon keeps the stop codon at its position: no stop loss and no readthrough
+    for swap in ["TAA>TAG", "TAA>TGA"]:
+        assert result.loc[swap, "alt_valid_stop"] == True
+        assert result.loc[swap, "stop_loss"] == False
+        assert result.loc[swap, "alt_is_premature"] == False
+        assert pd.isna(result.loc[swap, "transcript_num_stop_codons"])
+    # the annotated stop codon no longer encodes a stop
+    assert result.loc["TAA>CAA", "stop_loss"] == True
+    assert result.loc["TAA>CAA", "alt_is_premature"] == False
+    # a stop gained in the last sense codon lies upstream of the annotated stop codon
+    assert result.loc["TGG>TAG", "alt_is_premature"] == True
+    assert result.loc["TGG>TAG", "stop_loss"] == False
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
+def test_extract_ptc_split_stop_codon(tmp_path, strand):
+    # GTF: the stop codon TAA is split across an intron, and its last base lies in exon 3, which has no CDS row
+    variants = {"TAA>TAG": (50, "G"), "TAA>CAA": (48, "C")}
+    result = _extract_ptc_synthetic(tmp_path, strand, True, variants, split_stop_codon=True)
+
+    assert result.loc["TAA>TAG", "has_stop_codon"] == True
+    assert result.loc["TAA>TAG", "ref_cds_seq"] == _CDS + _STOP
+    assert result.loc["TAA>TAG", "ref_cds_info"] == [(1, 30), (2, 20), (3, 1)]
+    assert result.loc["TAA>TAG", "cds_in_transcript"] == True
+    # the variant in exon 3 changes the last base of the stop codon
+    assert result.loc["TAA>TAG", "alt_cds_seq"] == _CDS + "TAG"
+    assert result.loc["TAA>TAG", "alt_valid_stop"] == True
+    assert result.loc["TAA>TAG", "stop_loss"] == False
+    assert result.loc["TAA>CAA", "stop_loss"] == True
+
+
+def test_extract_ptc_needs_the_coding_regions():
+    # GTF CDS and stop_codon rows as they are, without the merge into coding regions
+    gtf_rows = pd.DataFrame(
+        {
+            "Chromosome": ["chrT", "chrT"],
+            "Start": [100, 150],
+            "End": [150, 153],
+            "Strand": ["+", "+"],
+            "Feature": ["CDS", "stop_codon"],
+            "exon_number": ["1", "1"],
+            "transcript_id": ["tx", "tx"],
+        }
+    )
+    with pytest.raises(ValueError, match="has_stop_codon"):
+        extract_ptc(gtf_rows, vcf=None, fasta=None, exons_df=None)
