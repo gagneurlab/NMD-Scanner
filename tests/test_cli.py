@@ -296,6 +296,37 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
                 assert exp == act, column
 
 
+@pytest.mark.parametrize("ids", [("12345", "NA"), ("007", "0123")])
+@pytest.mark.parametrize("output_name", ["numeric_ids.parquet", "numeric_ids.csv"])
+def test_main_keeps_numeric_and_NA_variant_ids_as_text(tmp_path, output_name, ids):
+    """
+    ClinVar-style numeric IDs, also with leading zeros, and an ID of "NA" must reach variant_id as written, in either
+    output format.
+    """
+
+    vcf = tmp_path / "numeric_ids.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"chr18\t21383521\t{ids[0]}\tG\tGT\t.\t.\t.\n"
+        f"chr18\t21383521\t{ids[1]}\tG\tGTTT\t.\t.\t.\n"
+    )
+    out = tmp_path / output_name
+    results = main(
+        vcf_path=str(vcf),
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+
+    assert set(results["variant_id"]) == set(ids)
+    if output_name.endswith(".parquet"):
+        loaded = pd.read_parquet(out)
+    else:
+        loaded = pd.read_csv(out, dtype={"variant_id": str}, keep_default_na=False)
+    assert set(loaded["variant_id"]) == set(ids)
+
+
 def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, caplog):
     out = tmp_path / "empty.csv"
     with caplog.at_level(logging.INFO):
@@ -335,6 +366,50 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
 
     assert pq.read_table(empty_out).num_rows == 0
     assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
+
+
+def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, caplog):
+    vcf = tmp_path / "matching.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383521\tv1\tG\tGT\t.\t.\t.\n"
+    )
+    with caplog.at_level(logging.INFO):
+        results = main(
+            vcf_path=str(vcf),
+            gtf_path="resources/chr18.gtf.gz",
+            fasta_path="resources/chr18.fa.gz",
+            output=str(tmp_path / "out.csv"),
+        )
+    assert not results.empty
+    assert "reference mismatches" not in caplog.text
+
+
+def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
+    # v1 matches the FASTA. "mismatch" has REF C, but chr18:21383519 is A, the first base of the GREB1L CDS.
+    vcf = tmp_path / "one_mismatch.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr18\t21383519\tmismatch\tC\tT\t.\t.\t.\n"
+        "chr18\t21383521\tv1\tG\tGT\t.\t.\t.\n"
+    )
+    with caplog.at_level(logging.INFO):
+        results = main(
+            vcf_path=str(vcf),
+            gtf_path="resources/chr18.gtf.gz",
+            fasta_path="resources/chr18.fa.gz",
+            output=str(tmp_path / "out.csv"),
+        )
+
+    assert set(results["variant_id"]) == {"v1"}
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    # The count is not checked.
+    assert any(message.endswith(" variant-transcript pairs due to reference mismatches.") for message in warnings)
+    listing = next(message for message in warnings if message.startswith("Reference-mismatched variants:"))
+    # one row per transcript: transcript_id, Chromosome, Start_variant, End_variant, Ref, Alt
+    rows = [line.split() for line in listing.splitlines()[2:]]
+    assert rows
+    assert {tuple(row[1:]) for row in rows} == {("chr18", "21383518", "21383519", "C", "T")}
 
 
 def test_main_with_only_reference_mismatches_writes_empty_csv(tmp_path, reference_mismatch_vcf, caplog):

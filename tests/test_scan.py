@@ -72,6 +72,29 @@ def test_read_vcf_accepts_single_allelic(tmp_path):
     assert gr.df.shape[0] == 2
 
 
+# A column with any non-numeric value stays text even without dtype=str, so the all-numeric ID pair
+# ("007", "0123") is what pins the int inference; ("12345", "NA") pins the NA parsing.
+@pytest.mark.parametrize("ids", [("007", "0123"), ("12345", "NA")])
+def test_read_vcf_keeps_text_fields_as_written(tmp_path, ids):
+    vcf = tmp_path / "text_fields.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        f"01\t100\t{ids[0]}\tA\tNA\t.\tPASS\tNA\n"
+        f"01\t200\t{ids[1]}\tC\tG\t50\t.\t.\n"
+    )
+    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    # pyranges turns Chromosome into a str category, so only a name that int parsing changes can fail here
+    assert (df["Chromosome"] == "01").all()
+    assert df["ID"].tolist() == list(ids)
+    assert df["Alt"].tolist() == ["NA", "G"]
+    assert df["Qual"].tolist() == [".", "50"]
+    assert df["Filter"].tolist() == ["PASS", "."]
+    assert df["Info"].tolist() == ["NA", "."]
+    assert df["Start"].tolist() == [99, 199]
+    assert df["End"].tolist() == [100, 200]
+
+
 # Test reading GTF file
 def test_read_gtf_file(gtf_path):
     gr = nmd_scanner.scan.read_gtf(gtf_path)
