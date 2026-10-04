@@ -928,6 +928,19 @@ chrX\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_i
     }
 
 
+def test_read_gff3_percent_decodes_attribute_values(tmp_path):
+    """GFF3 escapes ";", "=", "&" and "," in attribute values as %3B, %3D, %26 and %2C."""
+    content = """\
+##gff-version 3
+chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gene_id=ENSG%3D001%26x;transcript_id=ENST%3B001%2C1;gene_type=protein_coding;transcript_type=protein_coding
+chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_id=ENSG%3D001%26x;transcript_id=ENST%3B001%2C1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+chr1\tHAVANA\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_id=ENSG%3D001%26x;transcript_id=ENST%3B001%2C1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+"""
+    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "escaped.gff3", content), _fasta(tmp_path)).df
+    assert set(df["transcript_id"]) == {"ENST;001,1"}
+    assert set(df["gene_id"]) == {"ENSG=001&x"}
+
+
 def test_read_gff3_unrecognized_flavor_raises(tmp_path):
     content = """\
 ##gff-version 3

@@ -260,19 +260,28 @@ def read_gff3(gff3_path, fasta):
     - Ensembl: the GFF3 has no stop_codon rows, so has_stop_codon comes from the last 3 CDS bases
       in ``fasta`` (``_has_stop_codon_from_sequence``).
 
+    The file is read with polars-bio (see ``_read_gff3_rows``), plain or gzip-compressed. Only the
+    attributes in ``GFF3_ATTRIBUTES`` are read.
+
     :param gff3_path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object)
+    :return: PyRanges object with the exon and CDS rows, the columns Chromosome, Source, Feature,
+        Start, End, Score, Strand, Frame, has_stop_codon, gene_id, transcript_id and exon_number, and
+        the other attributes of ``GFF3_ATTRIBUTES`` that the file has, except ID and Parent
+    :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, or if its
+        flavor is neither GENCODE nor Ensembl
     """
     if not os.path.exists(gff3_path):
         raise FileNotFoundError(f"GFF3 file not found: {gff3_path}")
 
-    try:
-        df = pr.read_gff3(gff3_path).df
-    except ValueError as error:
-        raise ValueError(
-            f"Cannot read {os.fspath(gff3_path)!r} as GFF3 ({error}). If it is a GTF, give it a .gtf file name."
-        ) from error
+    df = _read_gff3_rows(gff3_path)
     columns = set(df.columns)
+    if not {"ID", "Parent"} & columns:
+        # polars-bio reads a GTF as GFF3 rows without attributes
+        raise ValueError(
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: no row has an ID or Parent attribute. "
+            "If it is a GTF, give it a .gtf file name."
+        )
 
     if {"gene_type", "transcript_type"} <= columns:
         df = _trim_cds_end_nf_stop_codons(_normalize_gencode_gff3(df), fasta)
@@ -293,6 +302,68 @@ def read_gff3(gff3_path, fasta):
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
     return pr.PyRanges(df)
+
+
+# The GFF3 attributes that read_gff3 and its helpers use. polars-bio reads no other attribute.
+GFF3_ATTRIBUTES = (
+    "ID",
+    "Parent",
+    "gene_id",
+    "transcript_id",
+    "gene_type",
+    "transcript_type",
+    "biotype",
+    "tag",
+    "exon_number",
+    "rank",
+    "ensembl_end_phase",
+)
+# The feature types of the rows that read_gff3 uses. Ensembl has many transcript types (mRNA,
+# lnc_RNA, ...), so any row whose Parent is a gene is read too.
+GFF3_FEATURES = ("transcript", "exon", "CDS", "stop_codon")
+
+
+def _read_gff3_rows(gff3_path):
+    """
+    Reads the rows of a GFF3 file that ``read_gff3`` uses, with polars-bio: the rows of a type in
+    ``GFF3_FEATURES`` and the rows whose Parent is a gene.
+
+    :param gff3_path: Path to the GFF3 file, plain or gzip-compressed
+    :return: DataFrame with the columns Chromosome, Source, Feature (category), Start, End, Score
+        (float, NaN if missing), Strand and Frame (text, "." if missing), and the attributes in
+        ``GFF3_ATTRIBUTES`` that have a value in at least one row, as text (NaN where a row has
+        none). Start and End are 0-based half-open int64. polars-bio percent-decodes the escapes of
+        the reserved and control characters in attribute values, e.g. %3B, %3D, %26, %2C and %09,
+        as the GFF3 specification says. It leaves %25 as it is.
+    :raises ValueError: if polars-bio cannot read the file
+    """
+    try:
+        rows = (
+            pb.scan_gff(os.fspath(gff3_path), attr_fields=list(GFF3_ATTRIBUTES), use_zero_based=True)
+            .filter(pl.col("type").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
+            # polars-bio's GFF frame takes the columns of select as one list
+            .select(
+                [
+                    pl.col("chrom").alias("Chromosome"),
+                    pl.col("source").alias("Source"),
+                    pl.col("type").cast(pl.Categorical).alias("Feature"),
+                    pl.col("start").cast(pl.Int64).alias("Start"),
+                    pl.col("end").cast(pl.Int64).alias("End"),
+                    pl.col("score").alias("Score"),
+                    pl.col("strand").alias("Strand"),
+                    pl.col("phase").cast(pl.String).fill_null(".").alias("Frame"),
+                    *GFF3_ATTRIBUTES,
+                ]
+            )
+            .collect()
+        )
+    except (ValueError, pl.exceptions.ComputeError) as error:
+        raise ValueError(
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3 ({error}). If it is a GTF, give it a .gtf file name."
+        ) from error
+    # polars-bio gives an attribute that no row has as a column without values
+    absent = [name for name in GFF3_ATTRIBUTES if rows[name].null_count() == rows.height]
+    return rows.drop(absent).to_pandas()
 
 
 def _has_stop_codon_from_sequence(df, fasta):
