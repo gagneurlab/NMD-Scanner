@@ -123,6 +123,8 @@ def calculate_utr_lengths(row):
     utr5 = 0
     utr3 = 0
 
+    # Exon numbers follow transcript order on both strands (exon 1 is the 5' exon),
+    # as in GENCODE and after compute_exon_numbers.
     for exon in tx_exon_nums:
         exon_len = transcript_exon_dict[exon]
         cds_len = cds_exons_dict.get(exon, 0)
@@ -133,28 +135,16 @@ def calculate_utr_lengths(row):
 
         if exon in cds_exons_dict:
             # Exon overlaps CDS, partial UTR
-            if strand == "+":
-                if exon == cds_exon_nums[0]:
-                    utr5 += utr_len
-                elif exon == cds_exon_nums[-1]:
-                    utr3 += utr_len
-            else:
-                if exon == cds_exon_nums[0]:
-                    utr3 += utr_len
-                elif exon == cds_exon_nums[-1]:
-                    utr5 += utr_len
+            if exon == cds_exon_nums[0]:
+                utr5 += utr_len
+            elif exon == cds_exon_nums[-1]:
+                utr3 += utr_len
         else:
             # Exon is outside CDS
-            if strand == "+":
-                if exon < cds_exon_nums[0]:
-                    utr5 += exon_len
-                elif exon > cds_exon_nums[-1]:
-                    utr3 += exon_len
-            else:
-                if exon > cds_exon_nums[-1]:
-                    utr5 += exon_len
-                elif exon < cds_exon_nums[0]:
-                    utr3 += exon_len
+            if exon < cds_exon_nums[0]:
+                utr5 += exon_len
+            elif exon > cds_exon_nums[-1]:
+                utr3 += exon_len
 
     utr5 = utr5 if utr5 >= 0 else None
     utr3 = utr3 if utr3 >= 0 and has_stop_codon else None
