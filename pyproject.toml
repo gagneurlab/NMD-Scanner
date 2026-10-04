@@ -24,6 +24,9 @@ dependencies = [
     "importlib-metadata",
 ]
 
+[project.optional-dependencies]
+parquet = ["pyarrow>=25.0.1"]
+
 [project.urls]
 "Homepage" = "https://github.com/gagneurlab/NMD-Scanner"
 
@@ -41,6 +44,7 @@ test = [
     "pytest-mock",
     "pytest-cov",
     "pytest-sugar",
+    "pyarrow>=25.0.1",
 ]
 lint = [
     "ruff",

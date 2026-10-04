@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from nmd_scanner.cli import is_valid_output_path, main, write_results
+from nmd_scanner.cli import is_valid_output_path, main, to_parquet_safe, write_results
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
@@ -92,3 +92,199 @@ def test_main_end_to_end_smoke(tmp_path):
         "nmd_escape",
     ]:
         assert col in results.columns, f"missing column: {col}"
+
+
+def test_main_end_to_end_parquet_typed_columns(tmp_path):
+    """
+    Run the full pipeline on the bundled chr18 test data, write Parquet, and read it back.
+
+    ``ref_all_stop_codons`` and ``alt_all_stop_codons`` hold (position, codon) tuples,
+    e.g. (5442, "TGA"); pyarrow cannot infer a single type for a tuple mixing int and str,
+    so they need a typed struct schema instead. ``transcript_exon_info`` holds
+    (exon_number, exon_length) tuples; exon_number used to come from the GTF as a string in
+    this column but as an int everywhere else, which pyarrow also rejects.
+    """
+
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    out = tmp_path / "typed_results.parquet"
+    results = main(
+        vcf_path="resources/test_files/test_variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+
+    assert out.exists()
+    schema = pq.read_schema(str(out))
+
+    stop_codon_type = pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())]))
+    for column in ["ref_all_stop_codons", "alt_all_stop_codons"]:
+        assert schema.field(column).type.equals(stop_codon_type), (
+            f"{column} has unexpected parquet type: {schema.field(column).type}"
+        )
+
+    loaded = pd.read_parquet(out)
+    assert len(loaded) == len(results)
+
+    # Values are preserved, just reshaped from (position, codon) tuples to records
+    has_stop_codons = results["ref_all_stop_codons"].apply(lambda v: isinstance(v, list) and len(v) > 0)
+    sample_pos = results.index[has_stop_codons][0]
+    expected = [{"position": pos, "codon": codon} for pos, codon in results.loc[sample_pos, "ref_all_stop_codons"]]
+    assert list(loaded.loc[sample_pos, "ref_all_stop_codons"]) == expected
+
+    # Exon numbers in transcript_exon_info are one type (int), not a mix of int and str
+    exon_info_samples = loaded["transcript_exon_info"].dropna()
+    exon_info_samples = exon_info_samples[exon_info_samples.apply(len) > 0]
+    assert not exon_info_samples.empty
+    for exon_number, exon_length in exon_info_samples.iloc[0]:
+        assert not isinstance(exon_number, str)
+        assert not isinstance(exon_length, str)
+
+
+def test_write_results_parquet_types_stop_codon_columns(tmp_path):
+    """
+    ``to_parquet_safe`` (used by ``write_results``) turns (position, codon) tuples into
+    {"position": ..., "codon": ...} records for every stop-codon column, including
+    ``transcript_all_stop_codons`` and rows holding None, so Parquet gets a typed struct
+    schema instead of raising ArrowInvalid.
+    """
+
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    df = pd.DataFrame(
+        {
+            "transcript_id": ["t1", "t2"],
+            "ref_all_stop_codons": [[(5442, "TGA"), (10, "TAA")], []],
+            "alt_all_stop_codons": [[(3, "TGA")], None],
+            "transcript_all_stop_codons": [None, [(7, "TAG")]],
+        }
+    )
+    out = tmp_path / "stop_codons.parquet"
+
+    write_results(df, str(out))
+
+    stop_codon_type = pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())]))
+    schema = pq.read_schema(str(out))
+    for column in ["ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons"]:
+        assert schema.field(column).type.equals(stop_codon_type)
+
+    table = pq.read_table(out)
+    assert table.column("ref_all_stop_codons").to_pylist() == [
+        [{"position": 5442, "codon": "TGA"}, {"position": 10, "codon": "TAA"}],
+        [],
+    ]
+    assert table.column("alt_all_stop_codons").to_pylist() == [[{"position": 3, "codon": "TGA"}], None]
+    assert table.column("transcript_all_stop_codons").to_pylist() == [None, [{"position": 7, "codon": "TAG"}]]
+
+    # write_results (the CSV path) and the in-memory df passed in are untouched
+    assert df["ref_all_stop_codons"].iloc[0] == [(5442, "TGA"), (10, "TAA")]
+
+
+def test_to_parquet_safe_leaves_other_columns_untouched():
+    df = pd.DataFrame({"transcript_id": ["t1"], "nmd_escape": [True]})
+    assert to_parquet_safe(df) is df
+
+    df = pd.DataFrame(
+        {"transcript_id": ["t1"], "transcript_exon_info": [[(1, 36)]], "ref_all_stop_codons": [[(5442, "TGA")]]}
+    )
+    original = df.copy()
+    safe = to_parquet_safe(df)
+    assert safe is not df
+    pd.testing.assert_frame_equal(safe.drop(columns="ref_all_stop_codons"), df.drop(columns="ref_all_stop_codons"))
+    assert safe["ref_all_stop_codons"].tolist() == [[{"position": 5442, "codon": "TGA"}]]
+    pd.testing.assert_frame_equal(df, original)
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), pd.NA])
+def test_write_results_parquet_keeps_any_missing_stop_codon_value_null(tmp_path, missing):
+    """None, np.nan and pd.NA in a stop-codon column are all written as null."""
+
+    pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+
+    df = pd.DataFrame({"transcript_id": ["t1", "t2"], "alt_all_stop_codons": [[(3, "TGA")], missing]})
+    out = tmp_path / "missing.parquet"
+
+    write_results(df, str(out))
+
+    assert pq.read_table(out).column("alt_all_stop_codons").to_pylist() == [[{"position": 3, "codon": "TGA"}], None]
+
+
+def _results_schema(tmp_path, vcf_path, name):
+    import pyarrow.parquet as pq
+
+    out = tmp_path / name
+    main(
+        vcf_path=vcf_path,
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+    return pq.read_schema(str(out)), pd.read_parquet(out)
+
+
+def test_parquet_schema_is_the_same_for_every_run(tmp_path):
+    """
+    Without an explicit schema, columns that are only None in a run (e.g. the transcript_*
+    stop-codon columns when no variant has a start or stop loss) are written as ``null``.
+    A run without start or stop loss, a run with them and an empty table must agree.
+    """
+
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa
+
+    schema_without, _ = _results_schema(tmp_path, "resources/test_files/test_variants.vcf", "without.parquet")
+    schema_with, loaded = _results_schema(tmp_path, "resources/test_files/variants.vcf", "with.parquet")
+    assert loaded["start_loss"].any() or loaded["stop_loss"].any()
+
+    empty = pd.DataFrame(columns=schema_with.names)
+    empty_out = tmp_path / "empty.parquet"
+    write_results(empty, str(empty_out))
+    import pyarrow.parquet as pq
+
+    schema_empty = pq.read_schema(str(empty_out))
+
+    assert schema_without.equals(schema_with)
+    assert schema_empty.equals(schema_with)
+    for field in schema_with:
+        assert not pa.types.is_null(field.type), field.name
+    assert schema_with.field("transcript_all_stop_codons").type.equals(
+        pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())]))
+    )
+    assert schema_with.field("transcript_stop_codon_exons").type.equals(pa.list_(pa.int64()))
+    assert schema_with.field("transcript_start_codon_exon").type.equals(pa.int64())
+    assert schema_with.field("transcript_valid_stop").type.equals(pa.bool_())
+
+
+def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
+    pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+
+    out = tmp_path / "roundtrip.parquet"
+    results = main(
+        vcf_path="resources/test_files/variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+    )
+    table = pq.read_table(out)
+
+    assert table.column_names == list(results.columns)
+    for column in results.columns:
+        expected = results[column].tolist()
+        actual = table.column(column).to_pylist()
+        assert len(actual) == len(expected)
+        for exp, act in zip(expected, actual):
+            if pd.api.types.is_scalar(exp) and pd.isna(exp):
+                assert act is None, column
+            elif column in ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons"):
+                assert act == [{"position": p, "codon": c} for p, c in exp], column
+            elif isinstance(exp, list):
+                assert [list(x) if isinstance(x, tuple) else x for x in exp] == act, column
+            else:
+                assert exp == act, column
