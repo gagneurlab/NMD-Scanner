@@ -373,3 +373,33 @@ def test_main_with_only_reference_mismatches_writes_empty_parquet_with_the_usual
 
     assert pq.read_table(empty_out).num_rows == 0
     assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
+
+
+def test_main_end_to_end_reassign_exons(tmp_path):
+    """``--reassign_exons`` runs on the bundled chr18 data and yields int exon numbers."""
+
+    out = tmp_path / "reassigned.csv"
+    results = main(
+        vcf_path="resources/test_files/test_variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(out),
+        reassign_exons=True,
+    )
+
+    assert not results.empty
+    assert out.exists()
+    for exon_info in results["transcript_exon_info"]:
+        for exon_number, exon_length in exon_info:
+            assert not isinstance(exon_number, str)
+            assert not isinstance(exon_length, str)
+
+    # chr18.gtf.gz is hg38, where the annotated exon numbers already follow transcript order.
+    # extract_ptc casts the annotated ones to int, too.
+    annotated = main(
+        vcf_path="resources/test_files/test_variants.vcf",
+        gtf_path="resources/chr18.gtf.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(tmp_path / "annotated.csv"),
+    )
+    pd.testing.assert_frame_equal(results, annotated)
