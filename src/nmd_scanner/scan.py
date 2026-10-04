@@ -268,11 +268,12 @@ def _read_gff3_rows(gff3_path):
 
     :param gff3_path: Path to the GFF3 file, plain or gzip-compressed
     :return: DataFrame with the columns Chromosome, Source, Feature (category), Start, End, Score
-        (float, NaN if missing), Strand and Frame (text, "." if missing), and the attributes in
+        (float64, NaN if missing), Strand and Frame (text, "." if missing), and the attributes in
         ``GFF3_ATTRIBUTES`` that have a value in at least one row, as text (NaN where a row has
-        none). Start and End are 0-based half-open int64. polars-bio percent-decodes the escapes of
-        the reserved and control characters in attribute values, e.g. %3B, %3D, %26, %2C and %09,
-        as the GFF3 specification says. It leaves %25 as it is.
+        none). Start and End are 0-based half-open int64. polars-bio reads Score as float32, so it
+        keeps about 7 significant digits. polars-bio percent-decodes the escapes of the reserved and
+        control characters in attribute values, e.g. %3B, %3D, %26, %2C and %09, as the GFF3
+        specification says. It leaves %25 as it is.
     :raises ValueError: if polars-bio cannot read the file, if it skips a data line of the file, or if
         a row has a start after its end
     """
@@ -292,7 +293,7 @@ def _read_gff3_rows(gff3_path):
                         pl.col("type").cast(pl.Categorical).alias("Feature"),
                         pl.col("start").cast(pl.Int64).alias("Start"),
                         pl.col("end").cast(pl.Int64).alias("End"),
-                        pl.col("score").alias("Score"),
+                        pl.col("score").cast(pl.Float64).alias("Score"),
                         pl.col("strand").alias("Strand"),
                         pl.col("phase").cast(pl.String).fill_null(".").alias("Frame"),
                         *GFF3_ATTRIBUTES,
