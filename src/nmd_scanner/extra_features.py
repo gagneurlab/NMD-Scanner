@@ -257,6 +257,37 @@ def calculate_stop_codon_dist(row):
     return alt_cds_len - 3 - alt_stop
 
 
+def exon_end_in_alt_cds(row, exon):
+    """
+    Return where a transcript exon ends in alt CDS coordinates (as alt_first_stop_pos), or None if the lengths
+    do not determine it. The value is the CDS position of the first base after the exon, i.e. of its downstream
+    exon junction.
+
+    Exon numbers follow transcript order. Up to the last CDS exon, an exon ends where its CDS part ends.
+    The last CDS exon ends after its 3' UTR part, and each exon after it adds its full length.
+    The result is None for an exon upstream of the CDS. It is also None for an exon at or after the CDS if the CDS
+    lies in a single exon: the lengths do not tell how the UTR of that exon splits into 5' and 3' UTR.
+    """
+
+    alt_cds = {int(e): int(length) for e, length in row.get("alt_cds_info") or []}
+    ref_cds = {int(e): int(length) for e, length in row.get("ref_cds_info") or []}
+    tx_exons = {int(e): int(length) for e, length in row.get("transcript_exon_info") or []}
+
+    if not alt_cds or exon < min(alt_cds):
+        return None
+
+    end = sum(length for e, length in alt_cds.items() if e <= exon)
+
+    last_cds_exon = max(alt_cds)
+    if exon >= last_cds_exon:
+        if last_cds_exon == min(alt_cds) or last_cds_exon not in ref_cds or last_cds_exon not in tx_exons:
+            return None
+        end += tx_exons[last_cds_exon] - ref_cds[last_cds_exon]
+        end += sum(length for e, length in tx_exons.items() if last_cds_exon < e <= exon)
+
+    return end
+
+
 def evaluate_nmd_escape_rules(row):
     """
     Evaluate whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on
@@ -271,7 +302,7 @@ def evaluate_nmd_escape_rules(row):
 
     :param row: A row of the DataFrame including alt_is_premature (bool), alt_first_stop_pos (int),
                 alt_stop_codon_exons (list[int]), transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]),
-                alt_start_codon_pos (int)
+                alt_cds_info and ref_cds_info (same format, CDS part per exon), alt_start_codon_pos (int)
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
@@ -291,19 +322,11 @@ def evaluate_nmd_escape_rules(row):
     # Extract relevant data
     stop_pos = row.get("alt_first_stop_pos")
     start_pos = row.get("alt_start_codon_pos")
-    cds_exon_info = row.get("alt_cds_info") or []
+    tx_exon_nums = sorted(int(e) for e, _ in row.get("transcript_exon_info") or [])
 
     total_exons = row.get("total_exon_count")
     downstream_exons = row.get("downstream_exon_count")
     ptc_exon_length = row.get("ptc_exon_length")
-
-    # Build CDS-relative offsets per exon (alt_first_stop_pos is also CDS-relative)
-    sorted_cds_exons = sorted(cds_exon_info, key=lambda x: x[0])
-    cds_exon_offsets = {}
-    offset = 0
-    for exon_num, length in sorted_cds_exons:
-        cds_exon_offsets[exon_num] = (offset, offset + length)
-        offset += length
 
     # Single exon rule
     rule_single_exon = total_exons == 1
@@ -311,13 +334,15 @@ def evaluate_nmd_escape_rules(row):
     # Last exon rule
     rule_last_exon = downstream_exons == 0 if downstream_exons is not None else False
 
-    # 50nt from penultimate CDS-containing exon end (CDS-relative, matching stop_pos)
-    if len(sorted_cds_exons) >= 2 and stop_pos is not None:
-        penultimate_exon_num, _ = sorted_cds_exons[-2]
-        _, pen_end = cds_exon_offsets.get(penultimate_exon_num, (None, None))
-        rule_50nt_penultimate = pen_end is not None and (stop_pos >= pen_end - 50) and (stop_pos < pen_end)
-    else:
-        rule_50nt_penultimate = False
+    # 50nt upstream of the last exon junction, i.e. the 3' end of the penultimate exon (CDS-relative, matching stop_pos).
+    # The junction lies past the CDS end if the last exon holds no CDS.
+    last_junction = exon_end_in_alt_cds(row, tx_exon_nums[-2]) if len(tx_exon_nums) >= 2 else None
+    rule_50nt_penultimate = (
+        last_junction is not None
+        and stop_pos is not None
+        and (stop_pos >= last_junction - 50)
+        and (stop_pos < last_junction)
+    )
 
     # Long exon rule (with exon longer than >407nt)
     # rule_long_exon = any(exon_length_map.get(exon, 0) > 407 for exon in stop_exons) # old code
@@ -343,7 +368,9 @@ def evaluate_nmd_escape_rules(row):
 
 def calculate_ptc_to_downstream_ej(row):
     """
-    Calculate distance from PTC to the downstream exon junction (next exon start/end depending on strand).
+    Calculate distance from PTC to the downstream exon junction, i.e. the 3' end of the PTC exon.
+    For a PTC in the last exon (no downstream junction), or without transcript_exon_info,
+    measure to the end of the CDS part of the PTC exon.
     Returns None if not applicable.
     """
 
@@ -365,6 +392,12 @@ def calculate_ptc_to_downstream_ej(row):
 
     # Choose the PTC exon (smallest number, closer to start)
     ptc_exon = min(stop_exons)
+
+    # The last CDS exon can go on with 3' UTR, so its junction lies past the CDS end
+    tx_exon_nums = [int(e) for e, _ in row.get("transcript_exon_info") or []]
+    if tx_exon_nums and ptc_exon < max(tx_exon_nums):
+        exon_end = exon_end_in_alt_cds(row, ptc_exon)
+        return exon_end - ptc_pos if exon_end is not None else None
 
     # Sum lengths of exons up to and including ptc_exon
     cumulative_length = 0
