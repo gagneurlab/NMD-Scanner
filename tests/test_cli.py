@@ -633,7 +633,7 @@ chr18\tensembl\texon\t47221\t48447\t.\t-\t.\tParent=transcript:T1;rank=4
 chr18\tensembl\tCDS\t49501\t49557\t.\t-\t0\tID=CDS:P1;Parent=transcript:T1
 chr18\tensembl\tCDS\t49129\t49237\t.\t-\t0\tID=CDS:P1;Parent=transcript:T1
 chr18\tensembl\tCDS\t48940\t49050\t.\t-\t2\tID=CDS:P1;Parent=transcript:T1
-chr18\tensembl\tCDS\t47393\t48447\t.\t-\t2\tID=CDS:P1;Parent=transcript:T1
+chr18\tensembl\tCDS\t47390\t48447\t.\t-\t2\tID=CDS:P1;Parent=transcript:T1
 """
 
 
@@ -664,7 +664,10 @@ def test_annotate_returns_what_main_writes(tmp_path):
 def test_annotate_does_not_write_files_or_configure_logging(tmp_path, monkeypatch):
     resources = pathlib.Path(__file__).resolve().parent.parent / "resources"
     monkeypatch.chdir(tmp_path)
-    root_handlers = list(logging.getLogger().handlers)
+    # logging.basicConfig does nothing while the root logger has handlers, and pytest adds its own
+    root = logging.getLogger()
+    monkeypatch.setattr(root, "handlers", [])
+    root_level = root.level
 
     annotate(
         str(resources / "test_files" / "test_variants.vcf"),
@@ -673,7 +676,8 @@ def test_annotate_does_not_write_files_or_configure_logging(tmp_path, monkeypatc
     )
 
     assert list(tmp_path.iterdir()) == []
-    assert logging.getLogger().handlers == root_handlers
+    assert root.handlers == []
+    assert root.level == root_level
 
 
 def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic_vcf):
@@ -712,6 +716,11 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
 
     assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
     assert list(results["transcript_id"]) == ["T1"]
+    # The FASTA has TAG (reverse complement of chr18:47390-47392) at the end of the last CDS row, so the
+    # coding region ends in a stop codon: 57 + 109 + 111 + 1058 nt.
+    assert results["strand"].tolist() == ["-"]
+    assert results["has_stop_codon"].tolist() == [True]
+    assert results["ref_cds_len"].tolist() == [1335]
     pd.testing.assert_frame_equal(results, expected)
 
 
