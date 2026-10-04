@@ -15,6 +15,8 @@ from nmd_scanner.scan import merge_stop_codons_into_cds
 
 # pytest-fixtures as inputs for the tests
 
+VCF_HEADER = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+
 
 @pytest.fixture(scope="session")
 def gtf_path():
@@ -77,22 +79,79 @@ def test_read_vcf_accepts_single_allelic(tmp_path):
 @pytest.mark.parametrize("ids", [("007", "0123"), ("12345", "NA")])
 def test_read_vcf_keeps_text_fields_as_written(tmp_path, ids):
     vcf = tmp_path / "text_fields.vcf"
-    vcf.write_text(
-        "##fileformat=VCFv4.2\n"
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-        f"01\t100\t{ids[0]}\tA\tNA\t.\tPASS\tNA\n"
-        f"01\t200\t{ids[1]}\tC\tG\t50\t.\t.\n"
-    )
+    vcf.write_text(VCF_HEADER + f"01\t100\t{ids[0]}\tA\tNA\t.\tPASS\tNA\n01\t200\t{ids[1]}\tC\tG\t50\t.\t.\n")
     df = nmd_scanner.scan.read_vcf(str(vcf)).df
     # pyranges turns Chromosome into a str category, so only a name that int parsing changes can fail here
     assert (df["Chromosome"] == "01").all()
     assert df["ID"].tolist() == list(ids)
     assert df["Alt"].tolist() == ["NA", "G"]
-    assert df["Qual"].tolist() == [".", "50"]
-    assert df["Filter"].tolist() == ["PASS", "."]
-    assert df["Info"].tolist() == ["NA", "."]
     assert df["Start"].tolist() == [99, 199]
     assert df["End"].tolist() == [100, 200]
+
+
+def test_read_vcf_keeps_a_dot_in_id_and_alt(tmp_path):
+    """polars-bio gives "" for "."; read_vcf turns it back into "."."""
+    vcf = tmp_path / "dots.vcf"
+    vcf.write_text(VCF_HEADER + "chr1\t100\t.\tA\t.\t.\t.\t.\nchr1\t200\tv2\tC\tG\t.\t.\t.\n")
+    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    assert df["ID"].tolist() == [".", "v2"]
+    assert df["Alt"].tolist() == [".", "G"]
+
+
+def test_read_vcf_drops_qual_filter_and_info(tmp_path):
+    vcf = tmp_path / "all_fields.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        '##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\tv1\tA\tT\t50\tPASS\tDP=12\n"
+    )
+    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    assert list(df.columns) == ["Chromosome", "Start", "End", "ID", "Ref", "Alt"]
+
+
+def test_read_vcf_end_comes_from_ref_not_from_info_end(tmp_path):
+    """polars-bio takes the end of a symbolic allele from INFO END; read_vcf keeps Start plus the REF length."""
+    vcf = tmp_path / "symbolic.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End position">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\tdel\tN\t<DEL>\t.\t.\tEND=200\n"
+        "chr1\t300\tindel\tACG\tA\t.\t.\t.\n"
+    )
+    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    assert df["Start"].tolist() == [99, 299]
+    assert df["End"].tolist() == [100, 302]
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n", ""],
+    ids=["without_fileformat_line", "without_header"],
+)
+def test_read_vcf_without_header_raises_an_error_naming_the_file(tmp_path, header):
+    vcf = tmp_path / "no_header.vcf"
+    vcf.write_text(header + "chr1\t100\tv1\tA\tT\t.\t.\t.\n")
+    with pytest.raises(ValueError, match=r"no_header\.vcf.*needs its header.*##fileformat.*#CHROM"):
+        nmd_scanner.scan.read_vcf(str(vcf))
+
+
+def test_read_vcf_reads_plain_and_gzip_files_alike(tmp_path):
+    content = VCF_HEADER + "chr1\t100\tv1\tA\tT\t.\t.\t.\nchr1\t200\tv2\tCA\tC\t.\t.\t.\n"
+    plain = tmp_path / "variants.vcf"
+    plain.write_text(content)
+    gz = tmp_path / "variants.vcf.gz"
+    with gzip.open(gz, "wt") as fh:
+        fh.write(content)
+    expected = nmd_scanner.scan.read_vcf(str(plain)).df
+    assert len(expected) == 2
+    pd.testing.assert_frame_equal(nmd_scanner.scan.read_vcf(str(gz)).df, expected)
+
+
+def test_read_vcf_missing_file_raises_file_not_found(tmp_path):
+    with pytest.raises(FileNotFoundError, match="missing.vcf"):
+        nmd_scanner.scan.read_vcf(str(tmp_path / "missing.vcf"))
 
 
 # Test reading GTF file
@@ -782,7 +841,8 @@ def test_main_gives_the_same_results_for_gtf_and_gff3(tmp_path, gtf, gff3, chrom
     vcf = _write(
         tmp_path,
         "variants.vcf",
-        "".join(
+        VCF_HEADER
+        + "".join(
             f"{chrom}\t{pos}\tv{i}\t{ref}\t{alt}\t.\tPASS\t.\n" for i, (chrom, pos, ref, alt) in enumerate(variants)
         ),
     )

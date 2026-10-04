@@ -5,6 +5,8 @@ import os
 
 import numpy as np
 import pandas as pd
+import polars as pl
+import polars_bio as pb
 import pyranges as pr
 from Bio.Seq import Seq
 from pyfaidx import Fasta
@@ -27,29 +29,50 @@ def read_vcf(vcf_path):
     #  (especially the inclusion of the Variants into the reference CDS sequence to create the alternative CDS)
 
     """
-    Read a single VCF file into a PyRanges object with adjusted coordinates.
+    Reads a VCF file, plain or gzip-compressed, with polars-bio into a PyRanges object with the
+    columns Chromosome, Start, End, ID, Ref and Alt. QUAL, FILTER and INFO are not read.
 
-    The VCF must be left-normalized and single-allelic (one ALT allele per
-    record), e.g. produced by ``bcftools norm -m- -f reference.fa``.
-    Multi-allelic records (comma-separated ALT) are rejected because the
+    Start and End are 0-based half-open: Start is POS - 1, and End is Start plus the length of REF,
+    also for a symbolic allele with an INFO END. Every other field stays text as written, e.g.
+    ``01``, ``007`` and ``NA``. polars-bio returns ``.`` in ID and ALT as an empty string, which
+    becomes ``.`` again: a VCF field is never empty.
+
+    The VCF needs its header, at least the ``##fileformat`` and ``#CHROM`` lines. It must be
+    left-normalized and single-allelic (one ALT allele per record), e.g. produced by
+    ``bcftools norm -m- -f reference.fa``. Multi-allelic records are rejected because the
     downstream variant application assumes exactly one ALT allele per row.
-    """
-    df = pd.read_csv(
-        vcf_path,
-        comment="#",
-        sep="\t",
-        header=None,
-        names=["Chromosome", "Start", "ID", "Ref", "Alt", "Qual", "Filter", "Info"],
-        # Every VCF field except POS is text. Without this pandas infers int64 for numeric
-        # CHROM/ID values and turns text such as "NA" into NaN.
-        dtype={"Start": "int64", **{c: str for c in ("Chromosome", "ID", "Ref", "Alt", "Qual", "Filter", "Info")}},
-        keep_default_na=False,
-        na_filter=False,
-    )
 
-    # Reject multi-allelic records: the VCF spec allows comma-separated ALT,
-    # but the rest of the pipeline assumes one ALT allele per row.
-    multiallelic = df["Alt"].str.contains(",")
+    :raises FileNotFoundError: if ``vcf_path`` does not exist
+    :raises ValueError: if polars-bio cannot read the file, e.g. because it has no header, or if
+        the VCF has multi-allelic records
+    """
+    if not os.path.exists(vcf_path):
+        raise FileNotFoundError(f"VCF file not found: {vcf_path}")
+    try:
+        # info_fields=[]: no INFO field is parsed, nothing reads them
+        df = (
+            pb.scan_vcf(os.fspath(vcf_path), info_fields=[], use_zero_based=True)
+            .select(
+                pl.col("chrom").alias("Chromosome"),
+                pl.col("start").cast(pl.Int64).alias("Start"),
+                # not the end polars-bio gives, which follows INFO END for a symbolic allele
+                (pl.col("start").cast(pl.Int64) + pl.col("ref").str.len_chars().cast(pl.Int64)).alias("End"),
+                pl.col("id").replace("", ".").alias("ID"),
+                pl.col("ref").alias("Ref"),
+                pl.col("alt").replace("", ".").alias("Alt"),
+            )
+            .collect()
+            .to_pandas()
+        )
+    except (ValueError, pl.exceptions.ComputeError) as error:
+        raise ValueError(
+            f"Cannot read {os.fspath(vcf_path)!r} as VCF ({error}). "
+            "The VCF needs its header, at least the ##fileformat and #CHROM lines."
+        ) from error
+
+    # Reject multi-allelic records: the VCF spec allows several ALT alleles per record, but the
+    # rest of the pipeline assumes one. polars-bio joins the ALT alleles of a record with "|".
+    multiallelic = df["Alt"].str.contains("|", regex=False)
     if multiallelic.any():
         n_multiallelic = int(multiallelic.sum())
         raise ValueError(
@@ -58,13 +81,7 @@ def read_vcf(vcf_path):
             "Split and normalize first, e.g. `bcftools norm -m- -f reference.fa`."
         )
 
-    # Adjust coordinates to 0-based
-    df["Start"] = df["Start"] - 1
-    df["End"] = df["Start"] + df["Ref"].str.len()
-
-    # Keep only relevant columns
-    gr = pr.PyRanges(df[["Chromosome", "Start", "End", "ID", "Ref", "Alt", "Qual", "Filter", "Info"]])
-    return gr
+    return pr.PyRanges(df)
 
 
 def read_gtf(gtf_path):

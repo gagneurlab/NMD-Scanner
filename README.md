@@ -53,7 +53,7 @@ nmd-scanner --vcf input.vcf --annotation annotation.gtf --fasta reference.fa --o
 The equivalent `python -m nmd_scanner.cli ...` invocation also works without installing the console script.
 
 Arguments:
-- `--vcf`: Path to input VCF (SNVs / Indels supported; frameshifts handled)
+- `--vcf`: Path to input VCF, plain or gzip-compressed (SNVs / Indels supported; frameshifts handled). It needs its header, at least the `##fileformat` and `#CHROM` lines, and one ALT allele per record. QUAL, FILTER and INFO are not read.
 - `--annotation`: Path to gene annotation file (GTF or GFF3, optionally gzip-compressed). The format is auto-detected from the file suffix (`.gtf`, `.gff3`, `.gff`). Both GENCODE and Ensembl GFF3 flavors are supported. `--gtf` is a deprecated alternative for GTF files only: it reads the file as a GTF whatever its name, and is kept for backward compatibility.
 - `--fasta`: Path to reference genome FASTA. For a GFF3 annotation, it also shows whether a CDS ends in a stop codon.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
