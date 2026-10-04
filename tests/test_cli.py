@@ -538,6 +538,11 @@ def test_main_cli_logs_the_info_messages_of_nmd_scanner_in_its_format(cli_stderr
     assert all(" INFO nmd_scanner." in line for line in info)
 
 
+def test_main_cli_shows_no_progress_bars(cli_stderr):
+    # polars-bio shows a tqdm bar for every read
+    assert "rows/s" not in cli_stderr
+
+
 # --annotation CLI option tests
 
 

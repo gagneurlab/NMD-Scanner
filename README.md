@@ -87,6 +87,8 @@ results["my_key"] = "sample_1"  # add your own columns
 results.to_csv("results.csv", index=False)
 ```
 
+`polars-bio` shows tqdm progress bars on stderr, e.g. one for every file it reads. To turn them off, set `TQDM_DISABLE=1` in the environment before Python starts. Importing `nmd_scanner` imports `polars-bio`, which sets `POLARS_FORCE_NEW_STREAMING` in `os.environ` if it is not set, and adds 4 filters to the `warnings` module.
+
 For reconstructing reference and alternative coding and transcript sequences, PTC detection and start / stop-loss information:
 ```python
 import pandas as pd

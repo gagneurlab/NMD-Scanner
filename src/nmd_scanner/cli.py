@@ -1,9 +1,11 @@
 # Import dependencies
 import argparse
+import functools
 import logging
 import os
 
 import pandas as pd
+import tqdm
 from pyfaidx import Fasta
 
 from nmd_scanner.extra_features import add_features_and_rules
@@ -192,7 +194,7 @@ def is_valid_output_path(path):
 def _set_up_process():
     """
     Sets up the process that the CLI owns: NMD-Scanner logs its INFO messages to stderr, and all
-    other loggers their warnings.
+    other loggers their warnings. tqdm shows no progress bars.
     """
 
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s", force=True)
@@ -200,6 +202,8 @@ def _set_up_process():
     logging.getLogger("nmd_scanner").setLevel(logging.INFO)
     # under `python -m nmd_scanner.cli`, this module logs as __main__
     logger.setLevel(logging.INFO)
+    # polars-bio shows a tqdm bar for every read, also in a pipe or a log file
+    tqdm.tqdm.__init__ = functools.partialmethod(tqdm.tqdm.__init__, disable=True)
 
 
 def main_cli():
