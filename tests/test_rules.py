@@ -18,7 +18,6 @@ from nmd_scanner.rules import (
     splice_alt_cds_into_transcript,
     start_stop_loss,
 )
-from nmd_scanner.scan import merge_stop_codons_into_cds
 
 
 def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True):
@@ -27,10 +26,10 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
 
     The genome holds the exons, separated by introns of 20 nt. On the minus strand, it holds their reverse complement.
     :param exon_seqs: Exon sequences in transcript order (5' to 3')
-    :param cds_range: (start, end) of the CDS in transcript coordinates, stop codon excluded as in GTF CDS rows
+    :param cds_range: (start, end) of the CDS in transcript coordinates, stop codon excluded
     :param variant: (position, ref, alt) in transcript coordinates and orientation, within one exon
-    :param stop_codon: Whether the 3 nt after the CDS get stop_codon rows. Without them, the transcript has no
-        annotated stop codon, as one tagged cds_end_NF.
+    :param stop_codon: Whether the coding region includes the 3 nt after the CDS as its stop codon. Without them, the
+        transcript has no annotated stop codon, as one tagged cds_end_NF.
     :return: The single result row as a dictionary
     """
 
@@ -62,17 +61,16 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
     (tmp_path / "genome.fa").write_text(f">{chrom}\n{genome}\n")
     fasta = Fasta(str(tmp_path / "genome.fa"))
 
-    # Exon, CDS and stop_codon rows; CDS and stop_codon rows are split at the exon boundaries
-    features = [("CDS", *cds_range)] + ([("stop_codon", cds_range[1], cds_range[1] + 3)] if stop_codon else [])
+    # Exon rows and the coding regions: CDS rows that include the stop codon, split at the exon boundaries
+    coding_end = cds_range[1] + 3 if stop_codon else cds_range[1]
     rows = []
     for number, (tx_start, layout_start, length) in enumerate(exons, start=1):
         rows.append(("exon", number, *to_genome(layout_start, layout_start + length)))
-        for feature, feature_start, feature_end in features:
-            part_start, part_end = max(feature_start, tx_start), min(feature_end, tx_start + length)
-            if part_start < part_end:
-                start, end = to_genome(layout_start + part_start - tx_start, layout_start + part_end - tx_start)
-                rows.append((feature, number, start, end))
-    gtf_df = pd.DataFrame(
+        part_start, part_end = max(cds_range[0], tx_start), min(coding_end, tx_start + length)
+        if part_start < part_end:
+            start, end = to_genome(layout_start + part_start - tx_start, layout_start + part_end - tx_start)
+            rows.append(("CDS", number, start, end))
+    annotation = pd.DataFrame(
         [
             {
                 "Chromosome": chrom,
@@ -98,7 +96,8 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
         pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
     )
 
-    results = extract_ptc(merge_stop_codons_into_cds(gtf_df), vcf, fasta, gtf_df[gtf_df["Feature"] == "exon"])
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=stop_codon)
+    results = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
     assert len(results) == 1
     row = results.iloc[0].to_dict()
     row.update(add_nmd_features(row))
@@ -682,16 +681,16 @@ _FLANK = "CCCCCCCCCC"
 
 def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_stop_codon=False):
     """
-    Runs extract_ptc on the coding regions of the synthetic transcript, which merge_stop_codons_into_cds builds
-    from its GTF rows, and returns the result indexed by variant_id.
+    Runs extract_ptc on the exon rows and the coding regions (CDS rows that include the stop codon) of the synthetic
+    transcript, and returns the result indexed by variant_id.
 
     :param strand: strand of the transcript; on the minus strand, the genome is the reverse complement
-    :param has_stop_codon: whether the transcript has a stop_codon row. Without it, the transcript ends with its CDS,
-        as one tagged cds_end_NF does.
+    :param has_stop_codon: whether the coding region ends in the stop codon. Without it, the transcript ends with its
+        CDS, as one tagged cds_end_NF does.
     :param variants: {variant_id: (position, alt)}: SNVs at a 0-based position in the coding region (CDS plus stop
         codon), with the alt base in transcript orientation
     :param split_stop_codon: split the stop codon across an intron. Its first 2 bases end exon 2, its last base
-        starts exon 3, which has no CDS row.
+        starts exon 3 and is the only base of the CDS row of exon 3.
     """
     stop = _STOP[:2] + _INTRON + _STOP[2:] if split_stop_codon else _STOP
     genome = _FLANK + _UTR5 + _CDS[:30] + _INTRON + _CDS[30:] + stop + _UTR3 + _FLANK
@@ -699,19 +698,18 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
     exon2_start = cds_start + 30 + len(_INTRON)
     stop_start = exon2_start + 18
     exon3_start = stop_start + 2 + len(_INTRON)
-    rows = [("exon", 1, len(_FLANK), cds_start + 30)]
+    rows = [("exon", 1, len(_FLANK), cds_start + 30), ("CDS", 1, cds_start, cds_start + 30)]
     if split_stop_codon:
         rows += [
             ("exon", 2, exon2_start, stop_start + 2),
             ("exon", 3, exon3_start, exon3_start + 1 + len(_UTR3)),
-            ("stop_codon", 2, stop_start, stop_start + 2),
-            ("stop_codon", 3, exon3_start, exon3_start + 1),
+            ("CDS", 2, exon2_start, stop_start + 2),
+            ("CDS", 3, exon3_start, exon3_start + 1),
         ]
     elif has_stop_codon:
-        rows += [("exon", 2, exon2_start, stop_start + 3 + len(_UTR3)), ("stop_codon", 2, stop_start, stop_start + 3)]
+        rows += [("exon", 2, exon2_start, stop_start + 3 + len(_UTR3)), ("CDS", 2, exon2_start, stop_start + 3)]
     else:
-        rows += [("exon", 2, exon2_start, stop_start)]
-    rows += [("CDS", 1, cds_start, cds_start + 30), ("CDS", 2, exon2_start, stop_start)]
+        rows += [("exon", 2, exon2_start, stop_start), ("CDS", 2, exon2_start, stop_start)]
 
     def genomic(pos):
         # 0-based plus strand position of a position in the coding region
@@ -728,7 +726,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
         snvs = [(v, length - 1 - g, str(Seq(r).complement()), str(Seq(a).complement())) for v, g, r, a in snvs]
 
     (tmp_path / "genome.fa").write_text(f">chrT\n{genome}\n")
-    gtf_df = pd.DataFrame(
+    annotation = pd.DataFrame(
         [
             {
                 "Chromosome": "chrT",
@@ -749,8 +747,8 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
         )
     )
     fasta = Fasta(str(tmp_path / "genome.fa"))
-    coding = merge_stop_codons_into_cds(gtf_df)
-    result = extract_ptc(coding, vcf, fasta, gtf_df[gtf_df["Feature"] == "exon"])
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=has_stop_codon)
+    result = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
     return result.set_index("variant_id")
 
 
@@ -790,7 +788,7 @@ def test_extract_ptc_stop_codon_change(tmp_path, strand):
 
 @pytest.mark.parametrize("strand", ["+", "-"])
 def test_extract_ptc_split_stop_codon(tmp_path, strand):
-    # GTF: the stop codon TAA is split across an intron, and its last base lies in exon 3, which has no CDS row
+    # the stop codon TAA is split across an intron; its last base is the only coding base of exon 3
     variants = {"TAA>TAG": (50, "G"), "TAA>CAA": (48, "C")}
     result = _extract_ptc_synthetic(tmp_path, strand, True, variants, split_stop_codon=True)
 
@@ -806,8 +804,8 @@ def test_extract_ptc_split_stop_codon(tmp_path, strand):
 
 
 def test_extract_ptc_needs_the_coding_regions():
-    # GTF CDS and stop_codon rows as they are, without the merge into coding regions
-    gtf_rows = pd.DataFrame(
+    # CDS and stop_codon rows without has_stop_codon: not the coding regions
+    rows = pd.DataFrame(
         {
             "Chromosome": ["chrT", "chrT"],
             "Start": [100, 150],
@@ -819,4 +817,4 @@ def test_extract_ptc_needs_the_coding_regions():
         }
     )
     with pytest.raises(ValueError, match="has_stop_codon"):
-        extract_ptc(gtf_rows, vcf=None, fasta=None, exons_df=None)
+        extract_ptc(rows, vcf=None, fasta=None, exons_df=None)

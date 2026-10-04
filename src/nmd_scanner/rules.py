@@ -20,27 +20,25 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     :param cds_df: Coding regions of the annotation (DataFrame): CDS rows that include the stop codon, one row per
                    transcript and exon, with exon_number and the column has_stop_codon. has_stop_codon says whether
-                   the coding region of the transcript ends in an annotated stop codon. A GTF CDS excludes the stop
-                   codon; ``scan.merge_stop_codons_into_cds`` builds the coding regions from its CDS and stop_codon rows.
-                   ``scan.read_annotation`` returns the coding regions of a GTF or GFF3 as its CDS rows.
+                   the coding region of the transcript ends in an annotated stop codon. ``scan.read_annotation``
+                   returns the coding regions as its CDS rows.
     :param vcf: Parsed VCF variant entries (PyRanges object)
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
-    :param exons_df: All exonic entries from the GTF file (DataFrame)
+    :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
              It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has zero rows if no
              variant overlaps a CDS or every variant has a reference mismatch.
-    :raises ValueError: if cds_df has no has_stop_codon column, e.g. because it holds the GTF CDS rows as they are.
+    :raises ValueError: if cds_df has no has_stop_codon column, i.e. it does not hold the coding regions.
     """
 
     if "has_stop_codon" not in cds_df.columns:
         raise ValueError(
             "cds_df has no has_stop_codon column. extract_ptc takes the coding regions: CDS rows that include the "
-            "stop codon, with has_stop_codon. For a GTF, scan.merge_stop_codons_into_cds builds them from the CDS "
-            "and stop_codon rows."
+            "stop codon, with has_stop_codon, as scan.read_annotation returns them."
         )
 
     cds_df_adj = cds_df.copy()
-    # GTF attributes are parsed as strings; exon numbers are int in the output tuples (e.g. ref_cds_info)
+    # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_info)
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
 
     # Intersect variants with CDS regions
@@ -117,7 +115,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
-    # GTF attributes are parsed as strings; align with cds_df_adj so exon numbers are int
+    # annotation attributes are read as text; align with cds_df_adj so exon numbers are int
     # everywhere they end up together in a tuple (e.g. transcript_exon_info, *_stop_codon_exons).
     exons_df["exon_number"] = exons_df["exon_number"].astype(int)
     exon_seqs = get_transcript_sequence(exons_df, fasta)
@@ -470,7 +468,7 @@ def get_transcript_sequence(exons_df, fasta):
     """
     Construct full transcript sequences by concatenating the exon sequences from the FASTA genome reference, grouped by transcript.
     Get transcript length and transcript information as well.
-    :param exons_df: DataFrame containing exon-level annotations from the GTF file.
+    :param exons_df: DataFrame with the exon rows of the annotation.
                      Must include: transcript_id, strand, chromosome, start, end, exon_number
     :param fasta: Fasta file, reference genome object
     :return: DataFrame with one row per transcript with full transcript sequence, start, end, strand, transcript sequence length, and
@@ -546,7 +544,7 @@ def cds_range_in_transcript(exons, cds):
     The start is the transcript position of the 5' CDS base. The end lies one past the 3' CDS base (half-open),
     i.e. after the stop codon if the CDS rows include it. The end is the start plus the summed length of the CDS rows.
     This equals the mapped 3' CDS base plus one, since every CDS row lies inside an exon, also the parts of a stop
-    codon split across exons (see scan.merge_stop_codons_into_cds).
+    codon split across exons.
 
     :param exons: Exon rows of one transcript (DataFrame with Start, End, Strand; 0-based half-open genomic coordinates)
     :param cds: CDS rows of the same transcript (DataFrame with Start, End)

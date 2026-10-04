@@ -8,7 +8,6 @@ import pandas as pd
 import pytest
 
 import nmd_scanner.cli as cli_module
-import nmd_scanner.scan
 from nmd_scanner.cli import (
     OUTPUT_COLUMN_KINDS,
     annotate,
@@ -83,7 +82,7 @@ def test_main_end_to_end_smoke(tmp_path):
     out = tmp_path / "smoke_results.csv"
     results = main(
         vcf_path="resources/test_files/test_variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(out),
     )
@@ -117,7 +116,7 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
     ``ref_all_stop_codons`` and ``alt_all_stop_codons`` hold (position, codon) tuples,
     e.g. (5442, "TGA"); pyarrow cannot infer a single type for a tuple mixing int and str,
     so they need a typed struct schema instead. ``transcript_exon_info`` holds
-    (exon_number, exon_length) tuples; exon_number used to come from the GTF as a string in
+    (exon_number, exon_length) tuples; exon_number used to come from the annotation as a string in
     this column but as an int everywhere else, which pyarrow also rejects.
     """
 
@@ -128,7 +127,7 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
     out = tmp_path / "typed_results.parquet"
     results = main(
         vcf_path="resources/test_files/test_variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(out),
     )
@@ -237,7 +236,7 @@ def _results_schema(tmp_path, vcf_path, name):
     out = tmp_path / name
     main(
         vcf_path=vcf_path,
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(out),
     )
@@ -284,7 +283,7 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
     out = tmp_path / "roundtrip.parquet"
     results = main(
         vcf_path="resources/test_files/variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(out),
     )
@@ -324,7 +323,7 @@ def test_main_keeps_numeric_and_NA_variant_ids_as_text(tmp_path, output_name, id
     out = tmp_path / output_name
     results = main(
         vcf_path=str(vcf),
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(out),
     )
@@ -342,7 +341,7 @@ def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, cap
     with caplog.at_level(logging.INFO):
         results = main(
             vcf_path=intergenic_vcf,
-            gtf_path="resources/chr18.gtf.gz",
+            annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
             output=str(out),
         )
@@ -362,14 +361,14 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     empty_out = tmp_path / "empty.parquet"
     main(
         vcf_path=intergenic_vcf,
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(empty_out),
     )
     full_out = tmp_path / "full.parquet"
     main(
         vcf_path="resources/test_files/variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(full_out),
     )
@@ -386,7 +385,7 @@ def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, ca
     with caplog.at_level(logging.INFO):
         results = main(
             vcf_path=str(vcf),
-            gtf_path="resources/chr18.gtf.gz",
+            annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
             output=str(tmp_path / "out.csv"),
         )
@@ -406,7 +405,7 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         results = main(
             vcf_path=str(vcf),
-            gtf_path="resources/chr18.gtf.gz",
+            annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
             output=str(tmp_path / "out.csv"),
         )
@@ -427,7 +426,7 @@ def test_main_with_only_reference_mismatches_writes_empty_csv(tmp_path, referenc
     with caplog.at_level(logging.INFO):
         results = main(
             vcf_path=reference_mismatch_vcf,
-            gtf_path="resources/chr18.gtf.gz",
+            annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
             output=str(out),
         )
@@ -448,14 +447,14 @@ def test_main_with_only_reference_mismatches_writes_empty_parquet_with_the_usual
     empty_out = tmp_path / "mismatch.parquet"
     main(
         vcf_path=reference_mismatch_vcf,
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(empty_out),
     )
     full_out = tmp_path / "full.parquet"
     main(
         vcf_path="resources/test_files/variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(full_out),
     )
@@ -470,7 +469,7 @@ def test_main_end_to_end_reassign_exons(tmp_path):
     out = tmp_path / "reassigned.csv"
     results = main(
         vcf_path="resources/test_files/test_variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(out),
         reassign_exons=True,
@@ -483,25 +482,24 @@ def test_main_end_to_end_reassign_exons(tmp_path):
             assert not isinstance(exon_number, str)
             assert not isinstance(exon_length, str)
 
-    # chr18.gtf.gz is hg38, where the annotated exon numbers already follow transcript order.
+    # chr18.gff3.gz is hg38, where the annotated exon numbers already follow transcript order.
     # extract_ptc casts the annotated ones to int, too.
     annotated = main(
         vcf_path="resources/test_files/test_variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(tmp_path / "annotated.csv"),
     )
     pd.testing.assert_frame_equal(results, annotated)
 
 
-# --annotation / --gtf CLI option tests
+# --annotation CLI option tests
 
 
 def _patch_main(monkeypatch):
     calls = {}
 
-    def fake_main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False, annotation_path=None):
-        calls["gtf_path"] = gtf_path
+    def fake_main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False):
         calls["annotation_path"] = annotation_path
         return pd.DataFrame()
 
@@ -509,15 +507,17 @@ def _patch_main(monkeypatch):
     return calls
 
 
-def test_main_cli_requires_annotation_or_gtf(monkeypatch, tmp_path):
+def test_main_cli_requires_annotation(monkeypatch, tmp_path, capsys):
     out = tmp_path / "out.csv"
     monkeypatch.setattr(sys, "argv", ["nmd-scanner", "--vcf", "in.vcf", "--fasta", "ref.fa", "--output", str(out)])
     with pytest.raises(SystemExit):
         main_cli()
+    assert "--annotation" in capsys.readouterr().err
 
 
-def test_main_cli_rejects_both_annotation_and_gtf(monkeypatch, tmp_path):
+def test_main_cli_has_no_gtf_option(monkeypatch, tmp_path, capsys):
     out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -526,9 +526,9 @@ def test_main_cli_rejects_both_annotation_and_gtf(monkeypatch, tmp_path):
             "--vcf",
             "in.vcf",
             "--annotation",
-            "a.gtf",
+            "annotation.gff3",
             "--gtf",
-            "b.gtf",
+            "annotation.gtf",
             "--fasta",
             "ref.fa",
             "--output",
@@ -537,6 +537,8 @@ def test_main_cli_rejects_both_annotation_and_gtf(monkeypatch, tmp_path):
     )
     with pytest.raises(SystemExit):
         main_cli()
+    assert "unrecognized arguments: --gtf annotation.gtf" in capsys.readouterr().err
+    assert calls == {}
 
 
 def test_main_cli_annotation_option_reaches_main(monkeypatch, tmp_path):
@@ -559,21 +561,6 @@ def test_main_cli_annotation_option_reaches_main(monkeypatch, tmp_path):
     )
     main_cli()
     assert calls["annotation_path"] == "annotation.gff3"
-    assert calls["gtf_path"] is None
-
-
-def test_main_cli_gtf_alias_reaches_main(monkeypatch, tmp_path):
-    """--gtf is a deprecated alias for --annotation; it must keep working unchanged."""
-    out = tmp_path / "out.csv"
-    calls = _patch_main(monkeypatch)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["nmd-scanner", "--vcf", "in.vcf", "--gtf", "annotation.gtf", "--fasta", "ref.fa", "--output", str(out)],
-    )
-    main_cli()
-    assert calls["gtf_path"] == "annotation.gtf"
-    assert calls["annotation_path"] is None
 
 
 def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
@@ -586,40 +573,66 @@ def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
     assert "--annotation" in capsys.readouterr().err
 
 
-class _GtfReaderUsed(Exception):
-    pass
+@pytest.mark.parametrize("name", ["annotation.gtf", "annotation.GTF.gz"])
+def test_main_cli_rejects_a_gtf_annotation_before_reading_anything(monkeypatch, tmp_path, capsys, name):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    monkeypatch.setattr(
+        sys, "argv", ["nmd-scanner", "--vcf", "in.vcf", "--annotation", name, "--fasta", "ref.fa", "--output", str(out)]
+    )
+    with pytest.raises(SystemExit):
+        main_cli()
+    err = capsys.readouterr().err
+    assert f"argument --annotation: Cannot read '{name}': GTF input is no longer supported." in err
+    assert calls == {}
 
 
-def test_main_gtf_path_always_uses_the_gtf_reader(monkeypatch):
-    """A GTF under any file name works through gtf_path (--gtf); a GFF3 name does not switch the reader."""
+def test_main_cli_rejects_an_annotation_of_unknown_format(monkeypatch, tmp_path, capsys):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["nmd-scanner", "--vcf", "in.vcf", "--annotation", "annotation.txt", "--fasta", "ref.fa", "--output", str(out)],
+    )
+    with pytest.raises(SystemExit):
+        main_cli()
+    assert "Cannot detect annotation format" in capsys.readouterr().err
+    assert calls == {}
 
-    def fake_read_gtf(path):
-        raise _GtfReaderUsed(path)
 
-    monkeypatch.setattr(nmd_scanner.scan, "read_gtf", fake_read_gtf)
-    for name in ("plain.txt", "annotation.gff3"):
-        with pytest.raises(_GtfReaderUsed, match=name):
-            main(
-                "resources/part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf",
-                name,
-                "resources/chr18.fa.gz",
-                "unused.csv",
-            )
+@pytest.mark.parametrize(
+    ("name", "annotation_format", "prefix"),
+    [
+        ("annotation.gtf", None, "Cannot read 'annotation.gtf'"),
+        ("annotation.gtf.gz", None, "Cannot read 'annotation.gtf.gz'"),
+        ("resources/chr18.gff3.gz", "gtf", "Cannot read 'resources/chr18.gff3.gz' with fmt='gtf'"),
+    ],
+)
+def test_annotate_rejects_gtf(name, annotation_format, prefix):
+    with pytest.raises(ValueError) as error:
+        annotate(
+            "resources/test_files/test_variants.vcf", name, "resources/chr18.fa.gz", annotation_format=annotation_format
+        )
+    assert str(error.value) == (
+        f"{prefix}: GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
+    )
+
+
+def test_main_rejects_a_gtf_and_writes_nothing(tmp_path):
+    out = tmp_path / "out.csv"
+    with pytest.raises(ValueError, match="GTF input is no longer supported"):
+        main("resources/test_files/test_variants.vcf", "annotation.gtf", "resources/chr18.fa.gz", str(out))
+    assert not out.exists()
 
 
 def test_main_accepts_a_path_object_for_the_annotation(tmp_path):
     out = str(tmp_path / "out.csv")
     vcf = "resources/part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf"
-    via_gtf_path = main(vcf, Path("resources/chr18.gtf.gz"), "resources/chr18.fa.gz", out)
-    via_annotation = main(vcf, None, "resources/chr18.fa.gz", out, annotation_path=Path("resources/chr18.gtf.gz"))
-    pd.testing.assert_frame_equal(via_gtf_path, via_annotation)
-
-
-def test_main_needs_exactly_one_of_gtf_path_and_annotation_path():
-    with pytest.raises(ValueError, match="exactly one"):
-        main("in.vcf", None, "ref.fa", "out.csv")
-    with pytest.raises(ValueError, match="exactly one"):
-        main("in.vcf", "a.gtf", "ref.fa", "out.csv", annotation_path="b.gtf")
+    via_path = main(vcf, Path("resources/chr18.gff3.gz"), "resources/chr18.fa.gz", out)
+    via_str = main(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", out)
+    assert not via_path.empty
+    pd.testing.assert_frame_equal(via_path, via_str)
 
 
 _TUBB8B_GFF3 = """\
@@ -641,14 +654,14 @@ def test_annotate_returns_what_main_writes(tmp_path):
     out = tmp_path / "main.csv"
     expected = main(
         vcf_path="resources/test_files/test_variants.vcf",
-        gtf_path="resources/chr18.gtf.gz",
+        annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(out),
     )
 
     results = annotate(
         "resources/test_files/test_variants.vcf",
-        "resources/chr18.gtf.gz",
+        "resources/chr18.gff3.gz",
         "resources/chr18.fa.gz",
     )
 
@@ -671,7 +684,7 @@ def test_annotate_does_not_write_files_or_configure_logging(tmp_path, monkeypatc
 
     annotate(
         str(resources / "test_files" / "test_variants.vcf"),
-        str(resources / "chr18.gtf.gz"),
+        str(resources / "chr18.gff3.gz"),
         str(resources / "chr18.fa.gz"),
     )
 
@@ -681,7 +694,7 @@ def test_annotate_does_not_write_files_or_configure_logging(tmp_path, monkeypatc
 
 
 def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic_vcf):
-    results = annotate(intergenic_vcf, "resources/chr18.gtf.gz", "resources/chr18.fa.gz")
+    results = annotate(intergenic_vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
     assert isinstance(results, pd.DataFrame)
     assert results.empty
@@ -689,7 +702,7 @@ def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic
 
 
 def test_annotate_reassign_exons_matches_main(tmp_path):
-    args = ("resources/test_files/test_variants.vcf", "resources/chr18.gtf.gz", "resources/chr18.fa.gz")
+    args = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
     expected = main(*args, str(tmp_path / "main.csv"), reassign_exons=True)
 
     results = annotate(*args, reassign_exons=True)
@@ -712,7 +725,7 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     gff3.write_text(_TUBB8B_GFF3)
 
     results = annotate(str(vcf), str(gff3), fasta_path)
-    expected = main(str(vcf), None, fasta_path, str(tmp_path / "main.csv"), annotation_path=str(gff3))
+    expected = main(str(vcf), str(gff3), fasta_path, str(tmp_path / "main.csv"))
 
     assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
     assert list(results["transcript_id"]) == ["T1"]
@@ -726,13 +739,14 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
 
 def test_annotate_annotation_format_overrides_the_suffix(tmp_path):
     vcf = "resources/test_files/test_variants_minus.vcf"
-    gtf = tmp_path / "annotation.txt"
-    with gzip.open("resources/chr18.gtf.gz", "rb") as src:
-        gtf.write_bytes(src.read())
-    expected = annotate(vcf, "resources/chr18.gtf.gz", "resources/chr18.fa.gz")
+    gff3 = tmp_path / "annotation.txt"
+    with gzip.open("resources/chr18.gff3.gz", "rb") as src:
+        gff3.write_bytes(src.read())
+    expected = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
-    results = annotate(vcf, str(gtf), "resources/chr18.fa.gz", annotation_format="gtf")
+    results = annotate(vcf, str(gff3), "resources/chr18.fa.gz", annotation_format="gff3")
 
+    assert not results.empty
     pd.testing.assert_frame_equal(results, expected)
-    with pytest.raises(ValueError):
-        annotate(vcf, str(gtf), "resources/chr18.fa.gz")
+    with pytest.raises(ValueError, match="Cannot detect annotation format"):
+        annotate(vcf, str(gff3), "resources/chr18.fa.gz")
