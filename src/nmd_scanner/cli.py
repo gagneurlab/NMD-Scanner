@@ -5,6 +5,8 @@ import logging
 import os
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import tqdm
 from pyfaidx import Fasta
 
@@ -110,16 +112,8 @@ def write_results(results, output):
     if ext == ".csv":
         results.to_csv(output, index=False)
     elif ext in (".parquet", ".pq"):
-        try:
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-
-            table = pa.Table.from_pandas(to_parquet_safe(results), schema=parquet_schema(results), preserve_index=False)
-            pq.write_table(table, output)
-        except ImportError as e:
-            raise SystemExit(
-                f'Writing parquet requires pyarrow. Install it via: pip install "nmd_scanner[parquet]"\nOriginal error: {e}'
-            ) from e
+        table = pa.Table.from_pandas(to_parquet_safe(results), schema=parquet_schema(results), preserve_index=False)
+        pq.write_table(table, output)
     else:
         raise ValueError(f"Unsupported output extension: {ext!r}. Supported: {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}")
 
@@ -129,8 +123,6 @@ def parquet_schema(results):
     Return the pyarrow schema for the columns of ``results``, with the types listed in
     ``OUTPUT_COLUMN_KINDS``. A column that is not listed raises a KeyError.
     """
-
-    import pyarrow as pa
 
     stop_codon = pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())])
     kind_types = {
@@ -231,7 +223,7 @@ def main_cli():
         required=True,
         help=(
             "Path to the output file. Extension determines format: "
-            ".csv for CSV, .parquet or .pq for Parquet (requires the parquet extra). "
+            ".csv for CSV, .parquet or .pq for Parquet. "
             "Parent directory must exist; the file is overwritten if present."
         ),
     )
