@@ -3,7 +3,7 @@ Summary of the NMD-Scanner Script:
 1. Command Line argument Parser
 2. Check that Output Path is valid
 3. Reads genomic data files (VCF for variants, GTF for annotations, FASTA for sequences)
-4. Extracts coding regions and exons + exon length. A GTF CDS excludes the stop codon, so the stop_codon rows are merged into the CDS rows, per transcript and exon -> scan.merge_stop_codons_into_cds(). The merge keys on exon_number, so it runs after the optional reassignment of exon numbers
+4. Extracts coding regions and exons + exon length -> scan.read_annotation(). The coding regions are CDS rows that include the stop codon. A GTF CDS excludes it, so the stop_codon rows of a GTF are merged into the CDS rows, per transcript and exon -> scan.merge_stop_codons_into_cds(). The merge keys on exon_number, so it runs after the optional reassignment of exon numbers. A GFF3 CDS includes the stop codon -> scan.read_gff3()
 5. Identifies premature termination codons (PTCs) —> extract_ptc()
     1. Check that the CDS rows are coding regions (column has_stop_codon)
     2. Intersect variants with CDS regions
@@ -59,7 +59,7 @@ for ref_cds and alt_cds:
 - info: List of tuples (exon_number, exon_lengths)
 ————————————————————————————————————————————————————————————
 - cds_in_transcript: computed to check if the CDS sequence is in the transcript sequence
-- has_stop_codon: whether the coding region ends in an annotated stop codon, i.e. whether the transcript has stop_codon rows. Without one (e.g. cds_end_NF), valid_stop and stop loss are False, every in-frame stop codon is premature, and utr3_length and stop_codon_distance are empty
+- has_stop_codon: whether the coding region ends in an annotated stop codon, i.e. whether the transcript has stop_codon rows. An Ensembl GFF3 has no stop_codon rows; there, the last 3 CDS bases in the FASTA decide -> scan.read_gff3(). Without an annotated stop codon (e.g. cds_end_NF), valid_stop and stop loss are False, every in-frame stop codon is premature, and utr3_length and stop_codon_distance are empty
 ————————————————————————————————————————————————————————————
 analyzing ref_ and alt_  (CDS)
 - start_codon_pos

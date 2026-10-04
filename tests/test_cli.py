@@ -1,9 +1,13 @@
 import logging
+import sys
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from nmd_scanner.cli import OUTPUT_COLUMN_KINDS, is_valid_output_path, main, to_parquet_safe, write_results
+import nmd_scanner.cli as cli_module
+import nmd_scanner.scan
+from nmd_scanner.cli import OUTPUT_COLUMN_KINDS, is_valid_output_path, main, main_cli, to_parquet_safe, write_results
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
@@ -403,3 +407,131 @@ def test_main_end_to_end_reassign_exons(tmp_path):
         output=str(tmp_path / "annotated.csv"),
     )
     pd.testing.assert_frame_equal(results, annotated)
+
+
+# --annotation / --gtf CLI option tests
+
+
+def _patch_main(monkeypatch):
+    calls = {}
+
+    def fake_main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False, annotation_path=None):
+        calls["gtf_path"] = gtf_path
+        calls["annotation_path"] = annotation_path
+        return pd.DataFrame()
+
+    monkeypatch.setattr(cli_module, "main", fake_main)
+    return calls
+
+
+def test_main_cli_requires_annotation_or_gtf(monkeypatch, tmp_path):
+    out = tmp_path / "out.csv"
+    monkeypatch.setattr(sys, "argv", ["nmd-scanner", "--vcf", "in.vcf", "--fasta", "ref.fa", "--output", str(out)])
+    with pytest.raises(SystemExit):
+        main_cli()
+
+
+def test_main_cli_rejects_both_annotation_and_gtf(monkeypatch, tmp_path):
+    out = tmp_path / "out.csv"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "nmd-scanner",
+            "--vcf",
+            "in.vcf",
+            "--annotation",
+            "a.gtf",
+            "--gtf",
+            "b.gtf",
+            "--fasta",
+            "ref.fa",
+            "--output",
+            str(out),
+        ],
+    )
+    with pytest.raises(SystemExit):
+        main_cli()
+
+
+def test_main_cli_annotation_option_reaches_main(monkeypatch, tmp_path):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "nmd-scanner",
+            "--vcf",
+            "in.vcf",
+            "--annotation",
+            "annotation.gff3",
+            "--fasta",
+            "ref.fa",
+            "--output",
+            str(out),
+        ],
+    )
+    main_cli()
+    assert calls["annotation_path"] == "annotation.gff3"
+    assert calls["gtf_path"] is None
+
+
+def test_main_cli_gtf_alias_reaches_main(monkeypatch, tmp_path):
+    """--gtf is a deprecated alias for --annotation; it must keep working unchanged."""
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["nmd-scanner", "--vcf", "in.vcf", "--gtf", "annotation.gtf", "--fasta", "ref.fa", "--output", str(out)],
+    )
+    main_cli()
+    assert calls["gtf_path"] == "annotation.gtf"
+    assert calls["annotation_path"] is None
+
+
+def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
+    out = tmp_path / "out.csv"
+    monkeypatch.setattr(
+        sys, "argv", ["nmd-scanner", "--vcf", "in.vcf", "--annotation=", "--fasta", "ref.fa", "--output", str(out)]
+    )
+    with pytest.raises(SystemExit):
+        main_cli()
+    assert "--annotation" in capsys.readouterr().err
+
+
+class _GtfReaderUsed(Exception):
+    pass
+
+
+def test_main_gtf_path_always_uses_the_gtf_reader(monkeypatch):
+    """A GTF under any file name works through gtf_path (--gtf); a GFF3 name does not switch the reader."""
+
+    def fake_read_gtf(path):
+        raise _GtfReaderUsed(path)
+
+    monkeypatch.setattr(nmd_scanner.scan, "read_gtf", fake_read_gtf)
+    for name in ("plain.txt", "annotation.gff3"):
+        with pytest.raises(_GtfReaderUsed, match=name):
+            main(
+                "resources/part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf",
+                name,
+                "resources/chr18.fa.gz",
+                "unused.csv",
+            )
+
+
+def test_main_accepts_a_path_object_for_the_annotation(tmp_path):
+    out = str(tmp_path / "out.csv")
+    vcf = "resources/part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf"
+    via_gtf_path = main(vcf, Path("resources/chr18.gtf.gz"), "resources/chr18.fa.gz", out)
+    via_annotation = main(vcf, None, "resources/chr18.fa.gz", out, annotation_path=Path("resources/chr18.gtf.gz"))
+    pd.testing.assert_frame_equal(via_gtf_path, via_annotation)
+
+
+def test_main_needs_exactly_one_of_gtf_path_and_annotation_path():
+    with pytest.raises(ValueError, match="exactly one"):
+        main("in.vcf", None, "ref.fa", "out.csv")
+    with pytest.raises(ValueError, match="exactly one"):
+        main("in.vcf", "a.gtf", "ref.fa", "out.csv", annotation_path="b.gtf")
