@@ -4,6 +4,7 @@ import pytest
 from Bio.Seq import Seq
 from pyfaidx import Fasta
 
+import nmd_scanner.rules
 from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from nmd_scanner.rules import (
     analyze_sequence,
@@ -916,8 +917,13 @@ def test_join_variants_to_cds_suffixes_the_variant_columns_that_cds_df_has_too()
     pd.testing.assert_index_equal(joined.index, pd.RangeIndex(1))
 
 
-def test_join_variants_to_cds_order():
+@pytest.mark.parametrize("reverse", [False, True], ids=["pairs_of_polars_bio", "reversed_pairs"])
+def test_join_variants_to_cds_order(monkeypatch, reverse):
     """CDS rows in the order of cds_df; the variants of one CDS row by Start, then End descending, then VCF order."""
+    if reverse:
+        # polars-bio gives the ties in VCF order already, so only reversed pairs test the last sort key
+        overlap = nmd_scanner.rules.pb.overlap
+        monkeypatch.setattr(nmd_scanner.rules.pb, "overlap", lambda *args, **kwargs: overlap(*args, **kwargs).reverse())
     vcf = _join_vcf(
         [
             ("chr1", 150, 151, "last"),
