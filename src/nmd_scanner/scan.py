@@ -66,7 +66,7 @@ def read_gtf(gtf_path):
     """
     Reads a GTF file into a PyRanges object, with its rows as they are in the file. A GTF CDS excludes
     the stop codon, which has its own stop_codon rows. ``merge_stop_codons_into_cds`` builds the coding
-    regions that ``rules.extract_ptc`` takes.
+    regions that ``rules.extract_ptc`` takes. ``read_annotation`` reads a GTF straight into them.
     """
     if not os.path.exists(gtf_path):
         raise FileNotFoundError(f"GTF file not found: {gtf_path}")
@@ -163,33 +163,55 @@ def detect_annotation_format(path):
     )
 
 
-def read_annotation(path, fasta=None, fmt=None):
+def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
     """
-    Reads a gene annotation file, GTF or GFF3, into a PyRanges object.
+    Reads a gene annotation file, GTF or GFF3, into a PyRanges object with the coding regions that
+    ``rules.extract_ptc`` takes.
+
+    The coding regions are the CDS rows: they include the stop codon, one row per transcript and
+    exon. On them, the column has_stop_codon says whether the coding region of the transcript ends
+    in an annotated stop codon. On the other rows, has_stop_codon is NA. A GTF CDS excludes the stop
+    codon, so ``merge_stop_codons_into_cds`` merges the stop_codon rows of a GTF into its CDS rows.
+    The other rows of a GTF stay as they are, and its exon_number becomes Int64. A GFF3 CDS
+    includes the stop codon; see ``read_gff3``.
 
     The format is auto-detected from the filename suffix (``.gtf``/``.gff3``/``.gff``,
-    gzip-compressed or not), unless ``fmt`` is given. GFF3 input gets the GTF column layout; see
-    ``read_gff3``.
+    gzip-compressed or not), unless ``fmt`` is given.
 
     :param path: Path to the GTF or GFF3 file
-    :param fasta: Reference genome (pyfaidx.Fasta object). Required for GFF3, which takes its stop
-        codons from it; unused for GTF.
+    :param fasta: Reference genome (pyfaidx.Fasta object). Required for GFF3, which takes from it
+        whether a CDS ends in a stop codon; unused for GTF.
     :param fmt: "gtf" or "gff3" to skip the detection from the filename suffix
+    :param reassign_exons: Recompute the exon numbers with ``compute_exon_numbers``. For a GTF, this
+        runs before the merge, which keys on exon_number.
     """
     if fmt is None:
         fmt = detect_annotation_format(path)
     elif fmt not in ("gtf", "gff3"):
         raise ValueError(f"Unknown annotation format {fmt!r}, expected 'gtf' or 'gff3'.")
-    if fmt == "gtf":
-        return read_gtf(path)
-    if fasta is None:
-        raise ValueError("Reading a GFF3 needs the reference genome FASTA, which gives the stop codons.")
-    return read_gff3(path, fasta)
+    if fmt == "gff3" and fasta is None:
+        raise ValueError(
+            "Reading a GFF3 needs the reference genome FASTA, which shows whether a CDS ends in a stop codon."
+        )
+
+    annotation = read_gtf(path) if fmt == "gtf" else read_gff3(path, fasta)
+    if reassign_exons:
+        logger.info("Recomputing exon numbers.")
+        annotation = compute_exon_numbers(annotation)
+    if fmt == "gff3":
+        return annotation
+
+    df = annotation.df
+    # GTF rows hold exon_number as str, the coding regions as int: cast both before the concat
+    other = df[~df["Feature"].isin(["CDS", "stop_codon"])].astype({"exon_number": "Int64"})
+    other["has_stop_codon"] = pd.Series(pd.NA, index=other.index, dtype="boolean")
+    coding = merge_stop_codons_into_cds(df).astype({"exon_number": "Int64", "has_stop_codon": "boolean"})
+    return pr.PyRanges(pd.concat([other, coding], ignore_index=True))
 
 
 def read_gff3(gff3_path, fasta):
     """
-    Reads a GFF3 file into a PyRanges object with the exon, CDS and stop_codon rows, in the
+    Reads a GFF3 file into a PyRanges object with the exon rows and the coding regions, in the
     column layout of ``read_gtf``.
 
     Two GFF3 flavors are supported, auto-detected from the attributes present:
@@ -204,12 +226,17 @@ def read_gff3(gff3_path, fasta):
       carry their number as ``rank``; a CDS row takes the number of the exon it lies in. Without
       ``rank``, ``compute_exon_numbers`` computes the numbers.
 
-    The coding region of a transcript is the union of its CDS and stop_codon rows, and the
-    stop_codon rows say whether it ends in a stop codon (``merge_stop_codons_into_cds``). A
-    GFF3 CDS includes the stop codon, a GTF CDS does not. Both flavors get the stop_codon rows and
-    the CDS of the GTF of the same release: Ensembl GFF3 has no stop_codon rows, so they are read
-    from ``fasta`` (``_add_stop_codon_rows``); GENCODE GFF3 has them, but has 3 more CDS bases than
-    the GTF for a few cds_end_NF transcripts (``_trim_cds_end_nf_stop_codons``).
+    The coding regions are the CDS rows, in the form ``read_annotation`` returns for a GTF too. A
+    GFF3 CDS includes the stop codon, so it needs no merge with stop_codon rows, and the result has
+    no stop_codon rows. On the CDS rows, the column has_stop_codon says whether the coding region of
+    the transcript ends in an annotated stop codon. On the exon rows, it is NA. Both flavors get the
+    coding regions and has_stop_codon of the GTF of the same release:
+
+    - GENCODE: has_stop_codon is True if the transcript has stop_codon rows. A few cds_end_NF
+      transcripts have 3 more CDS bases than in the GTF; ``_trim_cds_end_nf_stop_codons`` removes
+      them.
+    - Ensembl: the GFF3 has no stop_codon rows, so has_stop_codon comes from the last 3 CDS bases
+      in ``fasta`` (``_has_stop_codon_from_sequence``).
 
     :param gff3_path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object)
@@ -227,8 +254,11 @@ def read_gff3(gff3_path, fasta):
 
     if {"gene_type", "transcript_type"} <= columns:
         df = _trim_cds_end_nf_stop_codons(_normalize_gencode_gff3(df), fasta)
+        # the CDS includes the stop codon; the stop_codon rows only say whether there is one
+        is_stop = df["Feature"] == "stop_codon"
+        df = _set_has_stop_codon(df[~is_stop], df.loc[is_stop, "transcript_id"])
     elif "biotype" in columns:
-        df = _add_stop_codon_rows(_normalize_ensembl_gff3(df), fasta)
+        df = _has_stop_codon_from_sequence(_normalize_ensembl_gff3(df), fasta)
     else:
         raise ValueError(
             "Unrecognized GFF3 flavor: expected GENCODE-style attributes "
@@ -243,19 +273,20 @@ def read_gff3(gff3_path, fasta):
     return pr.PyRanges(df)
 
 
-def _add_stop_codon_rows(df, fasta):
+def _has_stop_codon_from_sequence(df, fasta):
     """
-    Adds the stop_codon rows of the Ensembl GTF to the exon and CDS rows of an Ensembl GFF3.
+    Sets has_stop_codon on the CDS rows of an Ensembl GFF3 as the Ensembl GTF has it.
 
     The Ensembl GTF has stop_codon rows for a transcript if the last 3 bases of its CDS are a stop
     codon (see ``_last_codons``), unless its last coding exon ends mid-codon or it is tagged
     cds_end_NF. The GFF3 gives the first condition by the exon attribute ``ensembl_end_phase`` (1 or
     2), but has no cds_end_NF tag. So a cds_end_NF transcript whose CDS ends in stop codon bases gets
-    stop_codon rows here, but none in the GTF: 13 transcripts in Ensembl 108, none on chr22.
+    has_stop_codon True here, but has no stop codon in the GTF: 13 transcripts in Ensembl 108, none
+    on chr22.
 
     :param df: Exon and CDS rows of an Ensembl GFF3 (DataFrame) with transcript_id and exon_number
     :param fasta: Reference genome (pyfaidx.Fasta object)
-    :return: DataFrame with the stop_codon rows added
+    :return: DataFrame with the column has_stop_codon (see ``_set_has_stop_codon``)
     """
     df = df.reset_index(drop=True)
     codons = _last_codons(df[df["Feature"] == "CDS"], fasta)
@@ -268,16 +299,8 @@ def _add_stop_codon_rows(df, fasta):
     ends_mid_codon = pd.Series([key in mid_codon for key in last_exon], index=codons.index, dtype=bool)
 
     stops = codons[codons["is_stop"] & ~ends_mid_codon]
-    # a stop codon piece lies in one CDS row and takes its attributes, e.g. the exon_number
-    pieces = stops.explode("pieces")["pieces"].tolist()
-    new_rows = df.loc[[cds_index for cds_index, _, _, _ in pieces]].assign(
-        Feature="stop_codon",
-        Start=[start for _, start, _, _ in pieces],
-        End=[end for _, _, end, _ in pieces],
-        Frame=[frame for _, _, _, frame in pieces],
-    )
     logger.info(
-        "Stop codons from the FASTA: %d transcripts get stop_codon rows; %d more end in stop codon bases, "
+        "Stop codons from the FASTA: %d transcripts end in a stop codon; %d more end in stop codon bases, "
         "but their last coding exon ends mid-codon (ensembl_end_phase 1 or 2).",
         len(stops),
         int((codons["is_stop"] & ends_mid_codon).sum()),
@@ -286,7 +309,16 @@ def _add_stop_codon_rows(df, fasta):
         "Ensembl GFF3 has no cds_end_NF tag: a cds_end_NF transcript whose CDS ends in stop codon bases "
         "gets a stop codon, unlike in the Ensembl GTF (13 transcripts in Ensembl 108). Use the GTF to avoid this."
     )
-    return pd.concat([df, new_rows], ignore_index=True)
+    return _set_has_stop_codon(df, stops["transcript_id"])
+
+
+def _set_has_stop_codon(df, stop_transcripts):
+    """
+    Returns a copy of ``df`` with the column has_stop_codon (nullable boolean): on the CDS rows,
+    whether their transcript is in ``stop_transcripts``; NA on the other rows.
+    """
+    has_stop = df["transcript_id"].isin(stop_transcripts).astype("boolean")
+    return df.assign(has_stop_codon=has_stop.where(df["Feature"] == "CDS"))
 
 
 def _trim_cds_end_nf_stop_codons(df, fasta):
@@ -312,7 +344,7 @@ def _trim_cds_end_nf_stop_codons(df, fasta):
     stops = codons[codons["is_stop"] & codons["in_frame"]]
 
     df = df.copy()
-    for cds_index, start, end, _ in stops.explode("pieces")["pieces"]:
+    for cds_index, start, end in stops.explode("pieces")["pieces"]:
         # the stop codon piece is at the 3' end of its CDS row
         if df.at[cds_index, "Strand"] == "+":
             df.at[cds_index, "End"] = start
@@ -339,8 +371,8 @@ def _last_codons(cds, fasta):
 
         - transcript_id
         - last_cds_index: index of the CDS row at the 3' end
-        - pieces: the codon bases as (cds_index, Start, End, Frame) tuples, from 5' to 3'. A codon
-          split across an intron has 2 pieces. Frame is the phase of the piece as a stop_codon row.
+        - pieces: the codon bases as (cds_index, Start, End) tuples, from 5' to 3'. A codon split
+          across an intron has 2 pieces.
         - is_stop: the codon is TAA, TAG or TGA; on the mitochondrial chromosome TAA, TAG, AGA or AGG
         - in_frame: the CDS row at the 3' end, after its phase (Frame), holds a multiple of 3 bases
     """
@@ -382,15 +414,11 @@ def _last_codons(cds, fasta):
         codon = "".join(str(fasta[chrom][s:e]).upper() for _, s, e in sorted(parts, key=lambda part: part[1]))
         if strand == "-":
             codon = str(Seq(codon).reverse_complement())
-        pieces, frame = [], 0
-        for cds_index, s, e in reversed(parts):
-            pieces.append((cds_index, s, e, str(frame)))
-            frame = (frame - (e - s)) % 3
         codons.append(
             (
                 transcript_id,
                 last_cds_index,
-                pieces,
+                parts[::-1],
                 codon in (MITOCHONDRIAL_STOP_CODONS if chrom in MITOCHONDRIAL_CHROMOSOMES else STOP_CODONS),
                 not pd.isna(phase) and (last_end - last_start - int(phase)) % 3 == 0,
             )

@@ -8,7 +8,7 @@ from pyfaidx import Fasta
 
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
-from nmd_scanner.scan import compute_exon_numbers, merge_stop_codons_into_cds, read_annotation, read_gtf, read_vcf
+from nmd_scanner.scan import read_annotation, read_vcf
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
@@ -61,23 +61,13 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False, annotatio
     logger.info("Reading FASTA file: %s", fasta_path)
     fasta = Fasta(fasta_path)
 
-    # read gene annotation file (GTF or GFF3; a GFF3 takes its stop codons from the FASTA)
-    logger.info("Reading annotation file: %s", gtf_path if annotation_path is None else annotation_path)
-    if annotation_path is None:
-        gtf = read_gtf(gtf_path)
-    else:
-        gtf = read_annotation(annotation_path, fasta)
+    # read gene annotation file (GTF or GFF3) into exon rows and coding regions (CDS rows with has_stop_codon).
+    # --reassign_exons recomputes the exon numbers (need this for the (old) hg19 version).
+    path, fmt = (gtf_path, "gtf") if annotation_path is None else (annotation_path, None)
+    logger.info("Reading annotation file: %s", path)
+    gtf = read_annotation(path, fasta, fmt=fmt, reassign_exons=reassign_exons)
     logger.info("Annotation file shape: %s", gtf.df.shape)
-
-    # Adjust exon number in GTF (need this for the (old) hg19 version)
-    if reassign_exons:
-        logger.info("Adjust exon numbers")
-        gtf = compute_exon_numbers(gtf)
-        logger.info("Exon numbers adjusted.")
-
-    # the coding regions: the CDS plus the stop_codon rows (a GFF3 gets them from read_gff3), merged per exon.
-    # The merge keys on exon_number, so it runs after the exon numbers are reassigned.
-    cds_df = merge_stop_codons_into_cds(gtf.df)
+    cds_df = gtf[gtf.Feature == "CDS"].df
 
     # extract exon regions from the GTF file and compute exon related metrics:
     # exon length & number of exons contained in each transcript
@@ -212,7 +202,7 @@ def main_cli():
     parser.add_argument(
         "--fasta",
         required=True,
-        help="Path to reference genome FASTA file. For a GFF3 annotation, it also gives the stop codons.",
+        help="Path to reference genome FASTA file. For a GFF3 annotation, it also shows whether a CDS ends in a stop codon.",
     )
     parser.add_argument(
         "--output",

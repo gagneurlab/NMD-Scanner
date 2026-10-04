@@ -55,14 +55,14 @@ The equivalent `python -m nmd_scanner.cli ...` invocation also works without ins
 Arguments:
 - `--vcf`: Path to input VCF (SNVs / Indels supported; frameshifts handled)
 - `--annotation`: Path to gene annotation file (GTF or GFF3, optionally gzip-compressed). The format is auto-detected from the file suffix (`.gtf`, `.gff3`, `.gff`). Both GENCODE and Ensembl GFF3 flavors are supported. `--gtf` is a deprecated alternative for GTF files only: it reads the file as a GTF whatever its name, and is kept for backward compatibility.
-- `--fasta`: Path to reference genome FASTA. For a GFF3 annotation, it also gives the stop codons.
+- `--fasta`: Path to reference genome FASTA. For a GFF3 annotation, it also shows whether a CDS ends in a stop codon.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (useful for hg19)
 
-The coding region of a transcript is the union of its CDS and `stop_codon` rows. A GTF CDS excludes the stop
-codon, a GFF3 CDS includes it. A GFF3 gets the coding regions and stop codons of the GTF of the same release,
-so GTF and GFF3 give the same results. Ensembl GFF3 has no `stop_codon` rows; they come from the last 3 CDS
-bases in the FASTA. Exception: Ensembl GFF3 has no `cds_end_NF` tag. So a `cds_end_NF` transcript whose CDS
+The coding region of a transcript is its CDS plus the stop codon. A GFF3 CDS includes the stop codon. A GTF
+CDS excludes it, so the `stop_codon` rows of a GTF are merged into its CDS rows. A GFF3 gets the coding regions
+and stop codons of the GTF of the same release, so GTF and GFF3 give the same results. Ensembl GFF3 has no
+`stop_codon` rows; whether a transcript ends in a stop codon comes from the last 3 CDS bases in the FASTA. Exception: Ensembl GFF3 has no `cds_end_NF` tag. So a `cds_end_NF` transcript whose CDS
 ends in stop codon bases gets a stop codon from an Ensembl GFF3, but none from the Ensembl GTF (13 transcripts
 in Ensembl 108, none on chr22).
 
@@ -90,18 +90,15 @@ import nmd_scanner
 
 vcf = nmd_scanner.read_vcf("input.vcf")
 fasta = Fasta("reference.fa")
-# also accepts a GFF3 path (auto-detected by suffix); a GFF3 takes its stop codons from the FASTA
-gtf_pr = nmd_scanner.read_annotation("annotation.gtf", fasta)
-# nmd_scanner.read_gtf("annotation.gtf") still works if you know the input is always a GTF
-# (read_annotation(path, fasta, fmt="gtf") reads a GTF with any file name)
-
-# Optional: fix exon numbering (recommended for hg19)
-gtf_pr = nmd_scanner.compute_exon_numbers(gtf_pr)
+# exon rows and coding regions: CDS rows that include the stop codon, with the column has_stop_codon.
+# Also accepts a GFF3 path (auto-detected by suffix); a GFF3 needs the FASTA.
+# Optional: reassign_exons=True recomputes the exon numbers (recommended for hg19).
+gtf_pr = nmd_scanner.read_annotation("annotation.gtf", fasta, reassign_exons=False)
+# (read_annotation(path, fasta, fmt="gtf") reads a GTF with any file name. nmd_scanner.read_gtf returns
+# the GTF rows as they are; nmd_scanner.merge_stop_codons_into_cds builds the coding regions from them.)
 
 gtf_df = gtf_pr.df
-# the coding regions: a GTF CDS excludes the stop codon, so its stop_codon rows are merged into the CDS rows.
-# The merge keys on exon_number, so it runs after compute_exon_numbers.
-cds_df = nmd_scanner.merge_stop_codons_into_cds(gtf_df)
+cds_df = gtf_df[gtf_df["Feature"] == "CDS"]
 exons_df = gtf_df[gtf_df["Feature"] == "exon"].copy()
 exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 

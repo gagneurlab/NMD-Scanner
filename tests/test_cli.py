@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 import nmd_scanner.cli as cli_module
+import nmd_scanner.scan
 from nmd_scanner.cli import OUTPUT_COLUMN_KINDS, is_valid_output_path, main, main_cli, to_parquet_safe, write_results
 
 
@@ -510,7 +511,7 @@ def test_main_gtf_path_always_uses_the_gtf_reader(monkeypatch):
     def fake_read_gtf(path):
         raise _GtfReaderUsed(path)
 
-    monkeypatch.setattr(cli_module, "read_gtf", fake_read_gtf)
+    monkeypatch.setattr(nmd_scanner.scan, "read_gtf", fake_read_gtf)
     for name in ("plain.txt", "annotation.gff3"):
         with pytest.raises(_GtfReaderUsed, match=name):
             main(

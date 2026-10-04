@@ -1,5 +1,6 @@
 # Import dependencies
 import gzip
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -9,6 +10,7 @@ from Bio.Seq import Seq
 from pyfaidx import Fasta
 
 import nmd_scanner
+from nmd_scanner.cli import main
 from nmd_scanner.scan import merge_stop_codons_into_cds
 
 # pytest-fixtures as inputs for the tests
@@ -377,10 +379,38 @@ def test_detect_annotation_format():
         nmd_scanner.scan.detect_annotation_format("annotation.txt")
 
 
-def test_read_annotation_dispatches_to_read_gtf(gtf_path):
+def _sorted_rows(df):
+    df = df.copy()
+    for col in df.columns:
+        if isinstance(df[col].dtype, pd.CategoricalDtype):
+            df[col] = df[col].astype(str)
+    return df.sort_values(["transcript_id", "Feature", "Start", "End"]).reset_index(drop=True)
+
+
+def test_read_annotation_gives_the_coding_regions_of_a_gtf(gtf_path):
+    """The CDS rows are the coding regions; the other rows, minus the stop_codon rows, are the GTF rows."""
     via_annotation = nmd_scanner.scan.read_annotation(gtf_path).df
-    via_read_gtf = nmd_scanner.scan.read_gtf(gtf_path).df
-    pd.testing.assert_frame_equal(via_annotation, via_read_gtf)
+    gtf_df = nmd_scanner.scan.read_gtf(gtf_path).df
+    assert not (via_annotation["Feature"] == "stop_codon").any()
+
+    is_cds = via_annotation["Feature"] == "CDS"
+    coding = merge_stop_codons_into_cds(gtf_df).astype({"exon_number": "Int64", "has_stop_codon": "boolean"})
+    pd.testing.assert_frame_equal(_sorted_rows(via_annotation[is_cds]), _sorted_rows(coding))
+
+    other = gtf_df[~gtf_df["Feature"].isin(["CDS", "stop_codon"])].astype({"exon_number": "Int64"})
+    expected_other = other.assign(has_stop_codon=pd.Series(pd.NA, index=other.index, dtype="boolean"))
+    pd.testing.assert_frame_equal(_sorted_rows(via_annotation[~is_cds]), _sorted_rows(expected_other))
+
+
+def test_read_annotation_reassigns_gtf_exon_numbers_before_the_merge(tmp_path):
+    """A GTF without exon_number attribute works with reassign_exons, also with a split stop codon (ENST003.1)."""
+    without_numbers = re.sub(r" exon_number \d+;", "", _GENCODE_GTF)
+    assert "exon_number" not in without_numbers
+    path = _write(tmp_path, "no_numbers.gtf", without_numbers)
+
+    reassigned = nmd_scanner.scan.read_annotation(path, reassign_exons=True)
+    as_given = nmd_scanner.scan.read_annotation(_write(tmp_path, "gencode.gtf", _GENCODE_GTF))
+    pd.testing.assert_frame_equal(_cds_exon_table(reassigned), _cds_exon_table(as_given))
 
 
 def _write(tmp_path, name, content):
@@ -393,10 +423,10 @@ def _write(tmp_path, name, content):
 # same loci: a + and a - strand transcript, a stop codon split across an intron (ENST003.1), a
 # transcript without stop codon (cds_end_NF, ENST004.1) whose last 3 bases read TAA out of frame,
 # and a chrM transcript whose CDS ends in AGA (ENST006.1). The GFF3 CDS includes the stop codon,
-# the GTF CDS does not; the coding regions (CDS plus stop_codon rows) are the same. The bases are
-# in _FIXTURE_BASES.
-# Ensembl: the GFF3 has no stop_codon rows, read_gff3 takes them from the FASTA. The GTF has stop
-# codon rows for AGA on MT. ENSTE004 has ensembl_end_phase 2, so it gets none.
+# the GTF CDS does not; the coding regions (CDS plus stop codon) are the same. The bases are in
+# _FIXTURE_BASES.
+# Ensembl: the GFF3 has no stop_codon rows, read_gff3 takes has_stop_codon from the FASTA. The GTF
+# has stop codon rows for AGA on MT. ENSTE004 has ensembl_end_phase 2, so it has no stop codon.
 # GENCODE: the GTF has no stop codon for AGA on chrM. ENST005.1 (+ strand) and ENST007.1 (- strand,
 # split across an intron) are tagged cds_end_NF, but their CDS ends in a complete stop codon without
 # stop_codon rows; the GENCODE GTF has these 3 bases as UTR.
@@ -580,11 +610,11 @@ _COMPARISON_COLUMNS = [
 
 
 def _cds_exon_table(pyranges_obj):
-    """Exon rows plus the coding region (CDS and stop_codon rows merged), as extract_ptc sees them."""
+    """Exon rows plus the coding regions (CDS rows with has_stop_codon), as extract_ptc sees them."""
     df = pyranges_obj.df
-    exons = df[df["Feature"] == "exon"].copy()
-    exons["exon_number"] = exons["exon_number"].astype(int)
-    df = pd.concat([exons, merge_stop_codons_into_cds(df)], ignore_index=True)
+    df = df[df["Feature"].isin(["exon", "CDS"])].copy()
+    df["exon_number"] = df["exon_number"].astype(int)
+    df["has_stop_codon"] = df["has_stop_codon"].astype("boolean")
     # Cast away categorical dtypes so the comparison is about values, not incidental
     # category-set/order differences between how the GTF and GFF3 paths build their frames.
     for col in ["Chromosome", "Feature", "Strand", "transcript_id", "gene_id"]:
@@ -614,9 +644,9 @@ def test_read_gff3_ensembl_flavor_matches_gtf(tmp_path):
 
 def test_read_gff3_stop_codon_from_sequence(tmp_path):
     """
-    An Ensembl GFF3 transcript gets stop_codon rows if the last 3 bases of its CDS are a stop codon,
-    in frame or not, unless its last coding exon ends mid-codon (ensembl_end_phase 1 or 2). On MT,
-    the vertebrate mitochondrial code applies: AGA is a stop codon, TGA is not.
+    An Ensembl GFF3 transcript has a stop codon if the last 3 bases of its CDS are a stop codon, in
+    frame or not, unless its last coding exon ends mid-codon (ensembl_end_phase 1 or 2). On MT, the
+    vertebrate mitochondrial code applies: AGA is a stop codon, TGA is not. The CDS stays as it is.
     """
     # chromosome, transcript start, transcript, CDS length, ensembl_end_phase, last 3 CDS bases
     cases = [
@@ -639,13 +669,13 @@ def test_read_gff3_stop_codon_from_sequence(tmp_path):
 
     df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path, bases)).df
 
-    stop_rows = df[df["Feature"] == "stop_codon"]
-    assert sorted(zip(stop_rows["transcript_id"], stop_rows["Start"], stop_rows["End"])) == [
-        ("MT_AGA", 157, 160),
-        ("OUT_OF_FRAME", 758, 761),
-        ("TAA", 157, 160),
-    ]
-    has_stop = merge_stop_codons_into_cds(df).groupby("transcript_id")["has_stop_codon"].first().to_dict()
+    assert set(df["Feature"]) == {"exon", "CDS"}
+    cds = df[df["Feature"] == "CDS"]
+    assert sorted(zip(cds["transcript_id"], cds["Start"], cds["End"])) == sorted(
+        (tx, start, start + length) for _, start, tx, length, _, _ in cases
+    )
+    assert df.loc[df["Feature"] == "exon", "has_stop_codon"].isna().all()
+    has_stop = dict(zip(cds["transcript_id"], cds["has_stop_codon"]))
     assert has_stop == {
         "TAA": True,
         "AGA": False,
@@ -654,6 +684,71 @@ def test_read_gff3_stop_codon_from_sequence(tmp_path):
         "MT_AGA": True,
         "MT_TGA": False,
     }
+
+
+def test_read_gff3_gives_coding_regions_without_stop_codon_rows(tmp_path):
+    fasta = _fasta(tmp_path)
+    for name, content, expected in [
+        (
+            "gencode.gff3",
+            _GENCODE_GFF3,
+            {"ENST001.1", "ENST002.1", "ENST003.1"},
+        ),
+        ("ensembl.gff3", _ENSEMBL_GFF3, {"ENSTE001", "ENSTE002", "ENSTE003", "ENSTE006"}),
+    ]:
+        df = nmd_scanner.scan.read_gff3(_write(tmp_path, name, content), fasta).df
+        assert set(df["Feature"]) == {"exon", "CDS"}
+        assert df.loc[df["Feature"] == "exon", "has_stop_codon"].isna().all()
+        cds = df[df["Feature"] == "CDS"]
+        assert set(cds.loc[cds["has_stop_codon"].astype(bool), "transcript_id"]) == expected
+
+
+def test_read_annotation_reassigns_gff3_exon_numbers(tmp_path):
+    without_numbers = re.sub(r";exon_number=\d+", "", _GENCODE_GFF3)
+    assert "exon_number" not in without_numbers
+    fasta = _fasta(tmp_path)
+    reassigned = nmd_scanner.scan.read_annotation(
+        _write(tmp_path, "a.gff3", without_numbers), fasta, reassign_exons=True
+    )
+    gtf = nmd_scanner.scan.read_annotation(_write(tmp_path, "a.gtf", _GENCODE_GTF))
+    pd.testing.assert_frame_equal(_cds_exon_table(reassigned), _cds_exon_table(gtf))
+
+
+@pytest.mark.parametrize(
+    ("gtf", "gff3", "chrom_m"),
+    [(_GENCODE_GTF, _GENCODE_GFF3, "chrM"), (_ENSEMBL_GTF, _ENSEMBL_GFF3, "MT")],
+    ids=["gencode", "ensembl"],
+)
+@pytest.mark.parametrize("reassign_exons", [False, True])
+def test_main_gives_the_same_results_for_gtf_and_gff3(tmp_path, gtf, gff3, chrom_m, reassign_exons):
+    """Variants in every fixture transcript, e.g. the split stop codon and the cds_end_NF ones."""
+    _fasta(tmp_path)
+    variants = [
+        ("chr1", 1100, "CC", "C"),
+        ("chr1", 1600, "C", "A"),
+        ("chr1", 4100, "C", "T"),
+        ("chr1", 5200, "C", "A"),
+        ("chr1", 7060, "C", "A"),
+        ("chr1", 8100, "C", "T"),
+        ("chr1", 9060, "C", "A"),
+        ("chr1", 9820, "C", "A"),
+        (chrom_m, 120, "C", "A"),
+    ]
+    vcf = _write(
+        tmp_path,
+        "variants.vcf",
+        "".join(
+            f"{chrom}\t{pos}\tv{i}\t{ref}\t{alt}\t.\tPASS\t.\n" for i, (chrom, pos, ref, alt) in enumerate(variants)
+        ),
+    )
+    fasta = str(tmp_path / "genome.fa")
+    out = str(tmp_path / "out.csv")
+    via_gtf = main(vcf, _write(tmp_path, "a.gtf", gtf), fasta, out, reassign_exons=reassign_exons)
+    via_gff3 = main(
+        vcf, None, fasta, out, reassign_exons=reassign_exons, annotation_path=_write(tmp_path, "a.gff3", gff3)
+    )
+    assert len(via_gtf) >= 7
+    pd.testing.assert_frame_equal(via_gtf, via_gff3)
 
 
 def test_read_annotation_gff3_needs_fasta(tmp_path):
@@ -759,7 +854,6 @@ def test_read_gff3_ensembl_takes_exon_numbers_from_rank_not_from_compute_exon_nu
     assert numbers[("ENSTE002", "exon")] == [1, 2]
     assert numbers[("ENSTE002", "CDS")] == [1, 2]
     assert numbers[("ENSTE003", "CDS")] == [1, 2]
-    assert numbers[("ENSTE003", "stop_codon")] == [1, 2]
 
 
 def test_read_gff3_ensembl_exon_number_is_the_rank_attribute(tmp_path):
@@ -822,7 +916,7 @@ def test_read_annotation_fmt_overrides_the_file_suffix(tmp_path):
     with pytest.raises(ValueError, match="Cannot detect annotation format"):
         nmd_scanner.scan.read_annotation(plain_path)
     via_fmt = nmd_scanner.scan.read_annotation(plain_path, fmt="gtf").df
-    pd.testing.assert_frame_equal(via_fmt, nmd_scanner.scan.read_gtf(_write(tmp_path, "a.gtf", _GENCODE_GTF)).df)
+    pd.testing.assert_frame_equal(via_fmt, nmd_scanner.scan.read_annotation(_write(tmp_path, "a.gtf", _GENCODE_GTF)).df)
     with pytest.raises(ValueError, match="Unknown annotation format"):
         nmd_scanner.scan.read_annotation(plain_path, fmt="bed")
 

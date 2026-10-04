@@ -22,6 +22,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    transcript and exon, with exon_number and the column has_stop_codon. has_stop_codon says whether
                    the coding region of the transcript ends in an annotated stop codon. A GTF CDS excludes the stop
                    codon; ``scan.merge_stop_codons_into_cds`` builds the coding regions from its CDS and stop_codon rows.
+                   ``scan.read_annotation`` returns the coding regions of a GTF or GFF3 as its CDS rows.
     :param vcf: Parsed VCF variant entries (PyRanges object)
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: All exonic entries from the GTF file (DataFrame)
