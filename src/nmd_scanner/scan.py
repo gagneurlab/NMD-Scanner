@@ -135,7 +135,7 @@ def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
 
     :param path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object), which shows whether a CDS ends in a stop
-        codon. Required.
+        codon. Required: without it, read_annotation raises a ValueError.
     :param fmt: "gff3", in any case, to skip the check of the filename suffix
     :param reassign_exons: Recompute the exon numbers with ``compute_exon_numbers``
     :return: DataFrame, as ``read_gff3`` returns it
@@ -166,7 +166,9 @@ def read_gff3(gff3_path, fasta):
     Reads a GFF3 file into a pandas DataFrame with the exon rows and the coding regions that
     ``rules.extract_ptc`` takes.
 
-    Two GFF3 flavors are supported, auto-detected from the attributes present:
+    Two GFF3 flavors are supported. The flavor is detected from the attributes of the rows that
+    ``_read_gff3_rows`` reads, so gene_type and transcript_type (GENCODE) or biotype (Ensembl) must
+    be on the transcript rows, not only on the gene rows:
 
     - GENCODE: every feature row carries ``gene_id``/``transcript_id`` directly, and they are kept
       (as in the GTF; e.g. hg19 lift37 has ``ENST00000477874.1_2`` there but ``ENST00000477874.1``
@@ -273,9 +275,10 @@ def _read_gff3_rows(gff3_path):
         (float64, NaN if missing), Strand and Frame (text, "." if missing), and the attributes in
         ``GFF3_ATTRIBUTES`` that have a value in at least one row, as text (NaN where a row has
         none). Start and End are 0-based half-open int64. polars-bio reads Score as float32, so it
-        keeps about 7 significant digits. polars-bio percent-decodes the escapes of the reserved and
-        control characters in attribute values, e.g. %3B, %3D, %26, %2C and %09, as the GFF3
-        specification says. It leaves %25 as it is.
+        keeps about 7 significant digits. In attribute values, polars-bio percent-decodes only %3B,
+        %3D, %26, %2C and %09, with upper-case hex digits; it leaves every other escape, e.g. %25 or
+        %3b, as it is. A decoded %2C is a comma, so ``tag=a%2Ccds_end_NF`` reads as the two tags a and
+        cds_end_NF.
     :raises ValueError: if polars-bio cannot read the file, if it skips a data line of the file, or if
         a row has a start after its end
     """

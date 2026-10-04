@@ -87,8 +87,7 @@ def test_read_vcf_accepts_single_allelic(tmp_path):
     assert df.shape[0] == 2
 
 
-# A column with any non-numeric value stays text even without dtype=str, so the all-numeric ID pair
-# ("007", "0123") is what pins the int inference; ("12345", "NA") pins the NA parsing.
+# A reader that infers types would read the all-numeric IDs ("007", "0123") as ints and "NA" as missing
 @pytest.mark.parametrize("ids", [("007", "0123"), ("12345", "NA")])
 def test_read_vcf_keeps_text_fields_as_written(tmp_path, ids):
     vcf = tmp_path / "text_fields.vcf"

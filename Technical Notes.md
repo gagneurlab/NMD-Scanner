@@ -6,7 +6,7 @@ Summary of the NMD-Scanner Script:
 4. Extracts coding regions and exons + exon length -> scan.read_annotation(). The coding regions are CDS rows that include the stop codon, as a GFF3 CDS does -> scan.read_gff3()
 5. Identifies premature termination codons (PTCs) —> extract_ptc()
     1. Check that the CDS rows are coding regions (column has_stop_codon)
-    2. Intersect variants with CDS regions
+    2. Intersect variants with CDS regions -> join_variants_to_cds()
     3. (in TCGA & MMRF only: adjust minus strand variants)
     4. Fetch reference CDS sequence for each variant region (on variant level: only CDS where a variant is located on) —> catch_sequence.add_exon_cds_sequence()
     5. Apply variant to CDS and compute alternative CDS sequence and get lengths of Ref-CDS and Alt-CDS (on variant level: only CDS where a variant is located on) —> apply_variant_edge_aware_with_lengths()
