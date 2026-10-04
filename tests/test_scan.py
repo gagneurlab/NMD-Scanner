@@ -854,6 +854,20 @@ def test_read_gff3_does_not_count_blank_lines_comments_and_the_fasta_section(tmp
     pd.testing.assert_frame_equal(nmd_scanner.scan.read_gff3(_write(tmp_path, "extra.gff3", content), fasta), expected)
 
 
+@pytest.mark.parametrize(
+    ("start", "end", "shown"),
+    [("1201", "1200", "chr1:1201-1200"), ("0", "1200", "chr1:4294967296-1200")],
+    ids=["start_after_end", "start_of_0"],
+)
+def test_read_gff3_raises_for_a_start_after_the_end(tmp_path, start, end, shown):
+    line = _CDS_LINE.replace("\t1051\t1200\t", f"\t{start}\t{end}\t")
+    gff3_path = _write(tmp_path, "reversed.gff3", _GENCODE_GFF3.replace(_CDS_LINE, line))
+    with pytest.raises(
+        ValueError, match=rf"reversed\.gff3.*1 row\(s\) have a start after their end, e.g. the CDS row at {shown}"
+    ):
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+
 def test_read_gff3_raises_an_error_naming_the_file_if_polars_bio_cannot_read_it(tmp_path):
     path = tmp_path / "random.gff3"
     path.write_bytes(random.Random(0).randbytes(300))

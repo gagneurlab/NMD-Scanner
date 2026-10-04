@@ -200,6 +200,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 # Functions used for extracting PTC:
 
 
+# polars-bio joins the intervals as 32-bit integers with sign
+MAX_JOIN_COORDINATE = 2**31 - 1
+
+
 def join_variants_to_cds(cds_df, vcf):
     """
     Joins every CDS row to the variants that overlap it, as the join of pyranges 0.x did.
@@ -215,7 +219,15 @@ def join_variants_to_cds(cds_df, vcf):
         too gets the suffix "_variant", e.g. Start_variant and End_variant. The rows come in the order
         of cds_df; the variants of one CDS row by Start, then by End descending, then in the order of
         vcf. pyranges 0.x gave the same order for a cds_df in the row order of its PyRanges.df.
+    :raises ValueError: if an End of cds_df or vcf is above 2**31 - 1, the largest coordinate that
+        polars-bio joins
     """
+
+    for name, df in (("cds_df", cds_df), ("vcf", vcf)):
+        if (df["End"] > MAX_JOIN_COORDINATE).any():
+            raise ValueError(
+                f"Cannot join {name}: it has an End above {MAX_JOIN_COORDINATE}, the largest coordinate that polars-bio joins."
+            )
 
     def intervals(df):
         frame = pd.DataFrame(

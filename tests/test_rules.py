@@ -939,3 +939,14 @@ def test_join_variants_to_cds_order():
         ("t_plus", "snv_c"),
         ("t_plus", "last"),
     ]
+
+
+@pytest.mark.parametrize("side", ["cds_df", "vcf"])
+def test_join_variants_to_cds_rejects_an_end_above_the_limit_of_polars_bio(side):
+    cds, vcf = _join_cds(), _join_vcf([("chr1", 150, 151, "v1")])
+    if side == "cds_df":
+        cds.loc[0, "End"] = 2**31
+    else:
+        vcf.loc[0, "End"] = 2**31
+    with pytest.raises(ValueError, match=f"Cannot join {side}: it has an End above 2147483647"):
+        join_variants_to_cds(cds, vcf)

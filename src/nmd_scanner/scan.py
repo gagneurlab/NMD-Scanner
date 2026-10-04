@@ -249,7 +249,8 @@ def _read_gff3_rows(gff3_path):
         none). Start and End are 0-based half-open int64. polars-bio percent-decodes the escapes of
         the reserved and control characters in attribute values, e.g. %3B, %3D, %26, %2C and %09,
         as the GFF3 specification says. It leaves %25 as it is.
-    :raises ValueError: if polars-bio cannot read the file, or if it skips a data line of the file
+    :raises ValueError: if polars-bio cannot read the file, if it skips a data line of the file, or if
+        a row has a start after its end
     """
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -285,6 +286,15 @@ def _read_gff3_rows(gff3_path):
             "Score is not a number or whose columns are not separated by tabs."
         )
     rows = rows.filter(pl.col("Feature").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
+    # polars-bio gives Start as a 32-bit integer without sign, so a start of 0 wraps to the largest value
+    reversed_rows = rows.filter(pl.col("Start") >= pl.col("End"))
+    if reversed_rows.height:
+        first = reversed_rows.row(0, named=True)
+        raise ValueError(
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: {reversed_rows.height} row(s) have a start after their "
+            f"end, e.g. the {first['Feature']} row at {first['Chromosome']}:{first['Start'] + 1}-{first['End']}. "
+            "polars-bio reads a start of 0 as 4294967296."
+        )
     # polars-bio gives an attribute that no row has as a column without values
     absent = [name for name in GFF3_ATTRIBUTES if rows[name].null_count() == rows.height]
     return rows.drop(absent).to_pandas()
