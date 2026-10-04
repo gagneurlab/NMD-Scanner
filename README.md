@@ -30,7 +30,7 @@ From [PyPI](https://pypi.org/project/nmd-scanner/):
 pip install nmd-scanner
 ```
 
-Writing Parquet output additionally requires `pyarrow`. Install it with the `parquet` extra: `pip install "nmd_scanner[parquet]"`. It is not pulled in by default.
+`polars-bio` reads the VCF and GFF3 files and `pyarrow` writes Parquet output. Both come with the package, so Parquet output needs no extra install. The `parquet` extra (`pip install "nmd_scanner[parquet]"`) stays for compatibility with existing install commands. `polars-bio` makes the install large, about 700 MB.
 
 ## Usage
 
@@ -43,7 +43,7 @@ nmd-scanner --vcf input.vcf --annotation annotation.gtf --fasta reference.fa --o
 # GFF3 works the same way; the format is auto-detected from the file suffix
 nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.csv
 
-# write Parquet instead of CSV (requires the parquet extra)
+# write Parquet instead of CSV
 nmd-scanner --vcf input.vcf --annotation annotation.gtf --fasta reference.fa --output results/input.parquet
 
 # option: fix exon numbering (recommended for hg19)
