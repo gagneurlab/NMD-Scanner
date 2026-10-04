@@ -215,7 +215,7 @@ def calculate_stop_codon_dist(row):
     can be an internal one, e.g. a selenocysteine TGA. With an alt transcript, the distance is the one by which
     analyze_transcript classifies the first in-frame stop codon of the alt transcript (see annotated_stop_distance).
     A row that keeps the flags from the CDS there takes alt_first_stop_pos, the first stop codon of the alt CDS.
-    Without an alt transcript or cds_start_in_transcript, both positions are in alt CDS coordinates, and the reference
+    Without an alt transcript or alt_cds_start_in_transcript, both positions are in alt CDS coordinates, and the reference
     stop codon is the last codon of the alt coding region, at alt_cds_len - 3. That holds only for a variant upstream of the stop codon: an
     insertion inside it (TAA>TGAA) lengthens the alt coding region but leaves the stop codon in place. An indel
     upstream of the PTC shifts both positions by the same amount, so the distance is the same as in ref CDS
@@ -228,17 +228,17 @@ def calculate_stop_codon_dist(row):
 
     alt_seq = row.get("alt_transcript_seq")
     alt_stop = row.get("alt_first_stop_pos")
-    cds_start = row.get("cds_start_in_transcript")
-    if not isinstance(alt_seq, str) or cds_start is None:
+    alt_cds_start = row.get("alt_cds_start_in_transcript")
+    if not isinstance(alt_seq, str) or alt_cds_start is None:
         alt_cds_len = row.get("alt_cds_len")
         if alt_cds_len is None or alt_stop is None:
             return None
         return alt_cds_len - 3 - alt_stop
 
     if ends_at_annotated_stop(row):
-        first_stop = first_stop_codon(alt_seq, cds_start)
+        first_stop = first_stop_codon(alt_seq, alt_cds_start)
     else:
-        first_stop = None if alt_stop is None else cds_start + alt_stop
+        first_stop = None if alt_stop is None else alt_cds_start + alt_stop
     return annotated_stop_distance(row, first_stop)
 
 

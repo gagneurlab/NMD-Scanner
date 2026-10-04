@@ -422,11 +422,14 @@ def test_calculate_stop_codon_dist():
         "transcript_seq": "CCATGAAACCCTAAGG",
         "alt_transcript_seq": "CCATGAAACCCTGAAGG",
         "cds_start_in_transcript": 2,
+        "alt_cds_start_in_transcript": 2,
         "cds_end_in_transcript": 14,
     }
     assert calculate_stop_codon_dist(row7) == 0
     assert calculate_stop_codon_dist({**row7, "alt_transcript_seq": None}) == 1
-    assert calculate_stop_codon_dist({**row7, "cds_start_in_transcript": None}) == 1
+    assert (
+        calculate_stop_codon_dist({**row7, "cds_start_in_transcript": None, "alt_cds_start_in_transcript": None}) == 1
+    )
 
     # Case 8: TA>T deletes one A of the stop codon TAA before a 3'UTR A. The alt CDS ends in TA and has no stop codon,
     #         but the alt transcript still reads TAA at the annotated position.
@@ -437,6 +440,7 @@ def test_calculate_stop_codon_dist():
         "transcript_seq": "CCATGAAATGGTAAACTGG",
         "alt_transcript_seq": "CCATGAAATGGTAACTGG",
         "cds_start_in_transcript": 2,
+        "alt_cds_start_in_transcript": 2,
         "cds_end_in_transcript": 14,
     }
     assert calculate_stop_codon_dist(row8) == 0

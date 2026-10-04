@@ -145,13 +145,14 @@ class TranscriptEffect:
 
     ``unknown_reason`` is SPLICE_SITE_DESTROYED or EXON_BOUNDARY_AMBIGUOUS if the alt transcript is unknown,
     else None. ``alt_coding`` maps each given coding row (start, end) to its alt bases, if the alt is known.
-    ``utr3`` gives the change of the 3'UTR next to the coding region as (ref, alt), in transcript orientation: the
-    ref bases right after the coding region, and the alt bases that replace them. If the variant leaves the 3'UTR
-    unchanged, ref equals alt, and both are mostly empty.
+    ``utr5`` and ``utr3`` give the change of the UTR next to the coding region as (ref, alt), in transcript
+    orientation: the ref bases right before the coding region (5'UTR) or right after it (3'UTR), and the alt bases
+    that replace them. If the variant leaves that UTR unchanged, ref equals alt, and both are mostly empty.
     """
 
     unknown_reason: str | None = None
     alt_coding: dict = field(default_factory=dict)
+    utr5: tuple[str, str] = ("", "")
     utr3: tuple[str, str] = ("", "")
 
 
@@ -335,8 +336,8 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     5'UTR. Of the two placements of a delins, the one with its length change at the UTR end counts as shifted into
     the UTR. If such an edge is also an exon edge, its position stays on the exon side of the exon boundary's alt
     position. So for an insertion at that exon boundary, the splice site decides whether its bases enter the mRNA, and
-    the coding region edge rule decides whether they are coding. The alt bases that the stop codon edge rule leaves
-    outside the coding region, and the deleted 3'UTR bases, give the 3'UTR change (TranscriptEffect.utr3).
+    the coding region edge rule decides whether they are coding. The alt bases that these rules leave outside the
+    coding region, and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
 
     :param placements: equivalent placements of the variant (equivalent_placements)
     :param coding_rows: (start, end) of the coding rows (CDS plus stop codon, one per exon) near the variant
@@ -403,7 +404,7 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
         )
         for start, end in exons
     ]
-    utr3 = ("", "")
+    left = right = ("", "")
     for start, end in coding_rows:
         exon_start, exon_end = resolved.get((start, False)), resolved.get((end, True))
         if start == coding_start:
@@ -430,18 +431,22 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
         bases = placements[0].apply(reference.bases(bases_start, max(end, window_end)), bases_start)
         alt_coding[start, end] = bases[alt_start - bases_start : alt_end - bases_start]
 
-        # The 3'UTR bases next to the coding region change if the window reaches past its 3' edge, or if the edge
-        # rule puts alt bases outside it. Outside [bases_start, max(end, window_end)), the alt equals the reference.
-        # The 3'UTR lies right of the coding region on the plus strand, and left of it on the minus strand.
-        if plus and end == coding_end:
+        # The UTR bases next to the coding region change if the window reaches past its edge, or if the edge rule
+        # puts alt bases outside it. Outside [bases_start, max(end, window_end)), the alt equals the reference.
+        if start == coding_start:
+            ref_bases = _exon_bases(reference.bases(bases_start, start), bases_start, exons, bases_start, start)
+            alt_bases = _exon_bases(bases, bases_start, alt_exons, bases_start, alt_start)
+            left = (ref_bases, alt_bases)
+        if end == coding_end:
             side_end = max(end, window_end)
             alt_side_end = side_end + leftmost.length_change
             ref_bases = _exon_bases(reference.bases(end, side_end), end, exons, end, side_end)
             alt_bases = _exon_bases(bases, bases_start, alt_exons, alt_end, alt_side_end)
-            utr3 = (ref_bases, alt_bases)
-        if not plus and start == coding_start:
-            ref_bases = _exon_bases(reference.bases(bases_start, start), bases_start, exons, bases_start, start)
-            alt_bases = _exon_bases(bases, bases_start, alt_exons, bases_start, alt_start)
-            utr3 = (str(Seq(ref_bases).reverse_complement()), str(Seq(alt_bases).reverse_complement()))
+            right = (ref_bases, alt_bases)
 
-    return TranscriptEffect(alt_coding=alt_coding, utr3=utr3)
+    # In transcript orientation, the left side is the 5'UTR on the plus strand and the 3'UTR on the minus strand
+    if plus:
+        return TranscriptEffect(alt_coding=alt_coding, utr5=left, utr3=right)
+    utr5 = tuple(str(Seq(side).reverse_complement()) for side in right)
+    utr3 = tuple(str(Seq(side).reverse_complement()) for side in left)
+    return TranscriptEffect(alt_coding=alt_coding, utr5=utr5, utr3=utr3)

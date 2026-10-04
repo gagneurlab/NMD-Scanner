@@ -670,6 +670,12 @@ def test_splice_alt_cds_into_transcript():
     # The transcript does not hold the ref 3'UTR bases
     assert splice_alt_cds_into_transcript({**deletion, "utr3_change": ("C", "")}, "ATGAAATAACCATGAAATAAGG") is None
 
+    # An indel at the start codon edge changes the 5'UTR: here CC before the start codon becomes GGG
+    utr5 = {**row, "utr5_change": ("CC", "GGG")}
+    assert splice_alt_cds_into_transcript(utr5, "ATGAAATAACCATGAAATAAGG") == "ATGAAATAAGGGATGTAATAAGG"
+    # The transcript does not hold the ref 5'UTR bases
+    assert splice_alt_cds_into_transcript({**utr5, "utr5_change": ("AC", "")}, "ATGAAATAACCATGAAATAAGG") is None
+
 
 def test_analyze_transcript():
 
@@ -679,6 +685,7 @@ def test_analyze_transcript():
                 "alt_transcript_seq": "CCCATGAAATAATAGGGG",  # ATG at pos 3, TAA at 9, TAG at 12
                 "transcript_seq": "CCCATGAAATAATAGGGG",
                 "cds_start_in_transcript": 0,
+                "alt_cds_start_in_transcript": 0,
                 "cds_end_in_transcript": 12,
                 "has_stop_codon": True,
                 "ref_cds_seq": "CCCATGAAATAA",
@@ -706,12 +713,13 @@ def test_analyze_transcript():
 
 
 def test_analyze_transcript_without_cds_start_in_transcript():
-    # Without the CDS position in the transcript, the scan does not run
+    # Without the CDS position in the transcript, the alt CDS position is unknown too, and the scan does not run
     df = pd.DataFrame(
         [
             {
                 "alt_transcript_seq": "CCCATGAAATAATAGGGG",
                 "cds_start_in_transcript": None,
+                "alt_cds_start_in_transcript": None,
                 "transcript_exon_info": [(1, 10), (2, 10)],
                 "start_loss": True,
                 "stop_loss": False,
@@ -724,6 +732,41 @@ def test_analyze_transcript_without_cds_start_in_transcript():
     assert row["transcript_start_codon_pos"] is None
     assert row["transcript_num_stop_codons"] is None
     assert row["transcript_all_stop_codons"] is None
+
+
+def test_analyze_transcript_reads_from_the_alt_cds_start():
+    """
+    The variant shortens the 5' UTR by 1 nt and changes the stop codon TAA to CAA. The classification and the scan read
+    the alt transcript from the alt CDS start at t2, and find the TGA at t14: a stop loss. From the ref CDS start at
+    t3, they would read the TGA at t3 in the wrong frame, as a PTC.
+
+    ref tx  CCC ATG AAA TAA CTG TGA GG
+            0   3       9   12
+    alt tx  CC ATG AAA CAA CTG TGA GG
+            0  2       8       14
+    """
+    row = {
+        "transcript_seq": "CCCATGAAATAACTGTGAGG",
+        "alt_transcript_seq": "CCATGAAACAACTGTGAGG",
+        "cds_start_in_transcript": 3,
+        "cds_end_in_transcript": 12,
+        "alt_cds_start_in_transcript": 2,
+        "has_stop_codon": True,
+        "ref_cds_seq": "ATGAAATAA",
+        "alt_cds_seq": "ATGAAACAA",
+        "transcript_exon_info": [(1, 20)],
+        "alt_is_premature": False,
+        "start_loss": False,
+        "stop_loss": True,
+    }
+
+    result = analyze_transcript(pd.DataFrame([row])).loc[0]
+
+    assert result["alt_is_premature"] == False
+    assert result["stop_loss"] == True
+    assert result["transcript_start_codon_pos"] == 2
+    assert result["transcript_first_stop_pos"] == 14
+    assert result["transcript_all_stop_codons"] == [(14, "TGA")]
 
 
 # Transcript parts for the scan tests: a 5'UTR of 13 nt with an ATG at transcript position 2, and a 3'UTR from position
@@ -757,6 +800,7 @@ def test_stop_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
 
     assert row["stop_loss"] == True
     assert row["cds_start_in_transcript"] == 13
+    assert row["alt_cds_start_in_transcript"] == 13
     assert row["transcript_start_codon_pos"] == 13
     assert row["transcript_first_stop_codon"] == "TAG"
     assert row["transcript_first_stop_pos"] == 40
@@ -789,6 +833,7 @@ def test_start_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
 
     assert row["start_loss"] == True
     assert row["cds_start_in_transcript"] == 13
+    assert row["alt_cds_start_in_transcript"] == 13
     assert row["transcript_start_codon_pos"] == 19
     assert row["transcript_first_stop_codon"] == "TGA"
     assert row["transcript_first_stop_pos"] == 31

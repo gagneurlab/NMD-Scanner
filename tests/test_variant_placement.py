@@ -502,6 +502,9 @@ def test_delins_over_the_start_codon_edge(tmp_path, strand):
     row = _single_row(_run(tmp_path, strand, 13, "CA", "GATG"))
     assert pd.isna(row["unknown_reason"])
     assert row["alt_cds_seq"] == "ATG" + _REF_CDS[1:]
+    # The G that replaces the last 5'UTR base stays in the 5'UTR
+    assert row["alt_transcript_seq"] == "GACG" + "ATG" + _REF_CDS[1:] + _UTR3
+    assert row["alt_cds_start_in_transcript"] == 4
 
 
 def test_delins_over_the_stop_codon_edge(tmp_path, strand):
@@ -511,6 +514,27 @@ def test_delins_over_the_stop_codon_edge(tmp_path, strand):
     assert row["alt_cds_seq"] == _REF_CDS[:-1] + "C"
     assert row["stop_loss"] == True
     assert row["alt_transcript_seq"] == _UTR5 + _REF_CDS[:-1] + "C" + "CC" + _UTR3[1:]
+
+
+def test_deletion_that_shortens_the_5utr(tmp_path, strand):
+    """
+    GGACCA|ATG minus one A: only the placement in the 5'UTR keeps an ATG at the start, so the 5'UTR is 1 nt shorter
+    and the coding region is unchanged. The alt CDS starts 1 nt earlier in the alt transcript.
+
+    ref 5' ....[uuuuuu=========sssuuuuuuuuuu].... 3'
+               10    16       25 28        38
+       tx      0     6        15 18        28
+    alt 5' ....[uuuuu=========sssuuuuuuuuuu]..... 3'
+       tx      0    5        14 17        27
+    """
+    layout = _FLANK + "GGACCA" + "ATGCTGCTGTAA" + "GGCCGGCCGG" + _FLANK
+    rows = [("exon", 1, 10, 38), ("CDS", 1, 16, 28)]
+    row = _single_row(_run(tmp_path, strand, 16, "A", "", layout, rows))
+    assert row["alt_cds_seq"] == "ATGCTGCTGTAA"
+    assert row["start_loss"] == False
+    assert row["alt_transcript_seq"] == "GGACC" + "ATGCTGCTGTAA" + "GGCCGGCCGG"
+    assert row["cds_start_in_transcript"] == 6
+    assert row["alt_cds_start_in_transcript"] == 5
 
 
 def test_delins_over_the_stop_codon_and_the_donor(tmp_path, strand):

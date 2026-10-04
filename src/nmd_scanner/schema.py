@@ -75,6 +75,7 @@ PTC_COLUMN_KINDS = {
     "cds_end_in_transcript": "int",
     "alt_transcript_seq": "string",
     "alt_transcript_length": "int",
+    "alt_cds_start_in_transcript": "int",
     "transcript_exon_info": "pair_list",
     "transcript_start_codon_pos": "int",
     "transcript_start_codon_exon": "int",
