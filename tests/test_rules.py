@@ -947,6 +947,22 @@ def test_join_variants_to_cds_order(monkeypatch, reverse):
     ]
 
 
+def test_join_variants_to_cds_gives_repeated_cds_text_as_category():
+    cds = pd.DataFrame(
+        {
+            "Chromosome": ["chr1"] * 4,
+            "Start": [100, 300, 500, 700],
+            "End": [200, 400, 600, 800],
+            "transcript_id": ["t1", "t2", "t3", "t4"],
+        }
+    )
+    joined = join_variants_to_cds(cds, _join_vcf([("chr1", 150, 151, "v1"), ("chr1", 350, 351, "v2")]))
+    assert _pairs(joined) == [("t1", "v1"), ("t2", "v2")]
+    assert isinstance(joined["Chromosome"].dtype, pd.CategoricalDtype)
+    assert pd.api.types.is_string_dtype(joined["transcript_id"].dtype)
+    assert pd.api.types.is_string_dtype(joined["ID"].dtype)
+
+
 @pytest.mark.parametrize("side", ["cds_df", "vcf"])
 def test_join_variants_to_cds_rejects_an_end_above_the_limit_of_polars_bio(side):
     cds, vcf = _join_cds(), _join_vcf([("chr1", 150, 151, "v1")])

@@ -206,7 +206,8 @@ MAX_JOIN_COORDINATE = 2**31 - 1
 
 def join_variants_to_cds(cds_df, vcf):
     """
-    Joins every CDS row to the variants that overlap it, as the join of pyranges 0.x did.
+    Joins every CDS row to the variants that overlap it. The rows are those of the join of
+    pyranges 0.x.
 
     A CDS row and a variant overlap if they are on the same Chromosome and their 0-based half-open
     intervals share at least one base: a variant that ends at the Start of a CDS row, or starts at
@@ -215,10 +216,14 @@ def join_variants_to_cds(cds_df, vcf):
     :param cds_df: CDS rows (DataFrame) with Chromosome, Start and End
     :param vcf: Variants (DataFrame) with Chromosome, Start and End
     :return: DataFrame with one row per overlapping CDS row and variant, and a RangeIndex. It has the
-        columns of cds_df, then the columns of vcf except Chromosome. A column of vcf that cds_df has
-        too gets the suffix "_variant", e.g. Start_variant and End_variant. The rows come in the order
-        of cds_df; the variants of one CDS row by Start, then by End descending, then in the order of
-        vcf. pyranges 0.x gave the same order for a cds_df in the row order of its PyRanges.df.
+        columns of cds_df, then the columns of vcf except Chromosome, also if no variant overlaps a
+        CDS row. A column of vcf that cds_df has too gets the suffix "_variant", e.g. Start_variant
+        and End_variant. The columns keep their dtypes, except a text column of cds_df with fewer
+        distinct values than half its rows, which becomes category to save memory. The rows come in
+        the order of cds_df; the variants of one CDS row by Start, then by End descending, then in
+        the order of vcf. pyranges 0.x gave the same order for a cds_df in the row order of its
+        PyRanges.df. Unlike this join, pyranges 0.x gave Chromosome and Strand as category, the
+        coordinates as int64, and no columns for an empty result.
     :raises ValueError: if an End of cds_df or vcf is above 2**31 - 1, the largest coordinate that
         polars-bio joins
     """
@@ -228,6 +233,14 @@ def join_variants_to_cds(cds_df, vcf):
             raise ValueError(
                 f"Cannot join {name}: it has an End above {MAX_JOIN_COORDINATE}, the largest coordinate that polars-bio joins."
             )
+
+    # a category column holds each distinct text once, which makes the copies of the rows below smaller
+    repeated_text = [
+        name
+        for name, column in cds_df.items()
+        if pd.api.types.is_string_dtype(column) and column.nunique() < len(cds_df) / 2
+    ]
+    cds_df = cds_df.astype(dict.fromkeys(repeated_text, "category"))
 
     def intervals(df):
         frame = pd.DataFrame(
@@ -242,13 +255,20 @@ def join_variants_to_cds(cds_df, vcf):
         frame.attrs["coordinate_system_zero_based"] = True
         return frame
 
-    pairs = pb.overlap(intervals(cds_df), intervals(vcf), suffixes=("_cds", "_variant"), output_type="polars.DataFrame")
-    # polars-bio returns the pairs in no fixed order
-    pairs = pairs.sort(
-        ["row_cds", "start_variant", "end_variant", "row_variant"], descending=[False, False, True, False]
+    order = ["row_cds", "start_variant", "end_variant", "row_variant"]
+    # A DataFrame, not a LazyFrame: the collect of a LazyFrame calls logging.info(), which configures
+    # the root logger, and shows a tqdm bar. The sort copies only the 4 columns selected before it.
+    pairs = (
+        pb.overlap(intervals(cds_df), intervals(vcf), suffixes=("_cds", "_variant"), output_type="polars.DataFrame")
+        .select(order)
+        # polars-bio returns the pairs in no fixed order
+        .sort(order, descending=[False, False, True, False])
     )
-    cds_rows = cds_df.iloc[pairs["row_cds"].to_numpy()].reset_index(drop=True)
-    variant_rows = vcf.drop(columns="Chromosome").iloc[pairs["row_variant"].to_numpy()].reset_index(drop=True)
+    row_cds, row_variant = pairs["row_cds"].to_numpy(), pairs["row_variant"].to_numpy()
+    # the copies of the rows below take the most memory, so the pairs go first
+    del pairs
+    cds_rows = cds_df.iloc[row_cds].reset_index(drop=True)
+    variant_rows = vcf.drop(columns="Chromosome").iloc[row_variant].reset_index(drop=True)
     return cds_rows.join(variant_rows, rsuffix="_variant")
 
 
@@ -387,7 +407,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
     results = []
 
-    for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id"):  # Only transcripts with a variant
+    # Only transcripts with a variant. transcript_id can be category (see join_variants_to_cds), and with
+    # observed=False, the default before pandas 3, its unused categories would be groups too.
+    for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id", observed=True):
         # 1. Get reference exons
         ref_exons = cds_df_test[cds_df_test["transcript_id"] == transcript_id].copy()
         ref_exons = ref_exons.sort_values("Start")
