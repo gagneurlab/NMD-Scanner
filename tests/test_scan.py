@@ -1020,6 +1020,7 @@ def test_read_annotation_fmt_overrides_the_file_suffix(tmp_path):
     pd.testing.assert_frame_equal(
         via_fmt, nmd_scanner.scan.read_annotation(_write(tmp_path, "a.gff3", _GENCODE_GFF3), fasta)
     )
+    pd.testing.assert_frame_equal(nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="GFF3"), via_fmt)
     with pytest.raises(ValueError, match="Unknown annotation format 'bed', expected 'gff3'"):
         nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="bed")
 
@@ -1094,5 +1095,6 @@ def test_read_annotation_rejects_a_gtf_file_name(tmp_path, name):
 
 def test_read_annotation_rejects_fmt_gtf(tmp_path):
     path = _write(tmp_path, "a.gff3", _GENCODE_GFF3)
-    with pytest.raises(ValueError, match=r"with fmt='gtf': GTF input is no longer supported"):
-        nmd_scanner.scan.read_annotation(path, _fasta(tmp_path), fmt="gtf")
+    for fmt in ("gtf", "GTF"):
+        with pytest.raises(ValueError, match=r"with fmt='gtf': GTF input is no longer supported"):
+            nmd_scanner.scan.read_annotation(path, _fasta(tmp_path), fmt=fmt)

@@ -136,14 +136,16 @@ def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
     :param path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object), which shows whether a CDS ends in a stop
         codon. Required.
-    :param fmt: "gff3" to skip the check of the filename suffix
+    :param fmt: "gff3", in any case, to skip the check of the filename suffix
     :param reassign_exons: Recompute the exon numbers with ``compute_exon_numbers``
     :return: DataFrame, as ``read_gff3`` returns it
     :raises ValueError: for a GTF file name or ``fmt="gtf"``, for an unknown format, or without ``fasta``
     """
     if fmt is None:
         fmt = detect_annotation_format(path)
-    elif fmt == "gtf":
+    else:
+        fmt = fmt.lower()
+    if fmt == "gtf":
         raise ValueError(f"Cannot read {os.fspath(path)!r} with fmt='gtf': {GTF_NOT_SUPPORTED}")
     elif fmt != "gff3":
         raise ValueError(f"Unknown annotation format {fmt!r}, expected 'gff3'.")
