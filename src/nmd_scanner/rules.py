@@ -7,6 +7,7 @@ import pyranges as pr
 from Bio.Seq import Seq
 
 from nmd_scanner import catch_sequence
+from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     :param vcf: Parsed VCF variant entries (PyRanges object)
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: All exonic entries from the GTF file (DataFrame)
-    :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information
+    :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
+             It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has zero rows if no
+             variant overlaps a CDS or every variant has a reference mismatch.
     """
 
     # Adjust the last 3 CDS positions to include stop codons
@@ -34,6 +37,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # Intersect variants with CDS regions
     intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
     logger.info("Joining variants with cds entries: done.")
+
+    # Nothing to analyze: the steps below need at least one row
+    if intersection_cds_vcf.empty:
+        logger.info("No variant overlapped a CDS; there are no results to compute.")
+        return empty_table(PTC_COLUMN_KINDS)
 
     ##########################################################################################
     # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
@@ -76,6 +84,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         )
     intersection_cds_vcf = intersection_cds_vcf[intersection_cds_vcf["Exon_Alt_CDS_seq"].notna()].copy()
     ################
+
+    if intersection_cds_vcf.empty:
+        logger.info("No variant left after the reference check; there are no results to compute.")
+        return empty_table(PTC_COLUMN_KINDS)
 
     # Limit to relevant transcript (to save time)
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
@@ -158,7 +170,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # Analyze transcript sequence (e.g., frame, length, stop codon position, etc.) in case of start or stop loss
     analyze_transcript_df = analyze_transcript(loss_df)
 
-    return analyze_transcript_df
+    return apply_schema(analyze_transcript_df, PTC_COLUMN_KINDS)
 
 
 # Functions used for extracting PTC:

@@ -92,17 +92,12 @@ exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 ```
 
-Add extra NMD-related features (utr lengths, exon counts, ptc-related features) to the above computed results. Run this **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced here.
+Add the extra NMD-related features (utr lengths, exon counts, ptc-related features) and the NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results. The columns, column order and dtypes are the same for every input, also for a result without rows (see `nmd_scanner.schema`):
 ```python
-extra_features = results.apply(nmd_scanner.add_nmd_features, axis=1, result_type='expand')
-results = pd.concat([results, extra_features], axis=1)
+results = nmd_scanner.add_features_and_rules(results)
 ```
 
-Add NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:
-```python
-nmd_results = results.apply(nmd_scanner.evaluate_nmd_escape_rules, axis=1, result_type='expand')
-results = pd.concat([results, nmd_results], axis=1)
-```
+To work on single rows, `nmd_scanner.add_nmd_features` and `nmd_scanner.evaluate_nmd_escape_rules` are public too. Run the features **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced by the features.
 
 ## License
 All source code in this repository is licensed under the [MIT License](./LICENSE).

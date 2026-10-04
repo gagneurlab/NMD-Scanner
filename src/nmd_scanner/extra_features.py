@@ -1,3 +1,34 @@
+import math
+
+import numpy as np
+import pandas as pd
+
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, apply_schema
+
+
+def _plain_values(row):
+    """
+    Return the values of ``row`` as a dict of plain Python values, with None for a missing value.
+
+    A row of the result table holds pd.NA for a missing value in an int, bool or string column. A row of a
+    table without that schema can hold NaN instead, and a row taken with ``.iloc`` holds numpy scalars. The
+    feature and rule functions test for a missing value with ``is None`` and for False with ``is False``, so
+    they need plain values. Lists, e.g. ``transcript_exon_info``, stay as they are.
+
+    :param row: A DataFrame row (pandas Series) or a dict
+    :return: A dict of column name to value
+    """
+
+    values = {}
+    for column, value in row.items():
+        if isinstance(value, np.generic):
+            value = value.item()
+        if value is pd.NA or (isinstance(value, float) and math.isnan(value)):
+            value = None
+        values[column] = value
+    return values
+
+
 def add_nmd_features(row):
     """
     Compute additional features which might be relevant for analyzing nonsense-mediated decay (NMD) behavior,
@@ -7,6 +38,8 @@ def add_nmd_features(row):
     :param row: A DataFrame row with annotated transcript information
     :return: A dictionary with additional NMD related features.
     """
+
+    row = _plain_values(row)
 
     # 5' and 3' UTR lengths
     utr_lengths = calculate_utr_lengths(row)
@@ -237,6 +270,8 @@ def evaluate_nmd_escape_rules(row):
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
+    row = _plain_values(row)
+
     # Only relevant for premature stop codons
     if not row.get("alt_is_premature"):
         return {
@@ -369,3 +404,26 @@ def add_likely_misannotated_flag(row):
     )
 
     return flag
+
+
+def add_features_and_rules(results):
+    """
+    Add the NMD features and the NMD escape rules to a result of ``extract_ptc``.
+
+    This runs ``add_nmd_features`` on each row, then ``evaluate_nmd_escape_rules`` (it reads columns that the
+    features add), and applies the output schema. The result has the columns, column order and dtypes of
+    OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero rows. ``results`` is not changed.
+
+    :param results: DataFrame returned by ``extract_ptc``, also an empty one
+    :return: DataFrame with the columns and dtypes of OUTPUT_COLUMN_KINDS
+    """
+
+    if results.empty:
+        # DataFrame.apply with result_type="expand" returns the input columns again for zero rows
+        return apply_schema(results.reindex(columns=list(OUTPUT_COLUMN_KINDS)), OUTPUT_COLUMN_KINDS)
+
+    extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
+    results = pd.concat([results, extra_features], axis=1)
+    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
+    results = pd.concat([results, nmd_results], axis=1)
+    return apply_schema(results, OUTPUT_COLUMN_KINDS)
