@@ -76,8 +76,11 @@ def read_vcf(vcf_path):
         ) from error
 
     # Reject multi-allelic records: the VCF spec allows several ALT alleles per record, but the
-    # rest of the pipeline assumes one. polars-bio joins the ALT alleles of a record with "|".
-    multiallelic = df["Alt"].str.contains("|", regex=False)
+    # rest of the pipeline assumes one. polars-bio joins the ALT alleles of a record with "|", which
+    # its documentation does not say. A symbolic allele (<...>) and the mate of a breakend ([...[ or
+    # ]...]) may contain "|" themselves, so their text is removed first.
+    alleles = df["Alt"].str.replace(r"<[^>]*>", "<>", regex=True).str.replace(r"[\[\]][^\[\]]*[\[\]]", "[]", regex=True)
+    multiallelic = alleles.str.contains("|", regex=False)
     if multiallelic.any():
         n_multiallelic = int(multiallelic.sum())
         raise ValueError(

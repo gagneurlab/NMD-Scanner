@@ -57,6 +57,23 @@ def test_read_vcf_rejects_multiallelic(tmp_path):
         nmd_scanner.scan.read_vcf(str(vcf))
 
 
+@pytest.mark.parametrize("alt", ["G,<*>", "G]chr2:1],T", "<INS:ME|ALU>,T"])
+def test_read_vcf_rejects_multiallelic_records_with_symbolic_alleles_and_breakends(tmp_path, alt):
+    vcf = tmp_path / "multiallelic.vcf"
+    vcf.write_text(VCF_HEADER + f"chr1\t100\tv1\tA\t{alt}\t.\t.\t.\n")
+    with pytest.raises(ValueError, match="1 multi-allelic record"):
+        nmd_scanner.scan.read_vcf(str(vcf))
+
+
+# VCF 4.3 allows "|" in the ID of a symbolic allele and in a contig name, which a breakend names
+@pytest.mark.parametrize("alt", ["<INS:ME|ALU>", "G]gi|123|:100]", "[gi|123|:100[G"])
+def test_read_vcf_accepts_a_symbolic_allele_or_breakend_with_a_pipe(tmp_path, alt):
+    vcf = tmp_path / "pipe.vcf"
+    vcf.write_text(VCF_HEADER + f"chr1\t100\tv1\tG\t{alt}\t.\t.\t.\n")
+    df = nmd_scanner.scan.read_vcf(str(vcf))
+    assert df["Alt"].tolist() == [alt]
+
+
 def test_read_vcf_accepts_single_allelic(tmp_path):
     vcf = tmp_path / "single.vcf"
     vcf.write_text(
