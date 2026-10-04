@@ -187,8 +187,17 @@ def test_write_results_parquet_types_stop_codon_columns(tmp_path):
 
 def test_to_parquet_safe_leaves_other_columns_untouched():
     df = pd.DataFrame({"transcript_id": ["t1"], "nmd_escape": [True]})
+    assert to_parquet_safe(df) is df
+
+    df = pd.DataFrame(
+        {"transcript_id": ["t1"], "transcript_exon_info": [[(1, 36)]], "ref_all_stop_codons": [[(5442, "TGA")]]}
+    )
+    original = df.copy()
     safe = to_parquet_safe(df)
-    assert safe is df
+    assert safe is not df
+    pd.testing.assert_frame_equal(safe.drop(columns="ref_all_stop_codons"), df.drop(columns="ref_all_stop_codons"))
+    assert safe["ref_all_stop_codons"].tolist() == [[{"position": 5442, "codon": "TGA"}]]
+    pd.testing.assert_frame_equal(df, original)
 
 
 @pytest.mark.parametrize("missing", [None, float("nan"), pd.NA])
