@@ -292,17 +292,6 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
                 assert exp == act, column
 
 
-@pytest.fixture
-def intergenic_vcf(tmp_path):
-    """A VCF with one variant on chr18 outside every CDS."""
-
-    path = tmp_path / "intergenic.vcf"
-    path.write_text(
-        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t1000\tintergenic\tA\tT\t.\t.\t.\n"
-    )
-    return str(path)
-
-
 def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, caplog):
     out = tmp_path / "empty.csv"
     with caplog.at_level(logging.INFO):
@@ -342,17 +331,6 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
 
     assert pq.read_table(empty_out).num_rows == 0
     assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
-
-
-@pytest.fixture
-def reference_mismatch_vcf(tmp_path):
-    """A VCF with one variant inside a CDS whose REF does not match the FASTA (it is ATG there)."""
-
-    path = tmp_path / "mismatch.vcf"
-    path.write_text(
-        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383518\tmismatch\tCCC\tTTT\t.\t.\t.\n"
-    )
-    return str(path)
 
 
 def test_main_with_only_reference_mismatches_writes_empty_csv(tmp_path, reference_mismatch_vcf, caplog):
