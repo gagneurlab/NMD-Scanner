@@ -5,10 +5,12 @@ import pytest
 from Bio.Seq import Seq
 from pyfaidx import Fasta
 
+from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from nmd_scanner.rules import (
     analyze_sequence,
     analyze_transcript,
     apply_variant_edge_aware_with_lengths,
+    cds_range_in_transcript,
     create_reference_cds,
     extract_ptc,
     get_exon,
@@ -17,6 +19,91 @@ from nmd_scanner.rules import (
     start_stop_loss,
 )
 from nmd_scanner.scan import merge_stop_codons_into_cds
+
+
+def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True):
+    """
+    Run extract_ptc, add_nmd_features and evaluate_nmd_escape_rules on one synthetic transcript with one variant.
+
+    The genome holds the exons, separated by introns of 20 nt. On the minus strand, it holds their reverse complement.
+    :param exon_seqs: Exon sequences in transcript order (5' to 3')
+    :param cds_range: (start, end) of the CDS in transcript coordinates, stop codon excluded as in GTF CDS rows
+    :param variant: (position, ref, alt) in transcript coordinates and orientation, within one exon
+    :param stop_codon: Whether the 3 nt after the CDS get stop_codon rows. Without them, the transcript has no
+        annotated stop codon, as one tagged cds_end_NF.
+    :return: The single result row as a dictionary
+    """
+
+    flank, intron = "C" * 10, "C" * 20
+    chrom = f"chr_{tmp_path.name}"  # unique name, since catch_sequence caches sequences across tests
+
+    # Lay out the transcript 5' to 3' and record each exon as (transcript start, layout start, length)
+    layout = flank
+    exons = []
+    tx_pos = 0
+    for exon_seq in exon_seqs:
+        exons.append((tx_pos, len(layout), len(exon_seq)))
+        layout += exon_seq + intron
+        tx_pos += len(exon_seq)
+    layout += flank
+
+    # On the minus strand, the layout is the reverse complement of the genome
+    if strand == "+":
+        genome = layout
+
+        def to_genome(start, end):
+            return start, end
+    else:
+        genome = str(Seq(layout).reverse_complement())
+
+        def to_genome(start, end):
+            return len(layout) - end, len(layout) - start
+
+    (tmp_path / "genome.fa").write_text(f">{chrom}\n{genome}\n")
+    fasta = Fasta(str(tmp_path / "genome.fa"))
+
+    # Exon, CDS and stop_codon rows; CDS and stop_codon rows are split at the exon boundaries
+    features = [("CDS", *cds_range)] + ([("stop_codon", cds_range[1], cds_range[1] + 3)] if stop_codon else [])
+    rows = []
+    for number, (tx_start, layout_start, length) in enumerate(exons, start=1):
+        rows.append(("exon", number, *to_genome(layout_start, layout_start + length)))
+        for feature, feature_start, feature_end in features:
+            part_start, part_end = max(feature_start, tx_start), min(feature_end, tx_start + length)
+            if part_start < part_end:
+                start, end = to_genome(layout_start + part_start - tx_start, layout_start + part_end - tx_start)
+                rows.append((feature, number, start, end))
+    gtf_df = pd.DataFrame(
+        [
+            {
+                "Chromosome": chrom,
+                "Start": start,
+                "End": end,
+                "Strand": strand,
+                "Feature": feature,
+                "exon_number": str(number),
+                "transcript_id": "tx1",
+                "gene_id": "gene1",
+            }
+            for feature, number, start, end in rows
+        ]
+    )
+
+    # VCF alleles are on the plus strand
+    position, ref, alt = variant
+    tx_start, layout_start, _ = next(exon for exon in reversed(exons) if exon[0] <= position)
+    start, end = to_genome(layout_start + position - tx_start, layout_start + position - tx_start + len(ref))
+    if strand == "-":
+        ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
+    vcf = pr.PyRanges(
+        pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
+    )
+
+    results = extract_ptc(merge_stop_codons_into_cds(gtf_df), vcf, fasta, gtf_df[gtf_df["Feature"] == "exon"])
+    assert len(results) == 1
+    row = results.iloc[0].to_dict()
+    row.update(add_nmd_features(row))
+    row.update(evaluate_nmd_escape_rules(row))
+    return row
 
 
 def test_apply_variant_edge_aware_with_lengths():
@@ -381,6 +468,62 @@ def test_get_transcript_sequence():
     assert tx2["transcript_exon_info"] == [(3, 3), (2, 3), (1, 3)]  # reversed for minus strand
 
 
+def test_cds_range_in_transcript():
+    def cds_range(strand, exons, cds):
+        exons_df = pd.DataFrame([{"Start": start, "End": end, "Strand": strand} for start, end in exons])
+        cds_df = pd.DataFrame([{"Start": start, "End": end, "Strand": strand} for start, end in cds])
+        return cds_range_in_transcript(exons_df, cds_df)
+
+    # Plus strand, exons of 100/300/100 nt, CDS with stop codon inside exon 2 at transcript positions 150 to 330
+    assert cds_range("+", [(1000, 1100), (1150, 1450), (1500, 1600)], [(1200, 1380)]) == (150, 330)
+
+    # Minus strand, same transcript: exon 1 is the exon with the largest coordinates
+    assert cds_range("-", [(1000, 1100), (1150, 1450), (1500, 1600)], [(1220, 1400)]) == (150, 330)
+
+    # Single exon transcripts
+    assert cds_range("+", [(5000, 5150)], [(5050, 5110)]) == (50, 110)
+    assert cds_range("-", [(4950, 5100)], [(5000, 5060)]) == (40, 100)
+
+    # Minus strand, exons of 50/60/100/200/80/70/90 nt. Exons 1, 2, 6 and 7 hold only UTR.
+    # The CDS starts 30 nt into exon 3 and ends 40 nt into exon 5.
+    exons = [(1660, 1710), (1590, 1650), (1480, 1580), (1270, 1470), (1180, 1260), (1100, 1170), (1000, 1090)]
+    assert cds_range("-", exons, [(1480, 1550), (1270, 1470), (1220, 1260)]) == (140, 450)
+
+    # Stop codon split across exons: 2 nt at the end of exon 1, 1 nt at the start of exon 2
+    exons = [(100, 200), (300, 400)]
+    assert cds_range("+", exons, [(150, 200), (300, 301)]) == (50, 101)
+
+    # cds_start_NF: the CDS starts at the first base of the transcript
+    assert cds_range("-", [(100, 200), (300, 400)], [(150, 200), (300, 400)]) == (0, 150)
+
+    # cds_end_NF: the CDS has no stop codon and runs to the last base of the transcript
+    assert cds_range("+", [(100, 200), (300, 400)], [(150, 200), (300, 400)]) == (50, 200)
+
+    # CDS start outside the exons
+    assert cds_range("+", [(100, 200)], [(50, 150)]) is None
+
+
+def test_extract_ptc_locates_cds_in_transcript(tmp_path_factory):
+    # Exons of 100/300/100 nt; the CDS with stop codon lies inside exon 2, at transcript positions 150 to 330
+    cds_seq = "ATG" + "CAA" * 58 + "TAA"
+    transcript_seq = "C" * 150 + cds_seq + "C" * 170
+    exon_seqs = [transcript_seq[:100], transcript_seq[100:400], transcript_seq[400:]]
+
+    for strand in ["+", "-"]:
+        tmp_path = tmp_path_factory.mktemp(f"cds_in_exon_2_{'plus' if strand == '+' else 'minus'}")
+        # Nonsense variant CAA>TAA at CDS position 174, 76 nt before the end of exon 2
+        row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (150, 327), (324, "C", "T"))
+
+        assert row["cds_start_in_transcript"] == 150
+        assert row["cds_end_in_transcript"] == 330
+        assert row["utr5_length"] == 150
+        assert row["utr3_length"] == 170
+        assert row["alt_transcript_seq"] == transcript_seq[:324] + "T" + transcript_seq[325:]
+        assert row["alt_first_stop_pos"] == 174
+        assert row["alt_is_premature"] == True
+        assert row["ptc_to_intron"] == 76
+
+
 def test_get_exon():
     exon_info = [(1, 10), (2, 20), (3, 30)]
     assert get_exon(5, exon_info) == 1
@@ -469,11 +612,32 @@ def test_start_stop_loss():
 
 
 def test_splice_alt_cds_into_transcript():
-    row = {"ref_cds_seq": "AAAGGGCCC", "alt_cds_seq": "AAATTTCCC"}
+    row = {
+        "ref_cds_seq": "AAAGGGCCC",
+        "alt_cds_seq": "AAATTTCCC",
+        "cds_start_in_transcript": 3,
+        "cds_end_in_transcript": 12,
+    }
     transcript_seq = "TTTAAAGGGCCCGGG"
 
     result = splice_alt_cds_into_transcript(row, transcript_seq)
     assert result == "TTTAAATTTCCCGGG"
+
+    # The 5'UTR repeats the CDS sequence: splice at the CDS position, not at the first match
+    row = {
+        "ref_cds_seq": "ATGAAATAA",
+        "alt_cds_seq": "ATGTAATAA",
+        "cds_start_in_transcript": 11,
+        "cds_end_in_transcript": 20,
+    }
+    result = splice_alt_cds_into_transcript(row, "ATGAAATAACCATGAAATAAGG")
+    assert result == "ATGAAATAACCATGTAATAAGG"
+
+    # The transcript does not hold the CDS sequence at the CDS position
+    assert splice_alt_cds_into_transcript({**row, "cds_start_in_transcript": 10}, "ATGAAATAACCATGAAATAAGG") is None
+    # The CDS position is unknown
+    row = {**row, "cds_start_in_transcript": None, "cds_end_in_transcript": None}
+    assert splice_alt_cds_into_transcript(row, "ATGAAATAACCATGAAATAAGG") is None
 
 
 def test_analyze_transcript():

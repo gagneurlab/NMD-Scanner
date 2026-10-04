@@ -122,6 +122,14 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     exon_seqs = get_transcript_sequence(exons_df, fasta)
     logger.info("Get transcript sequence: done.")
 
+    # Locate the coding region (CDS plus stop codon) in each transcript sequence
+    exons_by_transcript = dict(list(exons_df.groupby("transcript_id")))
+    cds_ranges = {
+        transcript_id: cds_range_in_transcript(exons_by_transcript[transcript_id], cds_group)
+        for transcript_id, cds_group in cds_df_adj.groupby("transcript_id")
+        if transcript_id in exons_by_transcript
+    }
+
     # Validate that the CDS is present inside the transcript sequence, to make sure the transcript sequence was computed correctly
     exon_seqs_indexed = exon_seqs.set_index("transcript_id")
 
@@ -158,6 +166,14 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     loss_df["transcript_seq"] = loss_df["transcript_id"].map(transcript_sequences)
     transcript_lengths = exon_seqs.set_index("transcript_id")["transcript_length"].to_dict()
     loss_df["transcript_length"] = loss_df["transcript_id"].map(transcript_lengths)
+    # The variant changes only the CDS, so the alt CDS starts at the same position in the alt transcript.
+    # Object dtype keeps the positions as int next to None.
+    loss_df[["cds_start_in_transcript", "cds_end_in_transcript"]] = pd.DataFrame(
+        [cds_ranges.get(transcript_id) or (None, None) for transcript_id in loss_df["transcript_id"]],
+        index=loss_df.index,
+        columns=["cds_start_in_transcript", "cds_end_in_transcript"],
+        dtype=object,
+    )
 
     # In case of start or stop loss:
     # Splice alternative CDS into reference transcript sequence to create alternative transcript sequence and measure new length
@@ -520,6 +536,40 @@ def get_transcript_sequence(exons_df, fasta):
     return exon_seqs
 
 
+def cds_range_in_transcript(exons, cds):
+    """
+    Locate the CDS in the transcript sequence, from the exon and CDS coordinates of one transcript.
+    Transcript coordinates are 0-based positions in the transcript sequence as built by get_transcript_sequence,
+    i.e. read 5' to 3' on both strands. Position 0 is the first base of the 5' exon.
+
+    The start is the transcript position of the 5' CDS base. The end lies one past the 3' CDS base (half-open),
+    i.e. after the stop codon if the CDS rows include it. The end is the start plus the summed length of the CDS rows.
+    This equals the mapped 3' CDS base plus one, since every CDS row lies inside an exon, also the parts of a stop
+    codon split across exons (see scan.merge_stop_codons_into_cds).
+
+    :param exons: Exon rows of one transcript (DataFrame with Start, End, Strand; 0-based half-open genomic coordinates)
+    :param cds: CDS rows of the same transcript (DataFrame with Start, End)
+    :return: Tuple (start, end) in transcript coordinates, or None if the 5' CDS base lies outside the exons
+    """
+
+    strand = exons["Strand"].iloc[0]
+    if strand not in ["+", "-"]:
+        return None
+
+    # Exons in transcript order, and the genomic position of the 5' CDS base
+    exons = exons.sort_values("Start", ascending=(strand == "+"))
+    cds_5prime = cds["Start"].min() if strand == "+" else cds["End"].max() - 1
+
+    offset = 0
+    for exon_start, exon_end in zip(exons["Start"], exons["End"]):
+        if exon_start <= cds_5prime < exon_end:
+            start = offset + (cds_5prime - exon_start if strand == "+" else exon_end - 1 - cds_5prime)
+            return int(start), int(start + (cds["End"] - cds["Start"]).sum())
+        offset += exon_end - exon_start
+
+    return None
+
+
 def get_exon(cds_pos, exon_info):
     """
     Map a CDS-relative position to the corresponding exon number using exon_info,
@@ -641,23 +691,20 @@ def start_stop_loss(df):
 def splice_alt_cds_into_transcript(row, transcript_seq):
     """
     Splice the alternative CDS sequence into the full transcript sequence to create the alternative transcript
-    :param row: A pd.Series row containing "ref_cds_seq" (Reference CDS) and "alt_cds_seq" (Alternative / Variant-modified CDS)
+    :param row: A pd.Series row containing "ref_cds_seq" (Reference CDS), "alt_cds_seq" (Alternative / Variant-modified CDS),
+                and "cds_start_in_transcript" and "cds_end_in_transcript" (from cds_range_in_transcript)
     :param transcript_seq: Full transcript sequence
     :return: Modified (alternative) transcript sequence with the alternative CDS spliced in the correct position,
-             or None if no match is found
+             or None if the CDS position is unknown or the transcript does not hold the ref CDS there
     """
 
-    # Step 1: search for ref_cds_seq match in the transcript, and replace that with the alt_cds_seq
     ref_cds_seq = row["ref_cds_seq"].upper()
     alt_cds_seq = row["alt_cds_seq"].upper()
+    ref_start_idx = row["cds_start_in_transcript"]
+    ref_end_idx = row["cds_end_in_transcript"]
 
-    # Find the ref CDS in the transcript sequence
-    ref_start_idx = transcript_seq.find(ref_cds_seq)
-
-    if ref_start_idx == -1:
+    if ref_start_idx is None or transcript_seq[ref_start_idx:ref_end_idx] != ref_cds_seq:
         return None  # Cannot find ref CDS, alignment problem
-
-    ref_end_idx = ref_start_idx + len(ref_cds_seq)
 
     # Replace the reference CDS with the variant-modified / alternative one
     new_transcript_seq = (
