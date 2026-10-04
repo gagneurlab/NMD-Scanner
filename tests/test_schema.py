@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from nmd_scanner import cli
-from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
+from nmd_scanner.extra_features import add_features_and_rules, add_nmd_features, evaluate_nmd_escape_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.schema import (
     KIND_DTYPES,
@@ -131,6 +131,48 @@ def test_feature_and_rule_columns_match_the_schema(run_main):
 
     assert list(add_nmd_features(row)) == list(NMD_FEATURE_COLUMN_KINDS)
     assert list(evaluate_nmd_escape_rules(row)) == list(NMD_RULE_COLUMN_KINDS)
+
+
+@pytest.mark.parametrize("vcf", ["resources/test_files/variants.vcf", "intergenic_vcf", "reference_mismatch_vcf"])
+def test_add_features_and_rules_returns_the_schema_for_zero_and_many_rows(run_main, request, vcf):
+    vcf_path = request.getfixturevalue(vcf) if vcf.endswith("_vcf") else vcf
+    ptc_table, _ = run_main(vcf_path)
+
+    result = add_features_and_rules(ptc_table)
+
+    assert len(result) == len(ptc_table)
+    assert_schema(result, OUTPUT_COLUMN_KINDS)
+
+
+def test_add_features_and_rules_gives_the_same_dtypes_for_zero_and_many_rows(run_main, intergenic_vcf):
+    many = add_features_and_rules(run_main("resources/test_files/variants.vcf")[0])
+    zero = add_features_and_rules(run_main(intergenic_vcf)[0])
+
+    assert len(many) > 0
+    assert len(zero) == 0
+    assert list(zero.columns) == list(many.columns)
+    assert dict(zero.dtypes) == dict(many.dtypes)
+
+
+def test_add_features_and_rules_equals_what_main_writes(run_main):
+    ptc_table, written = run_main("resources/test_files/test_variants.vcf")
+    unchanged = ptc_table.copy()
+
+    result = add_features_and_rules(ptc_table)
+
+    pd.testing.assert_frame_equal(result, written)
+    pd.testing.assert_frame_equal(ptc_table, unchanged)
+
+
+def test_add_features_and_rules_equals_the_row_functions_applied_one_by_one(run_main):
+    ptc_table, _ = run_main("resources/test_files/test_variants.vcf")
+
+    features = ptc_table.apply(add_nmd_features, axis=1, result_type="expand")
+    table = pd.concat([ptc_table, features], axis=1)
+    rules = table.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
+    expected = apply_schema(pd.concat([table, rules], axis=1), OUTPUT_COLUMN_KINDS)
+
+    pd.testing.assert_frame_equal(add_features_and_rules(ptc_table), expected)
 
 
 def schema_row(**values):

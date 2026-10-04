@@ -6,10 +6,10 @@ import os
 import pandas as pd
 from pyfaidx import Fasta
 
-from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
+from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import compute_exon_numbers, read_gtf, read_vcf
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, apply_schema, empty_table
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
 
@@ -79,20 +79,8 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     logger.info("Creating sequences and analyzing...")
     results = extract_ptc(cds_df, vcf, fasta, exons_df)
 
-    if results.empty:
-        # No variant gave a result: write all columns with zero rows
-        results = empty_table(OUTPUT_COLUMN_KINDS)
-    else:
-        # Add additional features (inspired by NMD efficiency benchmark dataset)
-        extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
-        results = pd.concat([results, extra_features], axis=1)
-
-        # Compute NMD-rules as last step
-        nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
-        results = pd.concat([results, nmd_results], axis=1)
-
-        # The new columns have the dtypes pandas inferred from their values
-        results = apply_schema(results, OUTPUT_COLUMN_KINDS)
+    # Add the NMD features (inspired by the NMD efficiency benchmark dataset) and the NMD escape rules
+    results = add_features_and_rules(results)
 
     # Write output
     logger.info("Writing results to %s", output)

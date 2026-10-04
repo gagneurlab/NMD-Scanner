@@ -3,6 +3,8 @@ import math
 import numpy as np
 import pandas as pd
 
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, apply_schema
+
 
 def _plain_values(row):
     """
@@ -402,3 +404,26 @@ def add_likely_misannotated_flag(row):
     )
 
     return flag
+
+
+def add_features_and_rules(results):
+    """
+    Add the NMD features and the NMD escape rules to a result of ``extract_ptc``.
+
+    This runs ``add_nmd_features`` on each row, then ``evaluate_nmd_escape_rules`` (it reads columns that the
+    features add), and applies the output schema. The result has the columns, column order and dtypes of
+    OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero rows. ``results`` is not changed.
+
+    :param results: DataFrame returned by ``extract_ptc``, also an empty one
+    :return: DataFrame with the columns and dtypes of OUTPUT_COLUMN_KINDS
+    """
+
+    if results.empty:
+        # DataFrame.apply with result_type="expand" returns the input columns again for zero rows
+        return apply_schema(results.reindex(columns=list(OUTPUT_COLUMN_KINDS)), OUTPUT_COLUMN_KINDS)
+
+    extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
+    results = pd.concat([results, extra_features], axis=1)
+    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
+    results = pd.concat([results, nmd_results], axis=1)
+    return apply_schema(results, OUTPUT_COLUMN_KINDS)
