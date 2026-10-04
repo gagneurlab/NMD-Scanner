@@ -169,6 +169,13 @@ def test_merge_stop_codons_into_cds_rejects_gap():
         merge_stop_codons_into_cds(rows)
 
 
+def test_merge_stop_codons_into_cds_rejects_gap_minus_strand():
+    # on the - strand the stop codon lies below the CDS: stop codon [496, 499) and CDS [500, 550) leave out base 499
+    rows = _coding_rows([("CDS", 1, 500, 550, "-"), ("stop_codon", 1, 496, 499, "-")])
+    with pytest.raises(ValueError, match="tx"):
+        merge_stop_codons_into_cds(rows)
+
+
 def _coding_sequence(coding, fasta):
     coding = coding.sort_values("Start")
     seq = "".join(fasta[c][s:e].seq.upper() for c, s, e in zip(coding["Chromosome"], coding["Start"], coding["End"]))

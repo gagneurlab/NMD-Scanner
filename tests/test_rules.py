@@ -294,6 +294,59 @@ def test_create_reference_cds():
     assert alt_lens["var_spanning"] == ref_len - 4
 
 
+def test_create_reference_cds_carries_has_stop_codon():
+    # has_stop_codon is per transcript: tx_stop ends in its stop codon TAA, tx_nf (e.g. cds_end_NF) has none
+    cds_df_test = pd.DataFrame(
+        {
+            "transcript_id": ["tx_stop", "tx_stop", "tx_nf"],
+            "exon_number": [1, 2, 1],
+            "Chromosome": ["chr1"] * 3,
+            "gene_id": ["gene1", "gene1", "gene2"],
+            "Start": [100, 200, 500],
+            "End": [103, 206, 506],
+            "Strand": ["+"] * 3,
+            "Exon_CDS_seq": ["ATG", "AAATAA", "ATGAAA"],
+            "has_stop_codon": [True, True, False],
+        }
+    )
+    variant = {"Chromosome": "chr1", "Strand": "+", "Ref": "A", "Alt": "C"}
+    variants = pd.DataFrame(
+        [
+            # A>C at the second base of exon 2 of tx_stop
+            {
+                **variant,
+                "transcript_id": "tx_stop",
+                "exon_number": 2,
+                "gene_id": "gene1",
+                "Start": 200,
+                "End": 206,
+                "ID": "var_stop",
+                "Start_variant": 201,
+                "End_variant": 202,
+                "Exon_Alt_CDS_seq": "ACATAA",
+            },
+            # A>C at the fifth base of exon 1 of tx_nf
+            {
+                **variant,
+                "transcript_id": "tx_nf",
+                "exon_number": 1,
+                "gene_id": "gene2",
+                "Start": 500,
+                "End": 506,
+                "ID": "var_nf",
+                "Start_variant": 504,
+                "End_variant": 505,
+                "Exon_Alt_CDS_seq": "ATGACA",
+            },
+        ]
+    )
+
+    result = create_reference_cds(variants, cds_df_test)
+
+    assert dict(zip(result["variant_id"], result["alt_cds_seq"])) == {"var_stop": "ATGACATAA", "var_nf": "ATGACA"}
+    assert dict(zip(result["variant_id"], result["has_stop_codon"])) == {"var_stop": True, "var_nf": False}
+
+
 def test_get_transcript_sequence():
     fasta = {
         "chr1": "AAAAAAAAAACCCCCCCCCCCCCCCCCCCCGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
