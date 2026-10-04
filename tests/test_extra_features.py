@@ -434,7 +434,9 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [3],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
+        "ref_cds_info": [(1, 100), (2, 100), (3, 100)],
         "alt_cds_info": [(1, 100), (2, 100), (3, 100)],
+        "cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -478,7 +480,9 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 500), (3, 100)],
+        "ref_cds_info": [(1, 100), (2, 500), (3, 100)],
         "alt_cds_info": [(1, 100), (2, 500), (3, 100)],
+        "cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 1,
         "ptc_exon_length": 500,
@@ -492,14 +496,16 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_start_proximal_rule"] == False
     assert result["nmd_escape"] == True
 
-    # Example 5: Start-proximal rule
+    # Example 5: Start-proximal rule. The PTC lies at the last exon junction, not upstream of it: no 50 nt rule.
     row = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 100,
         "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100)],
+        "ref_cds_info": [(1, 100), (2, 100)],
         "alt_cds_info": [(1, 100), (2, 100)],
+        "cds_start_in_transcript": 0,
         "total_exon_count": 2,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -520,7 +526,9 @@ def test_evaluate_nmd_escape_rules():
         "alt_stop_codon_exons": [3],
         "alt_start_codon_pos": 0,
         "transcript_exon_info": [(1, 100), (2, 100), (3, 500)],
+        "ref_cds_info": [(1, 100), (2, 100), (3, 500)],
         "alt_cds_info": [(1, 100), (2, 100), (3, 500)],
+        "cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 0,
         "ptc_exon_length": 500,
@@ -558,7 +566,8 @@ def test_evaluate_nmd_escape_rules():
     # Example 8: 50nt rule uses CDS-relative coordinates, not transcript-relative.
     # Transcript has a 200nt 5'UTR in exon 1; CDS spans only part of exon 1 and all of exons 2,3.
     # PTC at CDS pos 160 is in the last 50nt of the penultimate CDS exon (exon 2, CDS-end at 200).
-    # If the rule mistakenly used transcript_exon_info, pen_end would be 500 and the rule would not fire.
+    # Measured in transcript coordinates, without subtracting cds_start_in_transcript, the junction would lie at 400
+    # and the rule would not fire.
     row_cds_offset = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 160,
@@ -577,7 +586,7 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_50nt_penultimate_rule"] == True
     assert result["nmd_escape"] == True
 
-    # Example 9: PTC sits at CDS pos that would falsely fire if transcript_exon_info were used.
+    # Example 9: PTC sits at CDS pos that would falsely fire without subtracting cds_start_in_transcript.
     # Transcript: exon1 300nt (200 UTR + 100 CDS), exon2 100nt CDS, exon3 200nt CDS.
     # Transcript-relative pen_end would be 400; CDS pos 360 is in [350, 400) → false positive.
     # CDS-relative pen_end is 200; CDS pos 360 is past it → rule must NOT fire.
@@ -716,32 +725,23 @@ def test_calculate_ptc_to_downstream_ej():
     # Case 4: Multiple stop codons, take the smallest exon number
     row4 = {
         "alt_is_premature": True,
-        "alt_first_stop_pos": 350,
+        "alt_first_stop_pos": 250,
         "alt_stop_codon_exons": [2, 3],
         "transcript_exon_info": [("1", 100), ("2", 200), ("3", 200)],
         "ref_cds_info": [(1, 100), (2, 200), (3, 200)],
         "alt_cds_info": [(1, 100), (2, 200), (3, 200)],
         "cds_start_in_transcript": 0,
     }
-    # Smallest exon = 2, end of exon 2: 100+200=300, distance = 300 - 350 = -50 (PTC past exon end)
-    assert calculate_ptc_to_downstream_ej(row4) == -50
+    # PTC in exon 2, normal stop codon in exon 3. Smallest exon = 2, end of exon 2: 100 + 200 = 300,
+    # distance = 300 - 250 = 50. Exon 3 is the last exon and would give None.
+    assert calculate_ptc_to_downstream_ej(row4) == 50
 
     # Case 5: Not premature → should return None
-    row5 = {
-        "alt_is_premature": False,
-        "alt_first_stop_pos": 250,
-        "alt_stop_codon_exons": [2],
-        "alt_cds_info": [(1, 100), (2, 200)],
-    }
+    row5 = {**row1, "alt_is_premature": False}
     assert calculate_ptc_to_downstream_ej(row5) is None
 
-    # Case 6: Missing data → should return None
-    row6 = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": None,
-        "alt_stop_codon_exons": [2],
-        "alt_cds_info": [(1, 100), (2, 200)],
-    }
+    # Case 6: PTC position missing → should return None
+    row6 = {**row1, "alt_first_stop_pos": None}
     assert calculate_ptc_to_downstream_ej(row6) is None
 
     # Case 7: PTC in the last CDS exon, followed by a UTR-only exon
