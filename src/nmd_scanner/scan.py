@@ -193,9 +193,10 @@ def read_gff3(gff3_path, fasta):
     :param gff3_path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object)
     :return: DataFrame with the exon and CDS rows in file order and a RangeIndex, the columns
-        Chromosome, Source, Feature, Start, End, Score, Strand, Frame, has_stop_codon, gene_id,
-        transcript_id and exon_number, and the other attributes of ``GFF3_ATTRIBUTES`` that the file
-        has, except ID and Parent
+        Chromosome, Source, Feature, Start, End, Score, Strand, Frame, has_stop_codon, gene_id and
+        transcript_id, and the other attributes of ``GFF3_ATTRIBUTES`` that the file has, except ID
+        and Parent. exon_number (nullable integer) is there for an Ensembl GFF3, and for a GENCODE
+        GFF3 that has the attribute.
     :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, or if its
         flavor is neither GENCODE nor Ensembl
     """
@@ -566,7 +567,11 @@ def _normalize_gencode_gff3(df):
     child_mask = df["Feature"].isin(["exon", "CDS", "stop_codon"])
     _check_ids_resolved(df, child_mask)
 
-    return df.loc[child_mask].reset_index(drop=True)
+    child_df = df.loc[child_mask].reset_index(drop=True)
+    # the attribute is text; an Ensembl GFF3 gives the numbers as nullable integer too
+    if "exon_number" in child_df.columns:
+        child_df["exon_number"] = child_df["exon_number"].astype("Int64")
+    return child_df
 
 
 def _normalize_ensembl_gff3(df):
@@ -626,8 +631,8 @@ def compute_exon_numbers(annotation):
     # a unique index for _assign_exon_numbers_to_cds
     gtf_df = annotation.reset_index(drop=True)
 
-    # An annotation read from file has exon_number as str (pandas 3) with missing values on
-    # features without one. The computed numbers are ints, so hold the column as nullable integer.
+    # The computed numbers are ints, so hold the column as nullable integer. A caller may give it as
+    # text, e.g. "1", with missing values on features without one.
     if "exon_number" in gtf_df.columns:
         gtf_df["exon_number"] = gtf_df["exon_number"].astype("Int64")
     else:

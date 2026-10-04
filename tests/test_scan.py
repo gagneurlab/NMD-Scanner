@@ -346,9 +346,8 @@ def test_compute_exon_numbers_takes_a_dataframe_with_any_index():
 
 def test_compute_exon_numbers_with_str_exon_number_column():
     """
-    An annotation read from file has a ``str`` exon_number column (pandas 3), with missing values on
-    features that have no exon number. Computed exon numbers must be ints, not written into
-    the str column.
+    A caller can give exon_number as ``str``, with missing values on features that have no exon
+    number. Computed exon numbers must be ints, not written into the str column.
     """
 
     df = pd.DataFrame(
@@ -622,6 +621,7 @@ def test_read_gff3_gives_the_coding_regions_and_exons_of_the_fixture(
     annotation = nmd_scanner.scan.read_gff3(_write(tmp_path, "a.gff3", gff3), _fasta(tmp_path))
     assert isinstance(annotation, pd.DataFrame)
     pd.testing.assert_index_equal(annotation.index, pd.RangeIndex(len(annotation)))
+    assert annotation["exon_number"].dtype == "Int64"
     assert _rows(annotation) == (expected_rows, expected_transcripts)
 
 
