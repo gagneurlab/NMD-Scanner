@@ -81,6 +81,15 @@ This is useful if you want to
 - integrate NMD-Scanner into a larger workflow
 - build custom features
 
+To get the result table of the CLI as a `pandas.DataFrame` without writing it, call `annotate`. It takes the inputs and options of the CLI, except the output path. It does not configure logging or write files:
+```python
+import nmd_scanner
+
+results = nmd_scanner.annotate("input.vcf", "annotation.gtf", "reference.fa", reassign_exons=False)
+results["my_key"] = "sample_1"  # add your own columns
+results.to_csv("results.csv", index=False)
+```
+
 For reconstructing reference and alternative coding and transcript sequences, PTC detection and start / stop-loss information:
 ```python
 import pandas as pd
