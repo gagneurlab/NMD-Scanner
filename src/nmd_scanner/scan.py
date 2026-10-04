@@ -1,4 +1,5 @@
 # Import dependencies
+import logging
 import os
 
 import pandas as pd
@@ -6,6 +7,8 @@ import pyranges as pr
 from pyfaidx import Fasta
 
 # Create the functions used for reading in the files (VCF, GTF, FASTA)
+
+logger = logging.getLogger(__name__)
 
 
 def read_vcf(vcf_path):
@@ -50,11 +53,81 @@ def read_vcf(vcf_path):
 
 def read_gtf(gtf_path):
     """
-    Reads a GTF file into a PyRanges object.
+    Reads a GTF file into a PyRanges object, with its rows as they are in the file. A GTF CDS excludes
+    the stop codon, which has its own stop_codon rows. ``merge_stop_codons_into_cds`` builds the coding
+    regions that ``rules.extract_ptc`` takes.
     """
     if not os.path.exists(gtf_path):
         raise FileNotFoundError(f"GTF file not found: {gtf_path}")
     return pr.read_gtf(gtf_path)
+
+
+def merge_stop_codons_into_cds(df, transcript_col="transcript_id"):
+    """
+    Returns the coding regions of a GTF, in the form ``rules.extract_ptc`` takes: one CDS row per
+    transcript and exon, the union of its CDS and stop_codon rows.
+
+    A GTF CDS excludes the stop codon, which has its own stop_codon rows. A stop codon split across an
+    intron has two of them, and the second one can lie in an exon without CDS. A transcript without
+    stop_codon rows, e.g. one tagged cds_end_NF, keeps its CDS as it is: its coding region ends without
+    a stop codon.
+
+    The rows are merged per transcript and exon_number. To recompute the exon numbers with
+    ``compute_exon_numbers``, do so before the merge.
+
+    :param df: GTF rows (DataFrame) with Feature, Start, End, exon_number and ``transcript_col``. Only
+        the CDS and stop_codon rows are used.
+    :param transcript_col: The name of the column that indicates the transcript ID
+    :return: DataFrame with the CDS rows, each extended by the stop codon bases of its exon, plus one
+        CDS row for each exon that holds only stop codon bases. exon_number is int. The column
+        has_stop_codon says whether the coding region of the transcript ends in an annotated stop codon,
+        i.e. whether the transcript has stop_codon rows.
+    :raises ValueError: if stop codon bases do not touch or overlap the CDS of their exon.
+    """
+    df = df[df["Feature"].isin(["CDS", "stop_codon"])].copy()
+    df["exon_number"] = df["exon_number"].astype(int)
+    keys = [transcript_col, "exon_number"]
+
+    is_stop = df["Feature"] == "stop_codon"
+    stop_rows = df[is_stop]
+    if stop_rows.empty and not df.empty:
+        logger.warning(
+            "No stop_codon rows found next to the CDS rows: every transcript is treated as having no annotated "
+            "stop codon (no 3'UTR length, no stop codon distance, every in-frame stop is premature). "
+            "A GTF CDS excludes the stop codon, so the merge needs the stop_codon rows of the GTF."
+        )
+    stops = stop_rows.groupby(keys, observed=True).agg(stop_start=("Start", "min"), stop_end=("End", "max"))
+
+    cds = df[~is_stop].merge(stops, left_on=keys, right_index=True, how="left")
+    has_stop = cds["stop_start"].notna()
+    # coordinates are half-open, so touching intervals share one coordinate
+    gap = has_stop & ((cds["stop_start"] > cds["End"]) | (cds["stop_end"] < cds["Start"]))
+    if gap.any():
+        raise ValueError(
+            "stop_codon rows do not touch the CDS of their exon in transcripts: "
+            + ", ".join(sorted(cds.loc[gap, transcript_col].astype(str).unique()))
+        )
+    start_dtype, end_dtype = cds["Start"].dtype, cds["End"].dtype
+    cds["Start"] = cds[["Start", "stop_start"]].min(axis=1).astype(start_dtype)
+    cds["End"] = cds[["End", "stop_end"]].max(axis=1).astype(end_dtype)
+    cds = cds.drop(columns=["stop_start", "stop_end"])
+
+    # exons with stop codon bases but no CDS row, e.g. the second part of a split stop codon
+    cds_keys = pd.MultiIndex.from_frame(cds[keys])
+    stop_only = stops[~stops.index.isin(cds_keys)]
+    extra = stop_rows.drop_duplicates(keys).set_index(keys).loc[stop_only.index].reset_index()
+    extra["Start"] = stop_only["stop_start"].to_numpy().astype(start_dtype)
+    extra["End"] = stop_only["stop_end"].to_numpy().astype(end_dtype)
+    extra["Feature"] = "CDS"
+
+    logger.info(
+        "Stop codons from stop_codon rows: %d transcripts, %d of them with stop codon bases in an exon without CDS.",
+        stops.index.get_level_values(transcript_col).nunique(),
+        extra[transcript_col].nunique(),
+    )
+    coding = pd.concat([cds, extra[cds.columns]], ignore_index=True)
+    coding["has_stop_codon"] = coding[transcript_col].isin(stop_rows[transcript_col])
+    return coding
 
 
 def read_fasta(fasta_path):

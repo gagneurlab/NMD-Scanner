@@ -8,7 +8,7 @@ from pyfaidx import Fasta
 
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
-from nmd_scanner.scan import compute_exon_numbers, read_gtf, read_vcf
+from nmd_scanner.scan import compute_exon_numbers, merge_stop_codons_into_cds, read_gtf, read_vcf
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
@@ -32,7 +32,7 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
     Steps:
     1. Read input files (VCF, GTF, FASTA)
     2. Assign exon numbers (optional, recommended for hg19)
-    3. Parse and preprocess gene annotations (CDS, exons)
+    3. Parse and preprocess gene annotations (coding regions, i.e. CDS plus stop codon, and exons)
     4. Extract premature termination codons (PTCs) & Evaluate NMD escape rules
     5. Add extra features to output (e.g. 3' & 5'UTR length, downstream & upstream exon counts, etc.)
     6. Return and Save output results
@@ -65,9 +65,9 @@ def main(vcf_path, gtf_path, fasta_path, output, reassign_exons=False):
         gtf = compute_exon_numbers(gtf)
         logger.info("Exon numbers adjusted.")
 
-    # extract the coding regions from the GTF file: the CDS plus the stop codon
-    cds = gtf[gtf.Feature.isin(["CDS", "stop_codon"])]
-    cds_df = cds.df
+    # the coding regions: the GTF CDS plus its stop_codon rows, merged per exon. The merge keys on
+    # exon_number, so it runs after the exon numbers are reassigned.
+    cds_df = merge_stop_codons_into_cds(gtf.df)
 
     # extract exon regions from the GTF file and compute exon related metrics:
     # exon length & number of exons contained in each transcript

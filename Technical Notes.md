@@ -3,9 +3,9 @@ Summary of the NMD-Scanner Script:
 1. Command Line argument Parser
 2. Check that Output Path is valid
 3. Reads genomic data files (VCF for variants, GTF for annotations, FASTA for sequences)
-4. Extracts coding sequences and exons + exon length
+4. Extracts coding regions and exons + exon length. A GTF CDS excludes the stop codon, so the stop_codon rows are merged into the CDS rows, per transcript and exon -> scan.merge_stop_codons_into_cds(). The merge keys on exon_number, so it runs after the optional reassignment of exon numbers
 5. Identifies premature termination codons (PTCs) —> extract_ptc()
-    1. Merge the stop_codon rows into the CDS rows, per transcript and exon, so the sequence includes the stop codon: merge_stop_codons_into_cds()
+    1. Check that the CDS rows are coding regions (column has_stop_codon)
     2. Intersect variants with CDS regions
     3. (in TCGA & MMRF only: adjust minus strand variants)
     4. Fetch reference CDS sequence for each variant region (on variant level: only CDS where a variant is located on) —> catch_sequence.add_exon_cds_sequence()
