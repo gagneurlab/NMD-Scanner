@@ -85,7 +85,8 @@ def test_empty_table_has_the_schema():
 def run_main(tmp_path, monkeypatch):
     """
     Return a function that runs main() on a VCF with the chr18 annotation. It returns the table that
-    extract_ptc returned to main() and the table that main() wrote.
+    extract_ptc returned to main() and the table that main() wrote. After each call, the attribute
+    ptc_table_before_main of the function holds a copy of the first table, taken before main() used it.
     """
 
     def run(vcf_path):
@@ -93,6 +94,7 @@ def run_main(tmp_path, monkeypatch):
 
         def recording_extract_ptc(*args, **kwargs):
             tables["extract_ptc"] = extract_ptc(*args, **kwargs)
+            run.ptc_table_before_main = tables["extract_ptc"].copy()
             return tables["extract_ptc"]
 
         def recording_write_results(results, output):
@@ -156,7 +158,8 @@ def test_add_features_and_rules_gives_the_same_dtypes_for_zero_and_many_rows(run
 
 def test_add_features_and_rules_equals_what_main_writes(run_main):
     ptc_table, written = run_main("resources/test_files/test_variants.vcf")
-    unchanged = ptc_table.copy()
+    # main() already passed ptc_table to add_features_and_rules, so a copy taken now could miss a change
+    unchanged = run_main.ptc_table_before_main
 
     result = add_features_and_rules(ptc_table)
 

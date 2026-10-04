@@ -16,7 +16,10 @@ def intergenic_vcf(tmp_path):
 
 @pytest.fixture
 def reference_mismatch_vcf(tmp_path):
-    """A VCF with one variant inside a CDS whose REF does not match the FASTA (it is ATG there)."""
+    """
+    A VCF with one variant whose REF CCC does not match the FASTA, which has CAT at chr18:21383518-21383520.
+    The variant overlaps the first 2 bases of the GREB1L CDS, which starts at 21383519.
+    """
 
     path = tmp_path / "mismatch.vcf"
     path.write_text(
