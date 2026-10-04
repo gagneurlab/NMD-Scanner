@@ -30,7 +30,7 @@ From [PyPI](https://pypi.org/project/nmd-scanner/):
 pip install nmd-scanner
 ```
 
-`polars-bio` reads the VCF and GFF3 files and `pyarrow` writes Parquet output. Both come with the package, so Parquet output needs no extra install. The `parquet` extra (`pip install "nmd_scanner[parquet]"`) stays for compatibility with existing install commands. `polars-bio` makes the install large, about 700 MB.
+`polars-bio` reads the VCF and GFF3 files and `pyarrow` writes Parquet output. Both come with the package, so Parquet output needs no extra install. The `parquet` extra (`pip install "nmd_scanner[parquet]"`) stays for compatibility with existing install commands. `polars-bio` and its dependencies add about 700 MB to the install.
 
 ## Usage
 
