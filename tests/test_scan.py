@@ -1,5 +1,6 @@
 # Import dependencies
 import gzip
+import logging
 import random
 import re
 from pathlib import Path
@@ -898,6 +899,20 @@ def test_read_gff3_raises_for_a_start_after_the_end(tmp_path, start, end, shown)
         ValueError, match=rf"reversed\.gff3.*1 row\(s\) have a start after their end, e.g. the CDS row at {shown}"
     ):
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+
+def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_rows(tmp_path, caplog):
+    without_stop_codons = "".join(line for line in _GENCODE_GFF3.splitlines(True) if "\tstop_codon\t" not in line)
+    fasta = _fasta(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
+        annotation = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_stop.gff3", without_stop_codons), fasta)
+    assert "No stop_codon rows found next to the CDS rows" in caplog.text
+    assert not annotation["has_stop_codon"].any()
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
+        nmd_scanner.scan.read_gff3(_write(tmp_path, "stop.gff3", _GENCODE_GFF3), fasta)
+    assert "No stop_codon rows" not in caplog.text
 
 
 def test_read_gff3_raises_an_error_naming_the_file_if_polars_bio_cannot_read_it(tmp_path):

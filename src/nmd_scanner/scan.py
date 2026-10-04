@@ -218,6 +218,12 @@ def read_gff3(gff3_path, fasta):
         df = _trim_cds_end_nf_stop_codons(_normalize_gencode_gff3(df), fasta)
         # the CDS includes the stop codon; the stop_codon rows only say whether there is one
         is_stop = df["Feature"] == "stop_codon"
+        if not is_stop.any() and (df["Feature"] == "CDS").any():
+            logger.warning(
+                "No stop_codon rows found next to the CDS rows: every transcript is treated as having no annotated "
+                "stop codon (no 3'UTR length, no stop codon distance, every in-frame stop is premature). "
+                "A GENCODE GFF3 marks the stop codons with stop_codon rows."
+            )
         df = _set_has_stop_codon(df[~is_stop], df.loc[is_stop, "transcript_id"])
     elif "biotype" in columns:
         df = _has_stop_codon_from_sequence(_normalize_ensembl_gff3(df), fasta)
