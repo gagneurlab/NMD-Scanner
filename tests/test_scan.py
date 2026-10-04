@@ -138,14 +138,29 @@ def test_read_vcf_end_comes_from_ref_not_from_info_end(tmp_path):
 
 @pytest.mark.parametrize(
     "header",
-    ["#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n", ""],
-    ids=["without_fileformat_line", "without_header"],
+    ["#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n", "##fileformat=VCFv4.2\n", ""],
+    ids=["without_fileformat_line", "without_chrom_line", "without_header"],
 )
 def test_read_vcf_without_header_raises_an_error_naming_the_file(tmp_path, header):
     vcf = tmp_path / "no_header.vcf"
     vcf.write_text(header + "chr1\t100\tv1\tA\tT\t.\t.\t.\n")
     with pytest.raises(ValueError, match=r"no_header\.vcf.*needs its header.*##fileformat.*#CHROM"):
         nmd_scanner.scan.read_vcf(str(vcf))
+
+
+def test_read_vcf_gives_the_header_hint_only_for_a_missing_header(tmp_path):
+    vcf = tmp_path / "trailing_blank.vcf"
+    vcf.write_text(VCF_HEADER + "chr1\t100\tv1\tA\tT\t.\t.\t.\n\n")
+    with pytest.raises(ValueError, match=r"trailing_blank\.vcf") as error:
+        nmd_scanner.scan.read_vcf(str(vcf))
+    assert "needs its header" not in str(error.value)
+
+
+def test_read_vcf_of_a_directory_raises_is_a_directory_error(tmp_path):
+    directory = tmp_path / "variants.vcf"
+    directory.mkdir()
+    with pytest.raises(IsADirectoryError):
+        nmd_scanner.scan.read_vcf(str(directory))
 
 
 def test_read_vcf_reads_plain_and_gzip_files_alike(tmp_path):

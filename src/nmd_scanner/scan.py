@@ -20,6 +20,9 @@ GTF_SUFFIXES = (".gtf", ".gtf.gz")
 GTF_NOT_SUPPORTED = "GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
 GFF3_SUFFIXES = (".gff3", ".gff3.gz", ".gff", ".gff.gz")
 
+# The polars-bio errors for a VCF without its header
+VCF_HEADER_ERRORS = ("empty input", "invalid record", "missing header")
+
 STOP_CODONS = {"TAA", "TAG", "TGA"}
 MITOCHONDRIAL_CHROMOSOMES = {"MT", "M", "chrM", "chrMT"}
 # vertebrate mitochondrial code (NCBI translation table 2): AGA and AGG are stop codons, TGA codes for Trp
@@ -47,12 +50,19 @@ def read_vcf(vcf_path):
     ``bcftools norm -m- -f reference.fa``. Multi-allelic records are rejected because the
     downstream variant application assumes exactly one ALT allele per row.
 
+    polars-bio rejects some files that VCF 4.3 allows, and so does read_vcf: a file with an empty
+    last line, a file that starts with a UTF-8 byte order mark, and a record with POS 0.
+
     :raises FileNotFoundError: if ``vcf_path`` does not exist
+    :raises OSError: if ``vcf_path`` cannot be opened, e.g. because it is a directory
     :raises ValueError: if polars-bio cannot read the file, e.g. because it has no header, or if
         the VCF has multi-allelic records
     """
     if not os.path.exists(vcf_path):
         raise FileNotFoundError(f"VCF file not found: {vcf_path}")
+    # open raises the OSError that fits, e.g. IsADirectoryError; polars-bio's error does not say which
+    with open(vcf_path, "rb"):
+        pass
     try:
         # info_fields=[]: no INFO field is parsed, nothing reads them
         df = (
@@ -70,10 +80,11 @@ def read_vcf(vcf_path):
             .to_pandas()
         )
     except (ValueError, pl.exceptions.ComputeError) as error:
-        raise ValueError(
-            f"Cannot read {os.fspath(vcf_path)!r} as VCF ({error}). "
-            "The VCF needs its header, at least the ##fileformat and #CHROM lines."
-        ) from error
+        message = f"Cannot read {os.fspath(vcf_path)!r} as VCF ({error})."
+        # polars-bio reads the header when it registers the file as a table
+        if "Failed to register table" in str(error) and any(text in str(error) for text in VCF_HEADER_ERRORS):
+            message += " The VCF needs its header, at least the ##fileformat and #CHROM lines."
+        raise ValueError(message) from error
 
     # Reject multi-allelic records: the VCF spec allows several ALT alleles per record, but the
     # rest of the pipeline assumes one. polars-bio joins the ALT alleles of a record with "|", which
@@ -190,6 +201,9 @@ def read_gff3(gff3_path, fasta):
     """
     if not os.path.exists(gff3_path):
         raise FileNotFoundError(f"GFF3 file not found: {gff3_path}")
+    # open raises the OSError that fits, e.g. IsADirectoryError; polars-bio's error does not say which
+    with open(gff3_path, "rb"):
+        pass
 
     df = _read_gff3_rows(gff3_path)
     columns = set(df.columns)
