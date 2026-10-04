@@ -229,6 +229,7 @@ def test_compute_exon_numbers():
             ["chr1", 100, 200, "+", "exon", "TX1", "G1"],  # exon → 1
             ["chr1", 300, 400, "+", "exon", "TX1", "G1"],  # exon → 2
             ["chr1", 320, 400, "+", "CDS", "TX1", "G1"],  # CDS on exon 2
+            ["chr1", 397, 400, "+", "stop_codon", "TX1", "G1"],  # stop codon on exon 2
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
@@ -238,6 +239,8 @@ def test_compute_exon_numbers():
     assert list(tx1_exons["exon_number"]) == [1, 2]
     tx1_cds = out1[(out1.Feature == "CDS") & (out1.transcript_id == "TX1")].iloc[0]
     assert tx1_cds["exon_number"] == 2
+    tx1_stop = out1[(out1.Feature == "stop_codon") & (out1.transcript_id == "TX1")].iloc[0]
+    assert tx1_stop["exon_number"] == 2
 
     # On - Strand: Smallest exon number is the Start, Largest exon number is the End.
     df2 = pd.DataFrame(
@@ -245,6 +248,7 @@ def test_compute_exon_numbers():
             ["chr1", 100, 200, "-", "exon", "TX2", "G2"],  # exon_number → 2 (reverse order)
             ["chr1", 300, 400, "-", "exon", "TX2", "G2"],  # exon_number → 1
             ["chr1", 120, 180, "-", "CDS", "TX2", "G2"],  # CDS on exon 2
+            ["chr1", 120, 123, "-", "stop_codon", "TX2", "G2"],  # stop codon on exon 2
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
@@ -255,6 +259,8 @@ def test_compute_exon_numbers():
     assert list(tx2_exons["exon_number"]) == [2, 1]
     tx2_cds = out2[(out2.Feature == "CDS") & (out2.transcript_id == "TX2")].iloc[0]
     assert tx2_cds["exon_number"] == 2
+    tx2_stop = out2[(out2.Feature == "stop_codon") & (out2.transcript_id == "TX2")].iloc[0]
+    assert tx2_stop["exon_number"] == 2
 
     # multiple CDS sequences on minus strand
     df4 = pd.DataFrame(
@@ -268,6 +274,7 @@ def test_compute_exon_numbers():
             ["chr1", 500, 590, "-", "CDS", "TX2b", "G2b"],  # exon_number 1
             ["chr1", 300, 350, "-", "CDS", "TX2b", "G2b"],  # exon_number 2
             ["chr1", 130, 200, "-", "CDS", "TX2b", "G2b"],  # exon_number 3
+            ["chr1", 127, 130, "-", "stop_codon", "TX2b", "G2b"],  # exon_number 3
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
@@ -302,6 +309,7 @@ def test_compute_exon_numbers():
         )
         == 3
     )
+    assert out4[(out4.Feature == "stop_codon") & (out4.transcript_id == "TX2b")]["exon_number"].tolist() == [3]
 
     # two different transripts (should be numbered independently)
     df3 = pd.DataFrame(
