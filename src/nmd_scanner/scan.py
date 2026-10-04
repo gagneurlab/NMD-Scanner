@@ -6,9 +6,10 @@ import os
 import numpy as np
 import pandas as pd
 import polars as pl
-import polars_bio as pb
 from Bio.Seq import Seq
 from pyfaidx import Fasta
+
+from nmd_scanner._polars_bio import pb
 
 # Create the functions used for reading in the files (VCF, GFF3, FASTA)
 

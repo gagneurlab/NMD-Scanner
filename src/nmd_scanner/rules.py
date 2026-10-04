@@ -4,10 +4,10 @@ import logging
 
 import numpy as np
 import pandas as pd
-import polars_bio as pb
 from Bio.Seq import Seq
 
 from nmd_scanner import catch_sequence
+from nmd_scanner._polars_bio import pb
 from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table
 
 logger = logging.getLogger(__name__)

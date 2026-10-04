@@ -189,10 +189,23 @@ def is_valid_output_path(path):
     return ext in SUPPORTED_OUTPUT_EXTENSIONS
 
 
+def _set_up_process():
+    """
+    Sets up the process that the CLI owns: NMD-Scanner logs its INFO messages to stderr, and all
+    other loggers their warnings.
+    """
+
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s", force=True)
+    # only NMD-Scanner logs at INFO: at INFO, the Rust code of polars-bio logs too
+    logging.getLogger("nmd_scanner").setLevel(logging.INFO)
+    # under `python -m nmd_scanner.cli`, this module logs as __main__
+    logger.setLevel(logging.INFO)
+
+
 def main_cli():
     """Console-script entry point: parse arguments and run the pipeline."""
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    _set_up_process()
 
     parser = argparse.ArgumentParser(description="Run NMD pipeline")
     parser.add_argument("--vcf", required=True, help="Path to VCF file")

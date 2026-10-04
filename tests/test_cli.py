@@ -1,7 +1,9 @@
 import gzip
 import logging
-import pathlib
+import os
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pandas as pd
@@ -17,6 +19,14 @@ from nmd_scanner.cli import (
     to_parquet_safe,
     write_results,
 )
+
+RESOURCES = Path(__file__).resolve().parent.parent / "resources"
+
+
+@pytest.fixture(autouse=True)
+def _no_process_setup(monkeypatch):
+    """main_cli sets up the process it runs in, but here that is the process of pytest."""
+    monkeypatch.setattr(cli_module, "_set_up_process", lambda: None)
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
@@ -493,6 +503,41 @@ def test_main_end_to_end_reassign_exons(tmp_path):
     pd.testing.assert_frame_equal(results, annotated)
 
 
+@pytest.fixture(scope="module")
+def cli_stderr(tmp_path_factory):
+    """stderr of the CLI in its own process, on the bundled chr18 test data"""
+
+    output = tmp_path_factory.mktemp("cli") / "results.csv"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from nmd_scanner.cli import main_cli; main_cli()",
+            "--vcf",
+            str(RESOURCES / "test_files" / "test_variants.vcf"),
+            "--annotation",
+            str(RESOURCES / "chr18.gff3.gz"),
+            "--fasta",
+            str(RESOURCES / "chr18.fa.gz"),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={name: value for name, value in os.environ.items() if name != "TQDM_DISABLE"},
+    )
+    return completed.stderr
+
+
+def test_main_cli_logs_the_info_messages_of_nmd_scanner_in_its_format(cli_stderr):
+    assert "INFO nmd_scanner.cli: Reading VCF file" in cli_stderr
+    assert "WARNING nmd_scanner.rules: Skipping 76 variant-transcript pairs" in cli_stderr
+    # polars-bio's Rust code logs at INFO too
+    info = [line for line in cli_stderr.splitlines() if " INFO " in line]
+    assert all(" INFO nmd_scanner." in line for line in info)
+
+
 # --annotation CLI option tests
 
 
@@ -674,23 +719,29 @@ def test_annotate_returns_what_main_writes(tmp_path):
     assert written.read_bytes() == out.read_bytes()
 
 
-def test_annotate_does_not_write_files_or_configure_logging(tmp_path, monkeypatch):
-    resources = pathlib.Path(__file__).resolve().parent.parent / "resources"
-    monkeypatch.chdir(tmp_path)
-    # logging.basicConfig does nothing while the root logger has handlers, and pytest adds its own
-    root = logging.getLogger()
-    monkeypatch.setattr(root, "handlers", [])
-    root_level = root.level
+def test_annotate_does_not_write_files_or_configure_logging(tmp_path):
+    # in its own process, because pytest has imported polars-bio already, which configures the root logger
+    code = textwrap.dedent(
+        f"""
+        import logging
 
-    annotate(
-        str(resources / "test_files" / "test_variants.vcf"),
-        str(resources / "chr18.gff3.gz"),
-        str(resources / "chr18.fa.gz"),
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        import nmd_scanner
+
+        nmd_scanner.annotate(
+            {str(RESOURCES / "test_files" / "test_variants.vcf")!r},
+            {str(RESOURCES / "chr18.gff3.gz")!r},
+            {str(RESOURCES / "chr18.fa.gz")!r},
+        )
+        print(len(root.handlers), root.level)
+        """
     )
 
+    completed = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=True)
+
     assert list(tmp_path.iterdir()) == []
-    assert root.handlers == []
-    assert root.level == root_level
+    assert completed.stdout.split() == ["0", str(logging.INFO)]
 
 
 def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic_vcf):
