@@ -41,6 +41,9 @@ Run the full matrix CI runs with:
 uv run tox
 ```
 
+Tests run across all cores by default, through pytest-xdist. Pass `-n0` to run them in one
+process, which a debugger needs and which restores per-test output order.
+
 ### Quick commands
 
 ```bash
