@@ -402,6 +402,28 @@ def test_read_annotation_gives_the_coding_regions_of_a_gtf(gtf_path):
     pd.testing.assert_frame_equal(_sorted_rows(via_annotation[~is_cds]), _sorted_rows(expected_other))
 
 
+def test_read_annotation_gives_the_hand_derived_coding_regions_of_the_fixture_gtf(tmp_path):
+    """CDS plus stop_codon bases per exon of _GENCODE_GTF, 0-based half-open."""
+    df = nmd_scanner.scan.read_annotation(_write(tmp_path, "gencode.gtf", _GENCODE_GTF)).df
+    cds = df[df["Feature"] == "CDS"]
+    got = sorted(
+        zip(cds["transcript_id"].astype(str), cds["Start"], cds["End"], cds["exon_number"], cds["has_stop_codon"])
+    )
+    assert got == [
+        ("ENST001.1", 1050, 1200, 1, True),
+        ("ENST001.1", 1499, 2000, 2, True),
+        ("ENST002.1", 3999, 4300, 2, True),
+        ("ENST002.1", 5099, 5299, 1, True),
+        ("ENST003.1", 7050, 7100, 1, True),
+        # second base of the split stop codon, in an exon without CDS
+        ("ENST003.1", 7199, 7200, 2, True),
+        ("ENST004.1", 8049, 8300, 1, False),
+        ("ENST005.1", 9050, 9098, 1, False),
+        ("ENST006.1", 100, 160, 1, False),
+        ("ENST007.1", 9801, 9849, 1, False),
+    ]
+
+
 def test_read_annotation_reassigns_gtf_exon_numbers_before_the_merge(tmp_path):
     """A GTF without exon_number attribute works with reassign_exons, also with a split stop codon (ENST003.1)."""
     without_numbers = re.sub(r" exon_number \d+;", "", _GENCODE_GTF)
@@ -715,12 +737,12 @@ def test_read_annotation_reassigns_gff3_exon_numbers(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("gtf", "gff3", "chrom_m"),
-    [(_GENCODE_GTF, _GENCODE_GFF3, "chrM"), (_ENSEMBL_GTF, _ENSEMBL_GFF3, "MT")],
+    ("gtf", "gff3", "chrom_m", "n_results"),
+    [(_GENCODE_GTF, _GENCODE_GFF3, "chrM", 9), (_ENSEMBL_GTF, _ENSEMBL_GFF3, "MT", 7)],
     ids=["gencode", "ensembl"],
 )
 @pytest.mark.parametrize("reassign_exons", [False, True])
-def test_main_gives_the_same_results_for_gtf_and_gff3(tmp_path, gtf, gff3, chrom_m, reassign_exons):
+def test_main_gives_the_same_results_for_gtf_and_gff3(tmp_path, gtf, gff3, chrom_m, n_results, reassign_exons):
     """Variants in every fixture transcript, e.g. the split stop codon and the cds_end_NF ones."""
     _fasta(tmp_path)
     variants = [
@@ -747,7 +769,8 @@ def test_main_gives_the_same_results_for_gtf_and_gff3(tmp_path, gtf, gff3, chrom
     via_gff3 = main(
         vcf, None, fasta, out, reassign_exons=reassign_exons, annotation_path=_write(tmp_path, "a.gff3", gff3)
     )
-    assert len(via_gtf) >= 7
+    # one row per variant: the Ensembl fixture has no transcript at 9060 and 9820
+    assert len(via_gtf) == n_results
     pd.testing.assert_frame_equal(via_gtf, via_gff3)
 
 
@@ -794,14 +817,14 @@ def test_read_gff3_gencode_resolves_par_y_like_ids_via_hierarchy(tmp_path):
     """
     content = """\
 ##gff-version 3
-chrX\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1_PAR_Y;gene_id=ENSG001.1;gene_type=protein_coding;gene_name=GENE1
-chrX\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1_PAR_Y;Parent=ENSG001.1_PAR_Y;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding
-chrX\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1_PAR_Y:1;Parent=ENST001.1_PAR_Y;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
-chrX\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1_PAR_Y;Parent=ENST001.1_PAR_Y;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
-chrY\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1;gene_id=ENSG001.1;gene_type=protein_coding;gene_name=GENE1
-chrY\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding
-chrY\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
-chrY\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+chrY\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1_PAR_Y;gene_id=ENSG001.1;gene_type=protein_coding;gene_name=GENE1
+chrY\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1_PAR_Y;Parent=ENSG001.1_PAR_Y;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding
+chrY\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1_PAR_Y:1;Parent=ENST001.1_PAR_Y;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+chrY\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1_PAR_Y;Parent=ENST001.1_PAR_Y;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+chrX\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1;gene_id=ENSG001.1;gene_type=protein_coding;gene_name=GENE1
+chrX\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding
+chrX\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+chrX\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
 """
     gff3_path = _write(tmp_path, "par_y.gff3", content)
 
@@ -816,7 +839,10 @@ chrY\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_i
 
     # each copy keeps its own CDS, not merged or cross-contaminated with the other
     assert len(cds) == 2
-    assert set(cds["Chromosome"]) == {"chrX", "chrY"}
+    assert dict(zip(cds["transcript_id"], cds["Chromosome"].astype(str))) == {
+        "ENST001.1_PAR_Y": "chrY",
+        "ENST001.1": "chrX",
+    }
 
 
 def test_read_gff3_unrecognized_flavor_raises(tmp_path):
@@ -836,7 +862,8 @@ chr1\tsource\ttranscript\t1000\t2000\t.\t+\t.\tID=T1;Parent=G1
 def test_compute_exon_numbers_equal_the_gtf_numbers_on_both_strands(gtf_path):
     """The numbers computed from genomic order are the ones the chr18 GTF carries."""
     gtf = pr.read_gtf(gtf_path)
-    computed = nmd_scanner.compute_exon_numbers(gtf).df
+    # without the GTF's own numbers, so that the test sees only what compute_exon_numbers computes
+    computed = nmd_scanner.compute_exon_numbers(pr.PyRanges(gtf.df.drop(columns="exon_number"))).df
     expected = pd.to_numeric(gtf.df["exon_number"], errors="coerce").astype("Int64")
     selected = computed["Feature"].isin(["exon", "CDS", "stop_codon"])
     assert set(computed.loc[selected, "Strand"]) == {"+", "-"}
@@ -884,7 +911,7 @@ def test_compute_exon_numbers_cds_takes_the_exon_with_the_most_overlap():
     df = pd.DataFrame(
         {
             "Chromosome": ["chr1"] * 4,
-            "Start": [100, 200, 190, 210],
+            "Start": [100, 200, 190, 195],
             "End": [200, 300, 205, 240],
             "Strand": ["-"] * 4,
             "Feature": ["exon", "exon", "CDS", "CDS"],
@@ -893,7 +920,8 @@ def test_compute_exon_numbers_cds_takes_the_exon_with_the_most_overlap():
     )
     out = nmd_scanner.compute_exon_numbers(pr.PyRanges(df)).df.sort_values("Start")
     assert out.loc[out["Feature"] == "exon", "exon_number"].tolist() == [2, 1]
-    # CDS 190-205 overlaps exon 100-200 by 10 and exon 200-300 by 5
+    # CDS 190-205 overlaps exon 100-200 by 10 and exon 200-300 by 5. CDS 195-240 overlaps exon
+    # 100-200 by 5 and exon 200-300 by 40, so the first overlapping exon is not the answer there.
     assert out.loc[out["Feature"] == "CDS", "exon_number"].tolist() == [2, 1]
 
 
@@ -945,6 +973,22 @@ chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;ge
     df = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_ids.gff3", content), _fasta(tmp_path)).df
     assert df["transcript_id"].tolist() == ["ENST001.1"]
     assert df["gene_id"].tolist() == ["ENSG001.1"]
+
+
+def test_read_gff3_gencode_fills_id_attributes_missing_on_some_rows(tmp_path):
+    """ENST000.1 has the attributes, ENST001.1 has none: the hierarchy fills in only ENST001.1."""
+    content = """\
+##gff-version 3
+chr1\tHAVANA\tgene\t100\t500\t.\t+\t.\tID=ENSG000.1;gene_id=ENSG000.1_5;gene_type=protein_coding
+chr1\tHAVANA\ttranscript\t100\t500\t.\t+\t.\tID=ENST000.1;Parent=ENSG000.1;gene_id=ENSG000.1_5;transcript_id=ENST000.1_5;gene_type=protein_coding;transcript_type=protein_coding
+chr1\tHAVANA\texon\t100\t500\t.\t+\t.\tID=exon:ENST000.1:1;Parent=ENST000.1;gene_id=ENSG000.1_5;transcript_id=ENST000.1_5;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+chr1\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1;gene_type=protein_coding
+chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gene_type=protein_coding;transcript_type=protein_coding
+chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
+"""
+    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "some_ids.gff3", content), _fasta(tmp_path)).df
+    assert df["transcript_id"].tolist() == ["ENST000.1_5", "ENST001.1"]
+    assert df["gene_id"].tolist() == ["ENSG000.1_5", "ENSG001.1"]
 
 
 def test_a_gtf_with_a_gff3_name_raises_an_error_naming_the_file(tmp_path):
