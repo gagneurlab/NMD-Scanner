@@ -1,6 +1,5 @@
 # Import dependencies
 import pandas as pd
-import pyranges as pr
 import pytest
 from Bio.Seq import Seq
 from pyfaidx import Fasta
@@ -15,6 +14,7 @@ from nmd_scanner.rules import (
     extract_ptc,
     get_exon,
     get_transcript_sequence,
+    join_variants_to_cds,
     splice_alt_cds_into_transcript,
     start_stop_loss,
 )
@@ -92,9 +92,7 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
     start, end = to_genome(layout_start + position - tx_start, layout_start + position - tx_start + len(ref))
     if strand == "-":
         ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
-    vcf = pr.PyRanges(
-        pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
-    )
+    vcf = pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
 
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=stop_codon)
     results = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
@@ -741,10 +739,8 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
             for f, e, start, end in rows
         ]
     )
-    vcf = pr.PyRanges(
-        pd.DataFrame(
-            [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
-        )
+    vcf = pd.DataFrame(
+        [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
     )
     fasta = Fasta(str(tmp_path / "genome.fa"))
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=has_stop_codon)
@@ -818,3 +814,128 @@ def test_extract_ptc_needs_the_coding_regions():
     )
     with pytest.raises(ValueError, match="has_stop_codon"):
         extract_ptc(rows, vcf=None, fasta=None, exons_df=None)
+
+
+# join_variants_to_cds: the CDS x VCF join of extract_ptc, with the semantics of the pyranges 0.x join
+
+
+def _join_cds():
+    """CDS rows in an order that is not sorted by Chromosome, and one on the minus strand."""
+    return pd.DataFrame(
+        {
+            "Chromosome": ["chr2", "chr1", "chr1"],
+            "Start": [100, 300, 100],
+            "End": [200, 400, 200],
+            "Strand": ["+", "-", "+"],
+            "transcript_id": ["t_chr2", "t_minus", "t_plus"],
+        }
+    )
+
+
+def _join_vcf(rows):
+    """Variants from (Chromosome, Start, End, ID) tuples."""
+    return pd.DataFrame(
+        [{"Chromosome": c, "Start": start, "End": end, "ID": i, "Ref": "N", "Alt": "A"} for c, start, end, i in rows]
+    )
+
+
+def _pairs(joined):
+    return list(zip(joined["transcript_id"], joined["ID"]))
+
+
+def test_join_variants_to_cds_uses_half_open_intervals():
+    vcf = _join_vcf(
+        [
+            ("chr1", 99, 100, "ends_at_cds_start"),
+            ("chr1", 200, 201, "starts_at_cds_end"),
+            ("chr1", 100, 101, "first_base"),
+            ("chr1", 199, 200, "last_base"),
+            ("chr1", 95, 105, "deletion_over_cds_start"),
+            ("chr1", 195, 210, "deletion_over_cds_end"),
+            ("chr1", 250, 260, "between_cds_rows"),
+        ]
+    )
+    joined = join_variants_to_cds(_join_cds(), vcf)
+    assert sorted(_pairs(joined)) == [
+        ("t_plus", "deletion_over_cds_end"),
+        ("t_plus", "deletion_over_cds_start"),
+        ("t_plus", "first_base"),
+        ("t_plus", "last_base"),
+    ]
+
+
+def test_join_variants_to_cds_matches_the_chromosome_and_ignores_the_strand():
+    vcf = _join_vcf(
+        [
+            ("chr2", 150, 151, "on_chr2"),
+            ("chr1", 150, 151, "on_chr1"),
+            ("chr1", 350, 351, "in_minus_strand_cds"),
+            ("chr3", 150, 151, "on_chr3"),
+        ]
+    )
+    joined = join_variants_to_cds(_join_cds(), vcf)
+    assert _pairs(joined) == [("t_chr2", "on_chr2"), ("t_minus", "in_minus_strand_cds"), ("t_plus", "on_chr1")]
+    assert joined["Chromosome"].tolist() == ["chr2", "chr1", "chr1"]
+
+
+def test_join_variants_to_cds_without_overlap_gives_no_rows_and_all_columns():
+    joined = join_variants_to_cds(_join_cds(), _join_vcf([("chr1", 10, 20, "upstream"), ("chrX", 150, 151, "other")]))
+    assert joined.empty
+    assert list(joined.columns) == [
+        "Chromosome",
+        "Start",
+        "End",
+        "Strand",
+        "transcript_id",
+        "Start_variant",
+        "End_variant",
+        "ID",
+        "Ref",
+        "Alt",
+    ]
+
+
+def test_join_variants_to_cds_suffixes_the_variant_columns_that_cds_df_has_too():
+    cds = _join_cds().iloc[[2]].assign(ID="cds_id")
+    joined = join_variants_to_cds(cds, _join_vcf([("chr1", 150, 152, "v1")]))
+    assert joined.to_dict("records") == [
+        {
+            "Chromosome": "chr1",
+            "Start": 100,
+            "End": 200,
+            "Strand": "+",
+            "transcript_id": "t_plus",
+            "ID": "cds_id",
+            "Start_variant": 150,
+            "End_variant": 152,
+            "ID_variant": "v1",
+            "Ref": "N",
+            "Alt": "A",
+        }
+    ]
+    pd.testing.assert_index_equal(joined.index, pd.RangeIndex(1))
+
+
+def test_join_variants_to_cds_order():
+    """CDS rows in the order of cds_df; the variants of one CDS row by Start, then End descending, then VCF order."""
+    vcf = _join_vcf(
+        [
+            ("chr1", 150, 151, "last"),
+            ("chr1", 120, 121, "snv_a"),
+            ("chr1", 120, 125, "deletion"),
+            ("chr1", 120, 121, "snv_b"),
+            ("chr1", 90, 110, "first"),
+            ("chr1", 350, 351, "minus"),
+            ("chr1", 120, 121, "snv_c"),
+        ]
+    )
+    joined = join_variants_to_cds(_join_cds(), vcf)
+    assert _pairs(joined) == [
+        ("t_minus", "minus"),
+        ("t_plus", "first"),
+        ("t_plus", "deletion"),
+        ("t_plus", "snv_a"),
+        ("t_plus", "snv_b"),
+        ("t_plus", "snv_c"),
+        ("t_plus", "last"),
+    ]

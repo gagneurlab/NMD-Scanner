@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars_bio as pb
-import pyranges as pr
 from Bio.Seq import Seq
 from pyfaidx import Fasta
 
@@ -31,8 +30,9 @@ def read_vcf(vcf_path):
     #  (especially the inclusion of the Variants into the reference CDS sequence to create the alternative CDS)
 
     """
-    Reads a VCF file, plain or gzip-compressed, with polars-bio into a PyRanges object with the
-    columns Chromosome, Start, End, ID, Ref and Alt. QUAL, FILTER and INFO are not read.
+    Reads a VCF file, plain or gzip-compressed, with polars-bio into a pandas DataFrame with the
+    columns Chromosome, Start, End, ID, Ref and Alt, one row per record in file order, and a
+    RangeIndex. QUAL, FILTER and INFO are not read.
 
     Start and End are 0-based half-open: Start is POS - 1, and End is Start plus the length of REF,
     also for a symbolic allele with an INFO END. Every other field stays text as written, e.g.
@@ -83,7 +83,7 @@ def read_vcf(vcf_path):
             "Split and normalize first, e.g. `bcftools norm -m- -f reference.fa`."
         )
 
-    return pr.PyRanges(df)
+    return df
 
 
 def detect_annotation_format(path):
@@ -106,7 +106,7 @@ def detect_annotation_format(path):
 
 def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
     """
-    Reads a GFF3 gene annotation file into a PyRanges object with the exon rows and the coding
+    Reads a GFF3 gene annotation file into a pandas DataFrame with the exon rows and the coding
     regions that ``rules.extract_ptc`` takes (see ``read_gff3``).
 
     The coding regions are the CDS rows: they include the stop codon, one row per transcript and
@@ -121,7 +121,7 @@ def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
         codon. Required.
     :param fmt: "gff3" to skip the check of the filename suffix
     :param reassign_exons: Recompute the exon numbers with ``compute_exon_numbers``
-    :return: PyRanges object, as ``read_gff3`` returns it
+    :return: DataFrame, as ``read_gff3`` returns it
     :raises ValueError: for a GTF file name or ``fmt="gtf"``, for an unknown format, or without ``fasta``
     """
     if fmt is None:
@@ -144,7 +144,7 @@ def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
 
 def read_gff3(gff3_path, fasta):
     """
-    Reads a GFF3 file into a PyRanges object with the exon rows and the coding regions that
+    Reads a GFF3 file into a pandas DataFrame with the exon rows and the coding regions that
     ``rules.extract_ptc`` takes.
 
     Two GFF3 flavors are supported, auto-detected from the attributes present:
@@ -175,9 +175,10 @@ def read_gff3(gff3_path, fasta):
 
     :param gff3_path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object)
-    :return: PyRanges object with the exon and CDS rows, the columns Chromosome, Source, Feature,
-        Start, End, Score, Strand, Frame, has_stop_codon, gene_id, transcript_id and exon_number, and
-        the other attributes of ``GFF3_ATTRIBUTES`` that the file has, except ID and Parent
+    :return: DataFrame with the exon and CDS rows in file order and a RangeIndex, the columns
+        Chromosome, Source, Feature, Start, End, Score, Strand, Frame, has_stop_codon, gene_id,
+        transcript_id and exon_number, and the other attributes of ``GFF3_ATTRIBUTES`` that the file
+        has, except ID and Parent
     :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, or if its
         flavor is neither GENCODE nor Ensembl
     """
@@ -211,7 +212,7 @@ def read_gff3(gff3_path, fasta):
     # unrelated "ID" column read_vcf uses for the VCF record ID once CDS rows are joined to it.
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
-    return pr.PyRanges(df)
+    return df.reset_index(drop=True)
 
 
 # The GFF3 attributes that read_gff3 and its helpers use. polars-bio reads no other attribute.
@@ -523,7 +524,7 @@ def _normalize_ensembl_gff3(df):
         if rank[child_df["Feature"] == "exon"].notna().all():
             child_df["exon_number"] = rank.where(child_df["Feature"] == "exon").astype("Int64")
             return _assign_exon_numbers_to_cds(child_df)
-    return compute_exon_numbers(pr.PyRanges(child_df)).df
+    return compute_exon_numbers(child_df)
 
 
 def _check_ids_resolved(df, mask):
@@ -541,9 +542,9 @@ def read_fasta(fasta_path):
     return Fasta(fasta_path)
 
 
-def compute_exon_numbers(gtf):
+def compute_exon_numbers(annotation):
     """
-    Compute exon numbers for the Features exon, CDS and stop_codon in an annotation PyRanges object.
+    Compute exon numbers for the Features exon, CDS and stop_codon in an annotation DataFrame.
     Exon numbers are assigned based on genomic order per transcript and strand.
     CDS and stop_codon features inherit the exon number of the exon they overlap.
 
@@ -551,10 +552,14 @@ def compute_exon_numbers(gtf):
     On - Strand: Smallest exon number is the Start, Largest exon number is the End.
     (was different for hg19: the smallest exon number was the end, that is why we need to adjust it here.)
 
-    :param gtf: PyRanges object of the annotation
-    :return: PyRanges object with new column 'exon_number_computed'
+    :param annotation: DataFrame with Feature, transcript_id, Start, End and Strand, e.g. as
+        ``read_annotation`` returns it
+    :return: A copy of ``annotation`` with a RangeIndex and the computed numbers in the column
+        exon_number (nullable integer). Rows that are not exon, CDS or stop_codon rows keep their
+        exon_number; a CDS or stop_codon row without an overlapping exon keeps its exon_number too.
     """
-    gtf_df = gtf.df.copy()
+    # a unique index for _assign_exon_numbers_to_cds
+    gtf_df = annotation.reset_index(drop=True)
 
     # An annotation read from file has exon_number as str (pandas 3) with missing values on
     # features without one. The computed numbers are ints, so hold the column as nullable integer.
@@ -570,7 +575,7 @@ def compute_exon_numbers(gtf):
     gtf_df.loc[order.index, "exon_number"] = (order.groupby("transcript_id").cumcount() + 1).astype("Int64")
 
     # Step 2: Assign exon numbers to CDS and stop_codon features
-    return pr.PyRanges(_assign_exon_numbers_to_cds(gtf_df))
+    return _assign_exon_numbers_to_cds(gtf_df)
 
 
 def _assign_exon_numbers_to_cds(df):

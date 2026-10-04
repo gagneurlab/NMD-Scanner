@@ -99,9 +99,8 @@ fasta = Fasta("reference.fa")
 # exon rows and coding regions: CDS rows that include the stop codon, with the column has_stop_codon.
 # The FASTA shows whether a CDS ends in a stop codon.
 # Optional: reassign_exons=True recomputes the exon numbers (recommended for hg19).
-annotation_pr = nmd_scanner.read_annotation("annotation.gff3.gz", fasta, reassign_exons=False)
+annotation = nmd_scanner.read_annotation("annotation.gff3.gz", fasta, reassign_exons=False)
 
-annotation = annotation_pr.df
 cds_df = annotation[annotation["Feature"] == "CDS"]
 exons_df = annotation[annotation["Feature"] == "exon"].copy()
 exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]

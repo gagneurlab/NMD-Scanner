@@ -2,8 +2,9 @@
 
 import logging
 
+import numpy as np
 import pandas as pd
-import pyranges as pr
+import polars_bio as pb
 from Bio.Seq import Seq
 
 from nmd_scanner import catch_sequence
@@ -22,7 +23,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    transcript and exon, with exon_number and the column has_stop_codon. has_stop_codon says whether
                    the coding region of the transcript ends in an annotated stop codon. ``scan.read_annotation``
                    returns the coding regions as its CDS rows.
-    :param vcf: Parsed VCF variant entries (PyRanges object)
+    :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
@@ -42,7 +43,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
 
     # Intersect variants with CDS regions
-    intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
+    intersection_cds_vcf = join_variants_to_cds(cds_df_adj, vcf)
     logger.info("Joining variants with cds entries: done.")
 
     # Nothing to analyze: the steps below need at least one row
@@ -197,6 +198,46 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
 
 # Functions used for extracting PTC:
+
+
+def join_variants_to_cds(cds_df, vcf):
+    """
+    Joins every CDS row to the variants that overlap it, as the join of pyranges 0.x did.
+
+    A CDS row and a variant overlap if they are on the same Chromosome and their 0-based half-open
+    intervals share at least one base: a variant that ends at the Start of a CDS row, or starts at
+    its End, does not overlap it. Strand is ignored. polars-bio computes the overlaps.
+
+    :param cds_df: CDS rows (DataFrame) with Chromosome, Start and End
+    :param vcf: Variants (DataFrame) with Chromosome, Start and End
+    :return: DataFrame with one row per overlapping CDS row and variant, and a RangeIndex. It has the
+        columns of cds_df, then the columns of vcf except Chromosome. A column of vcf that cds_df has
+        too gets the suffix "_variant", e.g. Start_variant and End_variant. The rows come in the order
+        of cds_df; the variants of one CDS row by Start, then by End descending, then in the order of
+        vcf. pyranges 0.x gave the same order for a cds_df in the row order of its PyRanges.df.
+    """
+
+    def intervals(df):
+        frame = pd.DataFrame(
+            {
+                "chrom": df["Chromosome"].astype(str).to_numpy(),
+                "start": df["Start"].to_numpy(dtype="int64"),
+                "end": df["End"].to_numpy(dtype="int64"),
+                "row": np.arange(len(df)),
+            }
+        )
+        # polars-bio reads this to treat the intervals as 0-based half-open
+        frame.attrs["coordinate_system_zero_based"] = True
+        return frame
+
+    pairs = pb.overlap(intervals(cds_df), intervals(vcf), suffixes=("_cds", "_variant"), output_type="polars.DataFrame")
+    # polars-bio returns the pairs in no fixed order
+    pairs = pairs.sort(
+        ["row_cds", "start_variant", "end_variant", "row_variant"], descending=[False, False, True, False]
+    )
+    cds_rows = cds_df.iloc[pairs["row_cds"].to_numpy()].reset_index(drop=True)
+    variant_rows = vcf.drop(columns="Chromosome").iloc[pairs["row_variant"].to_numpy()].reset_index(drop=True)
+    return cds_rows.join(variant_rows, rsuffix="_variant")
 
 
 def apply_variant_edge_aware_with_lengths(row):

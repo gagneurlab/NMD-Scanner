@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 
 import pandas as pd
-import pyranges as pr
 import pytest
 from Bio.Seq import Seq
 from pyfaidx import Fasta
@@ -38,15 +37,11 @@ def fasta_path():
 # Test reading VCF file
 def test_read_vcf_file(vcf_path):
 
-    gr = nmd_scanner.scan.read_vcf(vcf_path)
-    assert gr is not None
-    assert gr.df.shape[0] > 0
-    assert "Chromosome" in gr.df.columns
-    assert "Start" in gr.df.columns
-    assert "End" in gr.df.columns
-
-    print(gr.df.head())
-    print(gr.df.shape)
+    df = nmd_scanner.scan.read_vcf(vcf_path)
+    assert isinstance(df, pd.DataFrame)
+    assert df.shape[0] > 0
+    assert list(df.columns) == ["Chromosome", "Start", "End", "ID", "Ref", "Alt"]
+    pd.testing.assert_index_equal(df.index, pd.RangeIndex(len(df)))
 
 
 def test_read_vcf_rejects_multiallelic(tmp_path):
@@ -69,8 +64,8 @@ def test_read_vcf_accepts_single_allelic(tmp_path):
         "chr1\t100\tv1\tA\tT\t.\t.\t.\n"
         "chr1\t200\tv2\tC\tG\t.\t.\t.\n"
     )
-    gr = nmd_scanner.scan.read_vcf(str(vcf))
-    assert gr.df.shape[0] == 2
+    df = nmd_scanner.scan.read_vcf(str(vcf))
+    assert df.shape[0] == 2
 
 
 # A column with any non-numeric value stays text even without dtype=str, so the all-numeric ID pair
@@ -79,8 +74,7 @@ def test_read_vcf_accepts_single_allelic(tmp_path):
 def test_read_vcf_keeps_text_fields_as_written(tmp_path, ids):
     vcf = tmp_path / "text_fields.vcf"
     vcf.write_text(VCF_HEADER + f"01\t100\t{ids[0]}\tA\tNA\t.\tPASS\tNA\n01\t200\t{ids[1]}\tC\tG\t50\t.\t.\n")
-    df = nmd_scanner.scan.read_vcf(str(vcf)).df
-    # pyranges turns Chromosome into a str category, so only a name that int parsing changes can fail here
+    df = nmd_scanner.scan.read_vcf(str(vcf))
     assert (df["Chromosome"] == "01").all()
     assert df["ID"].tolist() == list(ids)
     assert df["Alt"].tolist() == ["NA", "G"]
@@ -92,7 +86,7 @@ def test_read_vcf_keeps_a_dot_in_id_and_alt(tmp_path):
     """polars-bio gives "" for "."; read_vcf turns it back into "."."""
     vcf = tmp_path / "dots.vcf"
     vcf.write_text(VCF_HEADER + "chr1\t100\t.\tA\t.\t.\t.\t.\nchr1\t200\tv2\tC\tG\t.\t.\t.\n")
-    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    df = nmd_scanner.scan.read_vcf(str(vcf))
     assert df["ID"].tolist() == [".", "v2"]
     assert df["Alt"].tolist() == [".", "G"]
 
@@ -105,7 +99,7 @@ def test_read_vcf_drops_qual_filter_and_info(tmp_path):
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
         "chr1\t100\tv1\tA\tT\t50\tPASS\tDP=12\n"
     )
-    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    df = nmd_scanner.scan.read_vcf(str(vcf))
     assert list(df.columns) == ["Chromosome", "Start", "End", "ID", "Ref", "Alt"]
 
 
@@ -119,7 +113,7 @@ def test_read_vcf_end_comes_from_ref_not_from_info_end(tmp_path):
         "chr1\t100\tdel\tN\t<DEL>\t.\t.\tEND=200\n"
         "chr1\t300\tindel\tACG\tA\t.\t.\t.\n"
     )
-    df = nmd_scanner.scan.read_vcf(str(vcf)).df
+    df = nmd_scanner.scan.read_vcf(str(vcf))
     assert df["Start"].tolist() == [99, 299]
     assert df["End"].tolist() == [100, 302]
 
@@ -143,9 +137,9 @@ def test_read_vcf_reads_plain_and_gzip_files_alike(tmp_path):
     gz = tmp_path / "variants.vcf.gz"
     with gzip.open(gz, "wt") as fh:
         fh.write(content)
-    expected = nmd_scanner.scan.read_vcf(str(plain)).df
+    expected = nmd_scanner.scan.read_vcf(str(plain))
     assert len(expected) == 2
-    pd.testing.assert_frame_equal(nmd_scanner.scan.read_vcf(str(gz)).df, expected)
+    pd.testing.assert_frame_equal(nmd_scanner.scan.read_vcf(str(gz)), expected)
 
 
 def test_read_vcf_missing_file_raises_file_not_found(tmp_path):
@@ -161,7 +155,7 @@ def _coding_sequence(coding, fasta):
 
 def test_read_annotation_gives_whole_coding_regions_on_real_transcripts(gff3_path, fasta_path):
     fasta = Fasta(fasta_path)
-    annotation = nmd_scanner.scan.read_annotation(gff3_path, fasta).df
+    annotation = nmd_scanner.scan.read_annotation(gff3_path, fasta)
     cds = annotation[annotation["Feature"] == "CDS"]
 
     # a stop codon split across an intron: its last base (+ strand) or its last 2 bases (- strand) make up the
@@ -204,7 +198,7 @@ def test_compute_exon_numbers():
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
-    out1 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df1)).df
+    out1 = nmd_scanner.compute_exon_numbers(df1)
 
     tx1_exons = out1[(out1.Feature == "exon") & (out1.transcript_id == "TX1")].sort_values("Start")
     assert list(tx1_exons["exon_number"]) == [1, 2]
@@ -221,7 +215,7 @@ def test_compute_exon_numbers():
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
 
-    out2 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df2)).df
+    out2 = nmd_scanner.compute_exon_numbers(df2)
 
     tx2_exons = out2[(out2.Feature == "exon") & (out2.transcript_id == "TX2")].sort_values("Start")
     assert list(tx2_exons["exon_number"]) == [2, 1]
@@ -243,7 +237,7 @@ def test_compute_exon_numbers():
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
-    out4 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df4)).df
+    out4 = nmd_scanner.compute_exon_numbers(df4)
 
     # check exons exon-numbers
     tx2b_exons = out4[(out4.Feature == "exon") & (out4.transcript_id == "TX2b")].sort_values("Start")
@@ -288,7 +282,7 @@ def test_compute_exon_numbers():
         ],
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id"],
     )
-    out3 = nmd_scanner.compute_exon_numbers(pr.PyRanges(df3)).df
+    out3 = nmd_scanner.compute_exon_numbers(df3)
 
     ex_txA = out3[(out3.Feature == "exon") & (out3.transcript_id == "TXA")].sort_values("Start")
     ex_txB = out3[(out3.Feature == "exon") & (out3.transcript_id == "TXB")].sort_values("Start")
@@ -298,6 +292,22 @@ def test_compute_exon_numbers():
     # TODO: maybe add the edge case if:
     # 1. CDS does not overlap any exon --> should not crash but exon_number should stay missing
     # 2. CDS overlaps two exons --> should it inherit the exon_number with the maximum overlap??
+
+
+def test_compute_exon_numbers_takes_a_dataframe_with_any_index():
+    df = pd.DataFrame(
+        [
+            ["chr1", 100, 200, "+", "exon", "TX1"],
+            ["chr1", 300, 400, "+", "exon", "TX1"],
+            ["chr1", 320, 400, "+", "CDS", "TX1"],
+        ],
+        columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id"],
+        index=[7, 7, 7],
+    )
+    out = nmd_scanner.compute_exon_numbers(df)
+    assert isinstance(out, pd.DataFrame)
+    pd.testing.assert_index_equal(out.index, pd.RangeIndex(3))
+    assert out["exon_number"].tolist() == [1, 2, 2]
 
 
 def test_compute_exon_numbers_with_str_exon_number_column():
@@ -317,7 +327,7 @@ def test_compute_exon_numbers_with_str_exon_number_column():
         columns=["Chromosome", "Start", "End", "Strand", "Feature", "transcript_id", "gene_id", "exon_number"],
     )
     df["exon_number"] = df["exon_number"].astype("str")
-    out = nmd_scanner.compute_exon_numbers(pr.PyRanges(df)).df
+    out = nmd_scanner.compute_exon_numbers(df)
 
     exons = out[out.Feature == "exon"].sort_values("Start")
     assert list(exons["exon_number"]) == [1, 2]
@@ -476,10 +486,9 @@ _COMPARISON_COLUMNS = [
 ]
 
 
-def _cds_exon_table(pyranges_obj):
+def _cds_exon_table(annotation):
     """Exon rows plus the coding regions (CDS rows with has_stop_codon), as extract_ptc sees them."""
-    df = pyranges_obj.df
-    df = df[df["Feature"].isin(["exon", "CDS"])].copy()
+    df = annotation[annotation["Feature"].isin(["exon", "CDS"])].copy()
     df["exon_number"] = df["exon_number"].astype(int)
     df["has_stop_codon"] = df["has_stop_codon"].astype("boolean")
     # Cast away categorical dtypes so the comparison is about values, not incidental
@@ -489,12 +498,12 @@ def _cds_exon_table(pyranges_obj):
     return df[_COMPARISON_COLUMNS].sort_values(["transcript_id", "Feature", "Start"]).reset_index(drop=True)
 
 
-def _rows(pyranges_obj):
+def _rows(annotation):
     """
     The rows of _cds_exon_table as (transcript_id, Feature, Start, End, exon_number, has_stop_codon)
     tuples, has_stop_codon None on the exon rows, and {transcript_id: (gene_id, Chromosome, Strand)}.
     """
-    table = _cds_exon_table(pyranges_obj)
+    table = _cds_exon_table(annotation)
     rows = [
         (tx, feature, start, end, number, None if pd.isna(has_stop) else bool(has_stop))
         for tx, feature, start, end, number, has_stop in table[
@@ -577,6 +586,8 @@ def test_read_gff3_gives_the_coding_regions_and_exons_of_the_fixture(
     tmp_path, gff3, expected_rows, expected_transcripts
 ):
     annotation = nmd_scanner.scan.read_gff3(_write(tmp_path, "a.gff3", gff3), _fasta(tmp_path))
+    assert isinstance(annotation, pd.DataFrame)
+    pd.testing.assert_index_equal(annotation.index, pd.RangeIndex(len(annotation)))
     assert _rows(annotation) == (expected_rows, expected_transcripts)
 
 
@@ -605,7 +616,7 @@ def test_read_gff3_stop_codon_from_sequence(tmp_path):
         bases[(chrom, start + length - 2)] = codon
     gff3_path = _write(tmp_path, "ensembl.gff3", "##gff-version 3\n" + "\n".join(rows) + "\n")
 
-    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path, bases)).df
+    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path, bases))
 
     assert set(df["Feature"]) == {"exon", "CDS"}
     cds = df[df["Feature"] == "CDS"]
@@ -634,7 +645,7 @@ def test_read_gff3_gives_coding_regions_without_stop_codon_rows(tmp_path):
         ),
         ("ensembl.gff3", _ENSEMBL_GFF3, {"ENSTE001", "ENSTE002", "ENSTE003", "ENSTE006"}),
     ]:
-        df = nmd_scanner.scan.read_gff3(_write(tmp_path, name, content), fasta).df
+        df = nmd_scanner.scan.read_gff3(_write(tmp_path, name, content), fasta)
         assert set(df["Feature"]) == {"exon", "CDS"}
         assert df.loc[df["Feature"] == "exon", "has_stop_codon"].isna().all()
         cds = df[df["Feature"] == "CDS"]
@@ -730,7 +741,7 @@ def test_read_gff3_drops_id_and_parent_columns(tmp_path):
 
     fasta = _fasta(tmp_path)
     for path in (gencode_path, ensembl_path):
-        df = nmd_scanner.scan.read_gff3(path, fasta).df
+        df = nmd_scanner.scan.read_gff3(path, fasta)
         assert "ID" not in df.columns
         assert "Parent" not in df.columns
 
@@ -766,7 +777,7 @@ chrX\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_i
 """
     gff3_path = _write(tmp_path, "par_y.gff3", content)
 
-    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path)).df
+    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
     cds = df[df["Feature"] == "CDS"]
 
     transcript_ids = set(cds["transcript_id"])
@@ -791,7 +802,7 @@ chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gen
 chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_id=ENSG%3D001%26x;transcript_id=ENST%3B001%2C1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
 chr1\tHAVANA\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_id=ENSG%3D001%26x;transcript_id=ENST%3B001%2C1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
 """
-    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "escaped.gff3", content), _fasta(tmp_path)).df
+    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "escaped.gff3", content), _fasta(tmp_path))
     assert set(df["transcript_id"]) == {"ENST;001,1"}
     assert set(df["gene_id"]) == {"ENSG=001&x"}
 
@@ -812,9 +823,9 @@ chr1\tsource\ttranscript\t1000\t2000\t.\t+\t.\tID=T1;Parent=G1
 
 def test_compute_exon_numbers_equal_the_annotated_numbers_on_both_strands(gff3_path, fasta_path):
     """The numbers computed from genomic order are the ones the chr18 GFF3 carries."""
-    annotation = nmd_scanner.scan.read_gff3(gff3_path, Fasta(fasta_path)).df
+    annotation = nmd_scanner.scan.read_gff3(gff3_path, Fasta(fasta_path))
     # without the annotated numbers, so that the test sees only what compute_exon_numbers computes
-    computed = nmd_scanner.compute_exon_numbers(pr.PyRanges(annotation.drop(columns="exon_number"))).df
+    computed = nmd_scanner.compute_exon_numbers(annotation.drop(columns="exon_number"))
     expected = annotation["exon_number"].astype("Int64")
     assert set(computed["Feature"]) == {"exon", "CDS"}
     assert set(computed["Strand"]) == {"+", "-"}
@@ -827,7 +838,7 @@ def test_read_gff3_ensembl_takes_exon_numbers_from_rank_not_from_compute_exon_nu
 
     monkeypatch.setattr(nmd_scanner.scan, "compute_exon_numbers", fail)
     gff3_path = _write(tmp_path, "ensembl.gff3", _ENSEMBL_GFF3)
-    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path)).df
+    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
     numbers = df.groupby(["transcript_id", "Feature"])["exon_number"].apply(list)
     assert numbers[("ENSTE002", "exon")] == [1, 2]
     assert numbers[("ENSTE002", "CDS")] == [1, 2]
@@ -844,7 +855,7 @@ chr1\tensembl\texon\t1500\t2000\t.\t+\t.\tParent=transcript:T1;rank=8
 chr1\tensembl\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:P1;Parent=transcript:T1
 chr1\tensembl\tCDS\t1500\t1900\t.\t+\t0\tID=CDS:P1;Parent=transcript:T1
 """
-    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "rank.gff3", content), _fasta(tmp_path)).df
+    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "rank.gff3", content), _fasta(tmp_path))
     assert df[df["Feature"] == "CDS"]["exon_number"].tolist() == [7, 8]
     assert df[df["Feature"] == "exon"]["exon_number"].tolist() == [7, 8]
 
@@ -869,7 +880,7 @@ def test_compute_exon_numbers_cds_takes_the_exon_with_the_most_overlap():
             "transcript_id": ["T1"] * 4,
         }
     )
-    out = nmd_scanner.compute_exon_numbers(pr.PyRanges(df)).df.sort_values("Start")
+    out = nmd_scanner.compute_exon_numbers(df).sort_values("Start")
     assert out.loc[out["Feature"] == "exon", "exon_number"].tolist() == [2, 1]
     # CDS 190-205 overlaps exon 100-200 by 10 and exon 200-300 by 5. CDS 195-240 overlaps exon
     # 100-200 by 5 and exon 200-300 by 40, so the first overlapping exon is not the answer there.
@@ -893,9 +904,9 @@ def test_read_annotation_fmt_overrides_the_file_suffix(tmp_path):
     fasta = _fasta(tmp_path)
     with pytest.raises(ValueError, match="Cannot detect annotation format"):
         nmd_scanner.scan.read_annotation(plain_path, fasta)
-    via_fmt = nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="gff3").df
+    via_fmt = nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="gff3")
     pd.testing.assert_frame_equal(
-        via_fmt, nmd_scanner.scan.read_annotation(_write(tmp_path, "a.gff3", _GENCODE_GFF3), fasta).df
+        via_fmt, nmd_scanner.scan.read_annotation(_write(tmp_path, "a.gff3", _GENCODE_GFF3), fasta)
     )
     with pytest.raises(ValueError, match="Unknown annotation format 'bed', expected 'gff3'"):
         nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="bed")
@@ -910,7 +921,7 @@ chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gen
 chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_id=ENSG001.1_9;transcript_id=ENST001.1_2;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
 chr1\tHAVANA\tCDS\t1050\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_id=ENSG001.1_9;transcript_id=ENST001.1_2;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
 """
-    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "lift37.gff3", content), _fasta(tmp_path)).df
+    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "lift37.gff3", content), _fasta(tmp_path))
     assert set(df["transcript_id"]) == {"ENST001.1_2"}
     assert set(df["gene_id"]) == {"ENSG001.1_9"}
 
@@ -922,7 +933,7 @@ chr1\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1;gene_type=protein_coding
 chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gene_type=protein_coding;transcript_type=protein_coding
 chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
 """
-    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_ids.gff3", content), _fasta(tmp_path)).df
+    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_ids.gff3", content), _fasta(tmp_path))
     assert df["transcript_id"].tolist() == ["ENST001.1"]
     assert df["gene_id"].tolist() == ["ENSG001.1"]
 
@@ -938,7 +949,7 @@ chr1\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1;gene_type=protein_coding
 chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gene_type=protein_coding;transcript_type=protein_coding
 chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1
 """
-    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "some_ids.gff3", content), _fasta(tmp_path)).df
+    df = nmd_scanner.scan.read_gff3(_write(tmp_path, "some_ids.gff3", content), _fasta(tmp_path))
     assert df["transcript_id"].tolist() == ["ENST000.1_5", "ENST001.1"]
     assert df["gene_id"].tolist() == ["ENSG000.1_5", "ENSG001.1"]
 

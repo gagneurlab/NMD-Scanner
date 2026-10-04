@@ -50,7 +50,7 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False, annota
     # read VCF file (variants)
     logger.info("Reading VCF file: %s", vcf_path)
     vcf = read_vcf(vcf_path)
-    logger.info("VCF shape: %s", vcf.df.shape)
+    logger.info("VCF shape: %s", vcf.shape)
 
     # read FASTA file (genome sequence)
     logger.info("Reading FASTA file: %s", fasta_path)
@@ -59,14 +59,13 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False, annota
     # read gene annotation file (GFF3) into exon rows and coding regions (CDS rows with has_stop_codon).
     # reassign_exons recomputes the exon numbers (need this for the (old) hg19 version).
     logger.info("Reading annotation file: %s", annotation_path)
-    gtf = read_annotation(annotation_path, fasta, fmt=annotation_format, reassign_exons=reassign_exons)
-    logger.info("Annotation file shape: %s", gtf.df.shape)
-    cds_df = gtf[gtf.Feature == "CDS"].df
+    annotation = read_annotation(annotation_path, fasta, fmt=annotation_format, reassign_exons=reassign_exons)
+    logger.info("Annotation file shape: %s", annotation.shape)
+    cds_df = annotation[annotation["Feature"] == "CDS"]
 
     # extract exon regions from the annotation and compute exon related metrics:
     # exon length & number of exons contained in each transcript
-    exons = gtf[gtf.Feature == "exon"]
-    exons_df = exons.df
+    exons_df = annotation[annotation["Feature"] == "exon"].copy()
     exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
     # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
