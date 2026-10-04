@@ -403,8 +403,8 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
 
     assert set(results["variant_id"]) == {"v1"}
     warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
-    # The count is not checked: it counts variant-transcript rows, not variants.
-    assert any(message.endswith(" variants due to reference mismatches.") for message in warnings)
+    # The count is not checked.
+    assert any(message.endswith(" variant-transcript pairs due to reference mismatches.") for message in warnings)
     listing = next(message for message in warnings if message.startswith("Reference-mismatched variants:"))
     # one row per transcript: transcript_id, Chromosome, Start_variant, End_variant, Ref, Alt
     rows = [line.split() for line in listing.splitlines()[2:]]
