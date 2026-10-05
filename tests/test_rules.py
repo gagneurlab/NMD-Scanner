@@ -21,6 +21,7 @@ from nmd_scanner.rules import (
     apply_variant_edge_aware_with_lengths,
     cds_range_in_transcript,
     create_reference_cds,
+    drop_symbolic_alleles,
     extract_ptc,
     get_exon,
     get_transcript_sequence,
@@ -948,6 +949,29 @@ def test_extract_ptc_needs_the_coding_regions():
     )
     with pytest.raises(ValueError, match="has_stop_codon"):
         extract_ptc(rows, vcf=None, fasta=None, exons_df=None)
+
+
+# drop_symbolic_alleles: the records that extract_ptc skips
+
+
+@pytest.mark.parametrize(
+    "alt",
+    ["<DEL>", "<DUP>", "<INS>", "<INV>", "<CNV>", "<DUP:TANDEM>", "<INS:ME:ALU>", "<*>"]
+    + ["G]chr2:100]", "]chr2:100]G", "G[chr2:100[", "[chr2:100[G", "G.", ".G", "GTA."],
+)
+def test_drop_symbolic_alleles_drops_symbolic_alleles_and_breakends(alt):
+    vcf = pd.DataFrame({"Alt": ["T", alt, "GT"]}, index=[10, 11, 12])
+
+    assert drop_symbolic_alleles(vcf)["Alt"].tolist() == ["T", "GT"]
+    assert drop_symbolic_alleles(vcf).index.tolist() == [10, 12]
+
+
+@pytest.mark.parametrize("alt", ["T", "GT", "ACGTN", "acgt"])
+def test_drop_symbolic_alleles_keeps_sequence_alleles(alt, caplog):
+    vcf = pd.DataFrame({"Alt": [alt]})
+
+    pd.testing.assert_frame_equal(drop_symbolic_alleles(vcf), vcf)
+    assert caplog.text == ""
 
 
 # join_variants_to_cds: the CDS x VCF join of extract_ptc

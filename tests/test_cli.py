@@ -690,6 +690,47 @@ def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic
     assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
 
 
+# Each symbolic allele and breakend sits at the position of v1, inside the GREB1L CDS. Before they were skipped, a
+# symbolic allele with a padding base went into the alt CDS as text, e.g. "<DEL>".
+SYMBOLIC_ALTS = ["<DEL>", "<DUP>", "<INS>", "<INV>", "<CNV>", "<DUP:TANDEM>", "G]chr2:100]", "[chr2:100[G", "G.", ".G"]
+
+
+def _symbolic_vcf(tmp_path, with_snv):
+    records = [f"chr18\t21383521\tsv{i}\tG\t{alt}\t.\t.\t.\n" for i, alt in enumerate(SYMBOLIC_ALTS)]
+    if with_snv:
+        records.append("chr18\t21383521\tv1\tG\tGT\t.\t.\t.\n")
+    vcf = tmp_path / "symbolic.vcf"
+    vcf.write_text("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" + "".join(records))
+    return str(vcf)
+
+
+def test_annotate_skips_symbolic_alleles_and_breakends_with_a_warning(tmp_path, caplog):
+    with caplog.at_level(logging.INFO):
+        results = annotate(_symbolic_vcf(tmp_path, True), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    assert not results.empty
+    assert set(results["variant_id"]) == {"v1"}
+    assert not results["alt_cds_seq"].str.contains("<|>|\\[|\\]|\\.").any()
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert any(
+        message.startswith(f"Skipping {len(SYMBOLIC_ALTS)} variant(s) with a symbolic ALT") for message in warnings
+    )
+
+
+def test_annotate_with_only_symbolic_alleles_returns_all_columns_and_no_rows(tmp_path):
+    results = annotate(_symbolic_vcf(tmp_path, False), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    assert results.empty
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+
+
+def test_annotate_without_symbolic_alleles_does_not_warn_about_them(caplog):
+    with caplog.at_level(logging.INFO):
+        annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    assert "symbolic ALT" not in caplog.text
+
+
 def test_annotate_reassign_exons_matches_main(tmp_path):
     args = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
     expected = main(*args, str(tmp_path / "main.csv"), reassign_exons=True)

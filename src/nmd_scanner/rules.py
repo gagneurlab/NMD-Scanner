@@ -12,6 +12,10 @@ from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table
 
 logger = logging.getLogger(__name__)
 
+# An ALT allele that names a structural variant instead of giving its sequence: a symbolic allele such as <DEL>,
+# <DUP:TANDEM> or <*>, a breakend such as G]chr2:100] or [chr2:100[G, or a single breakend such as G. or .G
+SYMBOLIC_ALT_PATTERN = r"^<[^>]*>$|[\[\]]|^\.[A-Za-z]+$|^[A-Za-z]+\.$"
+
 
 # Main extract PTC script:
 def extract_ptc(cds_df, vcf, fasta, exons_df):
@@ -23,12 +27,13 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    transcript and exon, with exon_number and the column has_stop_codon. has_stop_codon says whether
                    the coding region of the transcript ends in an annotated stop codon. ``scan.read_annotation``
                    returns the coding regions as its CDS rows.
-    :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them
+    :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them.
+                A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
              It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has zero rows if no
-             variant overlaps a CDS or every variant has a reference mismatch.
+             variant overlaps a CDS, or every variant is skipped or has a reference mismatch.
     :raises ValueError: if cds_df has no has_stop_codon column, i.e. it does not hold the coding regions.
     """
 
@@ -41,6 +46,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     cds_df_adj = cds_df.copy()
     # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_info)
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
+
+    # The variant application below cannot apply a structural variant
+    vcf = drop_symbolic_alleles(vcf)
 
     # Intersect variants with CDS regions
     intersection_cds_vcf = join_variants_to_cds(cds_df_adj, vcf)
@@ -189,6 +197,26 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 MAX_JOIN_COORDINATE = 2**31 - 1
 
 
+def drop_symbolic_alleles(vcf):
+    """
+    Returns the variants without the records whose ALT is a symbolic allele or a breakend (see SYMBOLIC_ALT_PATTERN),
+    and logs a warning with their count. Such an ALT names a structural variant instead of giving its sequence. The
+    variant application would insert its text into the sequence, e.g. "<DEL>" into the alt CDS.
+
+    :param vcf: Variants (DataFrame) with the column Alt
+    :return: The rows of ``vcf`` whose ALT is a sequence, in their order and with their index
+    """
+
+    symbolic = vcf["Alt"].astype(str).str.contains(SYMBOLIC_ALT_PATTERN, regex=True)
+    if symbolic.any():
+        logger.warning(
+            "Skipping %d variant(s) with a symbolic ALT allele or a breakend, e.g. <DEL> or G]chr2:100]. "
+            "NMD-Scanner cannot apply structural variants yet.",
+            int(symbolic.sum()),
+        )
+    return vcf[~symbolic]
+
+
 def join_variants_to_cds(cds_df, vcf):
     """
     Joins every CDS row to the variants that overlap it.
@@ -275,6 +303,7 @@ def apply_variant_edge_aware_with_lengths(row):
     var_start = int(row["Start_variant"])
     var_end = int(row["End_variant"])
 
+    # extract_ptc skips symbolic alleles (drop_symbolic_alleles), so only a direct call reaches the two branches below.
     # Special handling for deletions (Ref = N and Alt = <DEL>)
     if ref == "N" and alt == "<DEL>":
         # Clip deletion to the CDS region (only remove overlap part)

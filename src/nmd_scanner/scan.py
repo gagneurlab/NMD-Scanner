@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 def read_vcf(vcf_path):
     # TODO: adjust this function to also get structural variants and then also adjust downstream analysis
-    #  (especially the inclusion of the Variants into the reference CDS sequence to create the alternative CDS)
+    #  (especially the inclusion of the Variants into the reference CDS sequence to create the alternative CDS).
+    #  Until then, extract_ptc skips symbolic alleles and breakends.
 
     """
     Reads a VCF file, plain or gzip-compressed, with polars-bio into a pandas DataFrame with the
