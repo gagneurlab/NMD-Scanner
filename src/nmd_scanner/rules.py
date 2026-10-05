@@ -206,8 +206,7 @@ MAX_JOIN_COORDINATE = 2**31 - 1
 
 def join_variants_to_cds(cds_df, vcf):
     """
-    Joins every CDS row to the variants that overlap it. The rows are those of the join of
-    pyranges 0.x.
+    Joins every CDS row to the variants that overlap it.
 
     A CDS row and a variant overlap if they are on the same Chromosome and their 0-based half-open
     intervals share at least one base: a variant that ends at the Start of a CDS row, or starts at
@@ -221,9 +220,7 @@ def join_variants_to_cds(cds_df, vcf):
         and End_variant. The columns keep their dtypes, except a text column of cds_df with fewer
         distinct values than half its rows, which becomes category to save memory. The rows come in
         the order of cds_df; the variants of one CDS row by Start, then by End descending, then in
-        the order of vcf. pyranges 0.x gave the same order for a cds_df in the row order of its
-        PyRanges.df. Unlike this join, pyranges 0.x gave Chromosome and Strand as category, the
-        coordinates as int64, and no columns for an empty result.
+        the order of vcf.
     :raises ValueError: if an End of cds_df or vcf is above 2**31 - 1, the largest coordinate that
         polars-bio joins
     """
@@ -407,8 +404,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
     results = []
 
-    # Only transcripts with a variant. transcript_id can be category (see join_variants_to_cds), and with
-    # observed=False, the default before pandas 3, its unused categories would be groups too.
+    # Only transcripts with a variant. transcript_id can be category (see join_variants_to_cds).
+    # observed=True: with the pandas 2 default (False), unused categories would be groups too.
     for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id", observed=True):
         # 1. Get reference exons
         ref_exons = cds_df_test[cds_df_test["transcript_id"] == transcript_id].copy()

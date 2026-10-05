@@ -125,8 +125,7 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
     ``ref_all_stop_codons`` and ``alt_all_stop_codons`` hold (position, codon) tuples,
     e.g. (5442, "TGA"); pyarrow cannot infer a single type for a tuple mixing int and str,
     so they need a typed struct schema instead. ``transcript_exon_info`` holds
-    (exon_number, exon_length) tuples; exon_number used to come from the annotation as a string in
-    this column but as an int everywhere else, which pyarrow also rejects.
+    (exon_number, exon_length) tuples, both ints.
     """
 
     pytest.importorskip("pyarrow")

@@ -817,7 +817,7 @@ def test_extract_ptc_needs_the_coding_regions():
         extract_ptc(rows, vcf=None, fasta=None, exons_df=None)
 
 
-# join_variants_to_cds: the CDS x VCF join of extract_ptc, with the semantics of the pyranges 0.x join
+# join_variants_to_cds: the CDS x VCF join of extract_ptc
 
 
 def _join_cds():

@@ -363,7 +363,7 @@ def _has_stop_codon_from_sequence(df, fasta):
     )
     logger.warning(
         "Ensembl GFF3 has no cds_end_NF tag: a cds_end_NF transcript whose CDS ends in stop codon bases "
-        "gets a stop codon, unlike in the Ensembl GTF (13 transcripts in Ensembl 108)."
+        "gets a stop codon (13 transcripts in Ensembl 108)."
     )
     return _set_has_stop_codon(df, stops["transcript_id"])
 

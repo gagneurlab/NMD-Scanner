@@ -56,12 +56,10 @@ Arguments:
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (useful for hg19)
 
-The coding region of a transcript is its CDS plus the stop codon. A GFF3 CDS includes the stop codon. The
-coding regions and stop codons are those of the GTF of the same release, which earlier versions of NMD-Scanner
-read. Ensembl GFF3 has no `stop_codon` rows; whether a transcript ends in a stop codon comes from the last 3 CDS
-bases in the FASTA. Exception: Ensembl GFF3 has no `cds_end_NF` tag. So a `cds_end_NF` transcript whose CDS
-ends in stop codon bases gets a stop codon from an Ensembl GFF3, but none from the Ensembl GTF (13 transcripts
-in Ensembl 108, none on chr22).
+The coding region of a transcript is its CDS plus the stop codon. A GFF3 CDS includes the stop codon. Ensembl
+GFF3 has no `stop_codon` rows; whether a transcript ends in a stop codon comes from the last 3 CDS bases in the
+FASTA. Ensembl GFF3 has no `cds_end_NF` tag either. So a `cds_end_NF` transcript gets a stop codon if its CDS
+ends in stop codon bases (13 transcripts in Ensembl 108, none on chr22).
 
 Output:
 - The file specified by `--output`, containing:

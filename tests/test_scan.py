@@ -402,14 +402,14 @@ def _write(tmp_path, name, content):
 # strand transcript, a stop codon split across an intron (ENST003.1), a transcript without stop
 # codon (cds_end_NF, ENST004.1) whose last 3 bases read TAA out of frame, and a chrM transcript
 # whose CDS ends in AGA (ENST006.1). The GFF3 CDS includes the stop codon. The bases are in
-# _FIXTURE_BASES. _GENCODE_ROWS and _ENSEMBL_ROWS hold the rows that read_gff3 gives for them:
-# the coding regions and has_stop_codon of the GTF of the same loci.
+# _FIXTURE_BASES. _GENCODE_ROWS and _ENSEMBL_ROWS hold the coding regions and has_stop_codon that
+# read_gff3 should give for them.
 # Ensembl: the GFF3 has no stop_codon rows, read_gff3 takes has_stop_codon from the FASTA. AGA is a
 # stop codon on MT. ENSTE004 has ensembl_end_phase 2, so it has no stop codon.
 # GENCODE: there is no stop codon for AGA on chrM, since the GFF3 has no stop_codon rows there.
 # ENST005.1 (+ strand) and ENST007.1 (- strand, split across an intron) are tagged cds_end_NF, but
-# their CDS ends in a complete stop codon without stop_codon rows; the GENCODE GTF has these 3 bases
-# as UTR, and read_gff3 removes them from the CDS.
+# their CDS ends in a complete stop codon without stop_codon rows, and read_gff3 removes these 3 bases
+# from the CDS.
 
 _GENCODE_GFF3 = """\
 ##gff-version 3
@@ -700,8 +700,8 @@ def test_read_annotation_reassigns_gff3_exon_numbers(tmp_path):
     assert _rows(reassigned) == (_GENCODE_ROWS, _GENCODE_TRANSCRIPTS)
 
 
-# variant_id, transcript_id, has_stop_codon, ref_cds_len, alt_cds_len, ref_cds_info: the values that the GTF of
-# the same loci gave
+# variant_id, transcript_id, has_stop_codon, ref_cds_len, alt_cds_len, ref_cds_info: the expected values for
+# these loci
 _GENCODE_RESULTS = [
     ("v0", "ENST001.1", True, 651, 650, [(1, 150), (2, 501)]),
     ("v1", "ENST001.1", True, 651, 651, [(1, 150), (2, 501)]),
