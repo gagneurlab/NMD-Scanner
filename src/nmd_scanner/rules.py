@@ -769,6 +769,7 @@ def analyze_transcript(results_df):
     Analyze the alternative transcript sequence in cases of start or stop codons loss due to mutations.
     Scan for new in-frame start or stop codons in the alternative transcript sequence.
     :param results_df: DataFrame containing transcript sequence data and annotations, including start_loss and stop_loss flags
+                       and cds_start_in_transcript (from cds_range_in_transcript)
     :return: pandas DataFrame with additional columns for rescued start / stop codon information
     """
 
@@ -790,13 +791,14 @@ def analyze_transcript(results_df):
 
     for idx, row in df.iterrows():
         seq = row["alt_transcript_seq"]
-        cds_start = row["alt_cds_start"] - row["transcript_start"]  # start analysis at cds start position
-        # cds_stop = cds_start + len(seq)
+        # Start the analysis at the CDS start in the alt transcript. The variant changes only the CDS,
+        # so the alt CDS starts at the same transcript position as the ref CDS.
+        cds_start = row["cds_start_in_transcript"]
 
         exon_info = row["transcript_exon_info"]  # for exon number
 
-        # Skip rows with invalid or too-short sequences
-        if not isinstance(seq, str) or len(seq) < 3:
+        # Skip rows with invalid or too-short sequences, or without a CDS position in the transcript
+        if not isinstance(seq, str) or len(seq) < 3 or pd.isna(cds_start):
             continue
 
         start_pos = None

@@ -83,7 +83,7 @@ A null is pd.NA in an int, bool or string column. In a list column, it is None o
 
 `extract_ptc` returns these 61 columns. A codon scan of the ref and alt CDS gives the `ref_*` and `alt_*` codon columns.
 
-A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcript_start_codon_pos` on. It runs only if `start_loss` or `stop_loss` is True and `alt_transcript_seq` is not null. Otherwise the 9 columns are null, and the table says "not scanned". After a start loss, the scan takes the first ATG at or after the scan start, in any frame, and reads the stop codons in the frame of that ATG. After a stop loss without a start loss, it reads the codons in the frame of the scan start. The scan start is `alt_cds_start - transcript_start`. That is a genomic distance, so it equals `cds_start_in_transcript` only on the plus strand without an intron upstream of the CDS.
+A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcript_start_codon_pos` on. It runs only if `start_loss` or `stop_loss` is True and `alt_transcript_seq` is not null. Otherwise the 9 columns are null, and the table says "not scanned". After a start loss, the scan takes the first ATG at or after the scan start, in any frame, and reads the stop codons in the frame of that ATG. After a stop loss without a start loss, it reads the codons in the frame of the scan start. The scan start is `cds_start_in_transcript`.
 
 | Column | Kind | Meaning | Null when |
 |---|---|---|---|

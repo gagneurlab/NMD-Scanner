@@ -778,8 +778,7 @@ def test_analyze_transcript():
         [
             {
                 "alt_transcript_seq": "CCCATGAAATAATAGGGG",  # ATG at pos 3, TAA at 9, TAG at 12
-                "alt_cds_start": 0,
-                "transcript_start": 0,
+                "cds_start_in_transcript": 0,
                 "transcript_exon_info": [(1, 10), (2, 10)],
                 "start_loss": True,
                 "stop_loss": False,
@@ -800,6 +799,95 @@ def test_analyze_transcript():
     assert row["transcript_num_stop_codons"] == 2
     assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
     assert row["transcript_stop_codon_exons"] == [1, 2]
+
+
+def test_analyze_transcript_without_cds_start_in_transcript():
+    # Without the CDS position in the transcript, the scan does not run
+    df = pd.DataFrame(
+        [
+            {
+                "alt_transcript_seq": "CCCATGAAATAATAGGGG",
+                "cds_start_in_transcript": None,
+                "transcript_exon_info": [(1, 10), (2, 10)],
+                "start_loss": True,
+                "stop_loss": False,
+            }
+        ]
+    )
+
+    row = analyze_transcript(df).loc[0]
+
+    assert row["transcript_start_codon_pos"] is None
+    assert row["transcript_num_stop_codons"] is None
+    assert row["transcript_all_stop_codons"] is None
+
+
+# Transcript parts for the scan tests: a 5'UTR of 13 nt with an ATG at transcript position 2, and a 3'UTR from position
+# 34 with a TAG at 40 in frame with the CDS and a TAA at 45 out of frame.
+_SCAN_UTR5 = "CCATGCCGCCGCC"
+_SCAN_UTR3 = "GCTGCTTAGCCTAA" + "C" * 31
+
+
+@pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
+@pytest.mark.parametrize("exon_starts", [[25], [5, 25]], ids=["no_5utr_intron", "5utr_intron"])
+def test_stop_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
+    """
+    After a stop loss, the scan reads on from the CDS start in the transcript, in the frame of the CDS.
+
+    The CDS starts at transcript position 13. With the intron in the 5' UTR, the genomic distance from the transcript
+    start to the CDS start is 33 nt. On the minus strand, it is the 45 nt of the 3' UTR. Both give the wrong frame. `x`
+    is the lost stop codon TGA>CGA, and `s` is the first stop codon in the frame of the CDS, the TAG at 40.
+
+       5 nt    20 nt            54 nt
+    5' [uu]|[uuu======]|[==xxxuuusssuuuuuuuuu] 3'
+    tx 0    5   13      25 31 34 40          79
+
+    Without the 5' UTR intron, exons 1 and 2 are one exon of 25 nt. The drawing is in transcript orientation, also on
+    the minus strand.
+    """
+    transcript_seq = _SCAN_UTR5 + "ATG" + "GCT" * 5 + "TGA" + _SCAN_UTR3
+    bounds = [0] + exon_starts + [len(transcript_seq)]
+    exon_seqs = [transcript_seq[start:end] for start, end in zip(bounds, bounds[1:])]
+
+    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 31), (31, "T", "C"))
+
+    assert row["stop_loss"] == True
+    assert row["cds_start_in_transcript"] == 13
+    assert row["transcript_start_codon_pos"] == 13
+    assert row["transcript_first_stop_codon"] == "TAG"
+    assert row["transcript_first_stop_pos"] == 40
+    assert row["transcript_all_stop_codons"] == [(40, "TAG")]
+
+
+@pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
+@pytest.mark.parametrize("exon_starts", [[25], [5, 25]], ids=["no_5utr_intron", "5utr_intron"])
+def test_start_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
+    """
+    After a start loss, the scan takes the first ATG at or after the CDS start in the transcript.
+
+    The scan starts at transcript position 13, so it skips the ATG at 2 in the 5' UTR. `x` is the lost start codon
+    ATG>ATA, and `a` is the in-frame ATG at 19 that the scan finds. `s` is the first stop codon in its frame, the TGA at
+    position 31. With the intron in the 5' UTR or on the minus strand, the genomic distance is 33 or 45 nt. A scan from
+    there finds no ATG.
+
+       5 nt          20 nt              54 nt
+    5' [uu]|[uuuxxx===aaa===]|[======sssuuuuuuuuu] 3'
+    tx 0    5   13    19      25     31          79
+
+    Without the 5' UTR intron, exons 1 and 2 are one exon of 25 nt. The drawing is in transcript orientation, also on
+    the minus strand.
+    """
+    transcript_seq = _SCAN_UTR5 + "ATG" + "GCT" + "ATG" + "GCT" * 3 + "TGA" + _SCAN_UTR3
+    bounds = [0] + exon_starts + [len(transcript_seq)]
+    exon_seqs = [transcript_seq[start:end] for start, end in zip(bounds, bounds[1:])]
+
+    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 31), (15, "G", "A"))
+
+    assert row["start_loss"] == True
+    assert row["cds_start_in_transcript"] == 13
+    assert row["transcript_start_codon_pos"] == 19
+    assert row["transcript_first_stop_codon"] == "TGA"
+    assert row["transcript_first_stop_pos"] == 31
 
 
 # Synthetic transcript in transcript orientation: a 5' UTR, a 48 bp CDS that ends in the sense codon TGG, the stop
