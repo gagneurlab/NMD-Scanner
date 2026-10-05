@@ -761,12 +761,6 @@ def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected
     pd.testing.assert_frame_equal(reassigned, results)
 
 
-def test_read_annotation_gff3_needs_fasta(tmp_path):
-    gff3_path = _write(tmp_path, "ensembl.gff3", _ENSEMBL_GFF3)
-    with pytest.raises(ValueError, match="FASTA"):
-        nmd_scanner.scan.read_annotation(gff3_path)
-
-
 def test_read_gff3_drops_id_and_parent_columns(tmp_path):
     """
     GFF3's own ID/Parent columns must not leak into the returned frame: downstream code joins

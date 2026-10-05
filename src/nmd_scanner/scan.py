@@ -117,7 +117,7 @@ def detect_annotation_format(path):
     )
 
 
-def read_annotation(path, fasta=None, reassign_exons=False):
+def read_annotation(path, fasta, reassign_exons=False):
     """
     Reads a GFF3 gene annotation file into a pandas DataFrame with the exon rows and the coding
     regions that ``rules.extract_ptc`` takes (see ``read_gff3``).
@@ -130,17 +130,12 @@ def read_annotation(path, fasta=None, reassign_exons=False):
 
     :param path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object), which shows whether a CDS ends in a stop
-        codon. Required: without it, read_annotation raises a ValueError.
+        codon
     :param reassign_exons: Recompute the exon numbers with ``compute_exon_numbers``
     :return: DataFrame, as ``read_gff3`` returns it
-    :raises ValueError: for an unknown suffix, or without ``fasta``
+    :raises ValueError: for an unknown suffix
     """
     detect_annotation_format(path)
-    if fasta is None:
-        raise ValueError(
-            "Reading a GFF3 needs the reference genome FASTA, which shows whether a CDS ends in a stop codon."
-        )
-
     annotation = read_gff3(path, fasta)
     if reassign_exons:
         logger.info("Recomputing exon numbers.")
