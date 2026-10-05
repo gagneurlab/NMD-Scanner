@@ -521,6 +521,89 @@ def test_extract_ptc_locates_cds_in_transcript(tmp_path_factory):
         assert row["ptc_to_intron"] == 76
 
 
+# A transcript of 400 nt: 40 nt of 5'UTR, a CDS of 252 nt with its stop codon, and 108 nt of 3'UTR. The CDS repeats CAA,
+# whose other two frames hold no stop codon. Two codon pairs put a TAA into one of these frames: CTA ACA at CDS position
+# 180 into the frame after a 1 nt deletion, CCT AAC at CDS position 198 into the frame after a 1 nt insertion.
+_PTC_CDS = "ATG" + "CAA" * 59 + "CTAACA" + "CAA" * 4 + "CCTAAC" + "CAA" * 15 + "TAA"
+_PTC_TRANSCRIPT = "C" * 40 + _PTC_CDS + "C" * 108
+_PTC_CDS_RANGE = (40, 289)
+
+# The inputs of the NMD efficiency model best_model.pkl (see scripts/train_new.ipynb). It cannot score a row in which
+# one of them is null.
+MODEL_INPUTS = [
+    "start_loss",
+    "stop_loss",
+    "total_exon_count",
+    "ptc_less_than_150nt_to_start",
+    "nmd_long_exon_rule",
+    "nmd_start_proximal_rule",
+    "nmd_single_exon_rule",
+    "nmd_escape",
+    "downstream_exon_count",
+    "nmd_last_exon_rule",
+    "ptc_to_start_codon",
+    "stop_codon_distance",
+    "ptc_exon_length",
+    "ptc_to_intron",
+    "upstream_exon_count",
+    "nmd_50nt_penultimate_rule",
+    "utr5_length",
+    "utr3_length",
+    "transcript_length",
+]
+
+
+def _ptc_exons(*exon_ends):
+    """Split _PTC_TRANSCRIPT into exons that end at the given transcript positions."""
+    exon_starts = [0, *exon_ends[:-1]]
+    return [_PTC_TRANSCRIPT[start:end] for start, end in zip(exon_starts, exon_ends)]
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
+@pytest.mark.parametrize(
+    ("exon_ends", "variant", "ptc_pos", "ptc_to_intron"),
+    [
+        # Nonsense variant CAA>TAA at CDS position 210, in the last exon: 400 - 40 - 210 = 150
+        pytest.param((100, 200, 400), (250, "C", "T"), 210, 150, id="last_exon"),
+        pytest.param((400,), (250, "C", "T"), 210, 150, id="single_exon"),
+        # A 1 nt deletion in exon 2 makes the TAA at CDS position 181 the PTC, at 180 in alt CDS coordinates.
+        # The alt transcript has 399 nt: 399 - 40 - 180 = 179
+        pytest.param((100, 200, 400), (160, "CA", "C"), 180, 179, id="last_exon_after_deletion"),
+        # A 1 nt insertion in exon 2 makes the TAA at CDS position 200 the PTC, at 201 in alt CDS coordinates.
+        # The alt transcript has 401 nt: 401 - 40 - 201 = 160
+        pytest.param((100, 200, 400), (160, "C", "CA"), 201, 160, id="last_exon_after_insertion"),
+    ],
+)
+def test_ptc_to_intron_of_a_ptc_in_the_last_exon(tmp_path, strand, exon_ends, variant, ptc_pos, ptc_to_intron):
+    # The last exon ends at the transcript end, so ptc_to_intron is the length of the 3'UTR that the PTC creates
+    row = run_pipeline_on_transcript(tmp_path, strand, _ptc_exons(*exon_ends), _PTC_CDS_RANGE, variant)
+
+    assert row["alt_first_stop_pos"] == ptc_pos
+    assert row["alt_is_premature"] == True
+    assert row["nmd_last_exon_rule"] == True
+    assert row["ptc_to_intron"] == ptc_to_intron
+    assert row["ptc_to_intron"] == row["alt_transcript_length"] - row["cds_start_in_transcript"] - ptc_pos
+
+
+@pytest.mark.parametrize(
+    ("exon_ends", "variant", "ptc_to_intron"),
+    [
+        # Nonsense variant CAA>TAA at CDS position 90, in exon 2 of 3: 200 - 40 - 90 = 70
+        pytest.param((100, 200, 400), (130, "C", "T"), 70, id="internal_exon"),
+        # CAA>TAA at CDS position 210, in exon 3, which holds the end of the CDS. Exon 4 holds only 3'UTR: 320 - 40 - 210
+        pytest.param((100, 200, 320, 400), (250, "C", "T"), 70, id="last_cds_exon_before_utr_exon"),
+        pytest.param((100, 200, 400), (250, "C", "T"), 150, id="last_exon"),
+        pytest.param((400,), (250, "C", "T"), 150, id="single_exon"),
+    ],
+)
+def test_ptc_rows_have_all_model_inputs(tmp_path, exon_ends, variant, ptc_to_intron):
+    row = run_pipeline_on_transcript(tmp_path, "+", _ptc_exons(*exon_ends), _PTC_CDS_RANGE, variant)
+
+    assert row["alt_is_premature"] == True
+    assert row["ptc_to_intron"] == ptc_to_intron
+    assert [name for name in MODEL_INPUTS if pd.isna(row[name])] == []
+
+
 def test_get_exon():
     exon_info = [(1, 10), (2, 20), (3, 30)]
     assert get_exon(5, exon_info) == 1

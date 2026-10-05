@@ -63,7 +63,7 @@ def add_nmd_features(row):
     # Distance PTC to normal stop codon
     stop_codon_distance = calculate_stop_codon_dist(row)
 
-    # Distance PTC to downstream exon junction
+    # Distance PTC to the 3' end of the PTC exon: the downstream exon junction, or the transcript end
     ptc_to_intron = calculate_ptc_to_downstream_ej(row)
 
     # Add likely_misannotated flag
@@ -216,8 +216,8 @@ def calculate_stop_codon_dist(row):
 def exon_end_in_alt_cds(row, exon):
     """
     Return where a transcript exon ends in alt CDS coordinates (as alt_first_stop_pos), or None if the CDS position
-    in the transcript is unknown. The value is the CDS position of the first base after the exon, i.e. of its
-    downstream exon junction. It is negative for an exon upstream of the CDS.
+    in the transcript is unknown. The value is the CDS position of the first base after the exon: its downstream exon
+    junction, or the transcript end for the last exon. It is negative for an exon upstream of the CDS.
 
     Exon numbers follow transcript order. The exon end in transcript coordinates, minus cds_start_in_transcript,
     gives the position in ref CDS coordinates. The length change of the CDS up to this exon converts it to alt CDS
@@ -317,8 +317,9 @@ def evaluate_nmd_escape_rules(row):
 
 def calculate_ptc_to_downstream_ej(row):
     """
-    Calculate distance from PTC to the downstream exon junction, i.e. the 3' end of the PTC exon.
-    Returns None if not applicable. This includes a PTC in the last exon, which has no downstream junction.
+    Calculate the distance from the PTC to the 3' end of the PTC exon. For an internal exon, that end is the downstream
+    exon junction. For the last exon, it is the transcript end, so the distance is the length of the 3' UTR that the
+    PTC creates. Returns None if not applicable.
     """
 
     # only calculate if we have PTC
@@ -335,10 +336,10 @@ def calculate_ptc_to_downstream_ej(row):
     # Choose the PTC exon (smallest number, closer to start)
     ptc_exon = min(stop_exons)
 
-    if ptc_exon >= max(tx_exon_nums):
+    if ptc_exon not in tx_exon_nums:
         return None
 
-    # The PTC exon can go on with 3' UTR, so its junction can lie past the CDS end
+    # The PTC exon can go on with 3' UTR, so its 3' end can lie past the CDS end
     exon_end = exon_end_in_alt_cds(row, ptc_exon)
     return exon_end - ptc_pos if exon_end is not None else None
 

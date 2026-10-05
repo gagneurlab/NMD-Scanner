@@ -109,3 +109,4 @@ extra features:
 - ptc_to_start_codon
 - ptc_less_than_150nt_to_start
 - ptc_exon_length
+- ptc_to_intron: distance in nt from the PTC to the 3' end of the PTC exon. For an internal exon, that end is the downstream exon junction. For the last exon, it is the transcript end, so the distance is the length of the 3' UTR that the PTC creates.
