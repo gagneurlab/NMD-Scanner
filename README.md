@@ -72,7 +72,7 @@ Output:
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.
 
-`nmd_scanner.schema` lists the 78 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows.
+`nmd_scanner.schema` lists the 78 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.

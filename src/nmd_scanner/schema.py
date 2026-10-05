@@ -1,7 +1,8 @@
 """
 Schema of the result table: its columns, their order and their dtypes.
 
-Each function that returns results gives them this schema, also for a table without rows.
+Each function that returns results gives them this schema, also for a table without rows. The section "Output
+columns" of "Technical Notes.md" gives the meaning of each column and says when it is null.
 """
 
 import pandas as pd
