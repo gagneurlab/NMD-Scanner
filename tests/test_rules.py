@@ -1,10 +1,10 @@
 # Import dependencies
 import pandas as pd
-import pyranges as pr
 import pytest
 from Bio.Seq import Seq
 from pyfaidx import Fasta
 
+import nmd_scanner.rules
 from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from nmd_scanner.rules import (
     analyze_sequence,
@@ -15,10 +15,10 @@ from nmd_scanner.rules import (
     extract_ptc,
     get_exon,
     get_transcript_sequence,
+    join_variants_to_cds,
     splice_alt_cds_into_transcript,
     start_stop_loss,
 )
-from nmd_scanner.scan import merge_stop_codons_into_cds
 
 
 def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True):
@@ -27,10 +27,10 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
 
     The genome holds the exons, separated by introns of 20 nt. On the minus strand, it holds their reverse complement.
     :param exon_seqs: Exon sequences in transcript order (5' to 3')
-    :param cds_range: (start, end) of the CDS in transcript coordinates, stop codon excluded as in GTF CDS rows
+    :param cds_range: (start, end) of the CDS in transcript coordinates, stop codon excluded
     :param variant: (position, ref, alt) in transcript coordinates and orientation, within one exon
-    :param stop_codon: Whether the 3 nt after the CDS get stop_codon rows. Without them, the transcript has no
-        annotated stop codon, as one tagged cds_end_NF.
+    :param stop_codon: Whether the coding region includes the 3 nt after the CDS as its stop codon. Without them, the
+        transcript has no annotated stop codon, as one tagged cds_end_NF.
     :return: The single result row as a dictionary
     """
 
@@ -62,17 +62,16 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
     (tmp_path / "genome.fa").write_text(f">{chrom}\n{genome}\n")
     fasta = Fasta(str(tmp_path / "genome.fa"))
 
-    # Exon, CDS and stop_codon rows; CDS and stop_codon rows are split at the exon boundaries
-    features = [("CDS", *cds_range)] + ([("stop_codon", cds_range[1], cds_range[1] + 3)] if stop_codon else [])
+    # Exon rows and the coding regions: CDS rows that include the stop codon, split at the exon boundaries
+    coding_end = cds_range[1] + 3 if stop_codon else cds_range[1]
     rows = []
     for number, (tx_start, layout_start, length) in enumerate(exons, start=1):
         rows.append(("exon", number, *to_genome(layout_start, layout_start + length)))
-        for feature, feature_start, feature_end in features:
-            part_start, part_end = max(feature_start, tx_start), min(feature_end, tx_start + length)
-            if part_start < part_end:
-                start, end = to_genome(layout_start + part_start - tx_start, layout_start + part_end - tx_start)
-                rows.append((feature, number, start, end))
-    gtf_df = pd.DataFrame(
+        part_start, part_end = max(cds_range[0], tx_start), min(coding_end, tx_start + length)
+        if part_start < part_end:
+            start, end = to_genome(layout_start + part_start - tx_start, layout_start + part_end - tx_start)
+            rows.append(("CDS", number, start, end))
+    annotation = pd.DataFrame(
         [
             {
                 "Chromosome": chrom,
@@ -94,11 +93,10 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
     start, end = to_genome(layout_start + position - tx_start, layout_start + position - tx_start + len(ref))
     if strand == "-":
         ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
-    vcf = pr.PyRanges(
-        pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
-    )
+    vcf = pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
 
-    results = extract_ptc(merge_stop_codons_into_cds(gtf_df), vcf, fasta, gtf_df[gtf_df["Feature"] == "exon"])
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=stop_codon)
+    results = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
     assert len(results) == 1
     row = results.iloc[0].to_dict()
     row.update(add_nmd_features(row))
@@ -682,16 +680,16 @@ _FLANK = "CCCCCCCCCC"
 
 def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_stop_codon=False):
     """
-    Runs extract_ptc on the coding regions of the synthetic transcript, which merge_stop_codons_into_cds builds
-    from its GTF rows, and returns the result indexed by variant_id.
+    Runs extract_ptc on the exon rows and the coding regions (CDS rows that include the stop codon) of the synthetic
+    transcript, and returns the result indexed by variant_id.
 
     :param strand: strand of the transcript; on the minus strand, the genome is the reverse complement
-    :param has_stop_codon: whether the transcript has a stop_codon row. Without it, the transcript ends with its CDS,
-        as one tagged cds_end_NF does.
+    :param has_stop_codon: whether the coding region ends in the stop codon. Without it, the transcript ends with its
+        CDS, as one tagged cds_end_NF does.
     :param variants: {variant_id: (position, alt)}: SNVs at a 0-based position in the coding region (CDS plus stop
         codon), with the alt base in transcript orientation
     :param split_stop_codon: split the stop codon across an intron. Its first 2 bases end exon 2, its last base
-        starts exon 3, which has no CDS row.
+        starts exon 3 and is the only base of the CDS row of exon 3.
     """
     stop = _STOP[:2] + _INTRON + _STOP[2:] if split_stop_codon else _STOP
     genome = _FLANK + _UTR5 + _CDS[:30] + _INTRON + _CDS[30:] + stop + _UTR3 + _FLANK
@@ -699,19 +697,18 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
     exon2_start = cds_start + 30 + len(_INTRON)
     stop_start = exon2_start + 18
     exon3_start = stop_start + 2 + len(_INTRON)
-    rows = [("exon", 1, len(_FLANK), cds_start + 30)]
+    rows = [("exon", 1, len(_FLANK), cds_start + 30), ("CDS", 1, cds_start, cds_start + 30)]
     if split_stop_codon:
         rows += [
             ("exon", 2, exon2_start, stop_start + 2),
             ("exon", 3, exon3_start, exon3_start + 1 + len(_UTR3)),
-            ("stop_codon", 2, stop_start, stop_start + 2),
-            ("stop_codon", 3, exon3_start, exon3_start + 1),
+            ("CDS", 2, exon2_start, stop_start + 2),
+            ("CDS", 3, exon3_start, exon3_start + 1),
         ]
     elif has_stop_codon:
-        rows += [("exon", 2, exon2_start, stop_start + 3 + len(_UTR3)), ("stop_codon", 2, stop_start, stop_start + 3)]
+        rows += [("exon", 2, exon2_start, stop_start + 3 + len(_UTR3)), ("CDS", 2, exon2_start, stop_start + 3)]
     else:
-        rows += [("exon", 2, exon2_start, stop_start)]
-    rows += [("CDS", 1, cds_start, cds_start + 30), ("CDS", 2, exon2_start, stop_start)]
+        rows += [("exon", 2, exon2_start, stop_start), ("CDS", 2, exon2_start, stop_start)]
 
     def genomic(pos):
         # 0-based plus strand position of a position in the coding region
@@ -728,7 +725,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
         snvs = [(v, length - 1 - g, str(Seq(r).complement()), str(Seq(a).complement())) for v, g, r, a in snvs]
 
     (tmp_path / "genome.fa").write_text(f">chrT\n{genome}\n")
-    gtf_df = pd.DataFrame(
+    annotation = pd.DataFrame(
         [
             {
                 "Chromosome": "chrT",
@@ -743,14 +740,12 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
             for f, e, start, end in rows
         ]
     )
-    vcf = pr.PyRanges(
-        pd.DataFrame(
-            [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
-        )
+    vcf = pd.DataFrame(
+        [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
     )
     fasta = Fasta(str(tmp_path / "genome.fa"))
-    coding = merge_stop_codons_into_cds(gtf_df)
-    result = extract_ptc(coding, vcf, fasta, gtf_df[gtf_df["Feature"] == "exon"])
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_stop_codon=has_stop_codon)
+    result = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
     return result.set_index("variant_id")
 
 
@@ -790,7 +785,7 @@ def test_extract_ptc_stop_codon_change(tmp_path, strand):
 
 @pytest.mark.parametrize("strand", ["+", "-"])
 def test_extract_ptc_split_stop_codon(tmp_path, strand):
-    # GTF: the stop codon TAA is split across an intron, and its last base lies in exon 3, which has no CDS row
+    # the stop codon TAA is split across an intron; its last base is the only coding base of exon 3
     variants = {"TAA>TAG": (50, "G"), "TAA>CAA": (48, "C")}
     result = _extract_ptc_synthetic(tmp_path, strand, True, variants, split_stop_codon=True)
 
@@ -806,8 +801,8 @@ def test_extract_ptc_split_stop_codon(tmp_path, strand):
 
 
 def test_extract_ptc_needs_the_coding_regions():
-    # GTF CDS and stop_codon rows as they are, without the merge into coding regions
-    gtf_rows = pd.DataFrame(
+    # CDS and stop_codon rows without has_stop_codon: not the coding regions
+    rows = pd.DataFrame(
         {
             "Chromosome": ["chrT", "chrT"],
             "Start": [100, 150],
@@ -819,4 +814,161 @@ def test_extract_ptc_needs_the_coding_regions():
         }
     )
     with pytest.raises(ValueError, match="has_stop_codon"):
-        extract_ptc(gtf_rows, vcf=None, fasta=None, exons_df=None)
+        extract_ptc(rows, vcf=None, fasta=None, exons_df=None)
+
+
+# join_variants_to_cds: the CDS x VCF join of extract_ptc
+
+
+def _join_cds():
+    """CDS rows in an order that is not sorted by Chromosome, and one on the minus strand."""
+    return pd.DataFrame(
+        {
+            "Chromosome": ["chr2", "chr1", "chr1"],
+            "Start": [100, 300, 100],
+            "End": [200, 400, 200],
+            "Strand": ["+", "-", "+"],
+            "transcript_id": ["t_chr2", "t_minus", "t_plus"],
+        }
+    )
+
+
+def _join_vcf(rows):
+    """Variants from (Chromosome, Start, End, ID) tuples."""
+    return pd.DataFrame(
+        [{"Chromosome": c, "Start": start, "End": end, "ID": i, "Ref": "N", "Alt": "A"} for c, start, end, i in rows]
+    )
+
+
+def _pairs(joined):
+    return list(zip(joined["transcript_id"], joined["ID"]))
+
+
+def test_join_variants_to_cds_uses_half_open_intervals():
+    vcf = _join_vcf(
+        [
+            ("chr1", 99, 100, "ends_at_cds_start"),
+            ("chr1", 200, 201, "starts_at_cds_end"),
+            ("chr1", 100, 101, "first_base"),
+            ("chr1", 199, 200, "last_base"),
+            ("chr1", 95, 105, "deletion_over_cds_start"),
+            ("chr1", 195, 210, "deletion_over_cds_end"),
+            ("chr1", 250, 260, "between_cds_rows"),
+        ]
+    )
+    joined = join_variants_to_cds(_join_cds(), vcf)
+    assert sorted(_pairs(joined)) == [
+        ("t_plus", "deletion_over_cds_end"),
+        ("t_plus", "deletion_over_cds_start"),
+        ("t_plus", "first_base"),
+        ("t_plus", "last_base"),
+    ]
+
+
+def test_join_variants_to_cds_matches_the_chromosome_and_ignores_the_strand():
+    vcf = _join_vcf(
+        [
+            ("chr2", 150, 151, "on_chr2"),
+            ("chr1", 150, 151, "on_chr1"),
+            ("chr1", 350, 351, "in_minus_strand_cds"),
+            ("chr3", 150, 151, "on_chr3"),
+        ]
+    )
+    joined = join_variants_to_cds(_join_cds(), vcf)
+    assert _pairs(joined) == [("t_chr2", "on_chr2"), ("t_minus", "in_minus_strand_cds"), ("t_plus", "on_chr1")]
+    assert joined["Chromosome"].tolist() == ["chr2", "chr1", "chr1"]
+
+
+def test_join_variants_to_cds_without_overlap_gives_no_rows_and_all_columns():
+    joined = join_variants_to_cds(_join_cds(), _join_vcf([("chr1", 10, 20, "upstream"), ("chrX", 150, 151, "other")]))
+    assert joined.empty
+    assert list(joined.columns) == [
+        "Chromosome",
+        "Start",
+        "End",
+        "Strand",
+        "transcript_id",
+        "Start_variant",
+        "End_variant",
+        "ID",
+        "Ref",
+        "Alt",
+    ]
+
+
+def test_join_variants_to_cds_suffixes_the_variant_columns_that_cds_df_has_too():
+    cds = _join_cds().iloc[[2]].assign(ID="cds_id")
+    joined = join_variants_to_cds(cds, _join_vcf([("chr1", 150, 152, "v1")]))
+    assert joined.to_dict("records") == [
+        {
+            "Chromosome": "chr1",
+            "Start": 100,
+            "End": 200,
+            "Strand": "+",
+            "transcript_id": "t_plus",
+            "ID": "cds_id",
+            "Start_variant": 150,
+            "End_variant": 152,
+            "ID_variant": "v1",
+            "Ref": "N",
+            "Alt": "A",
+        }
+    ]
+    pd.testing.assert_index_equal(joined.index, pd.RangeIndex(1))
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["pairs_of_polars_bio", "reversed_pairs"])
+def test_join_variants_to_cds_order(monkeypatch, reverse):
+    """CDS rows in the order of cds_df; the variants of one CDS row by Start, then End descending, then VCF order."""
+    if reverse:
+        # polars-bio gives the ties in VCF order already, so only reversed pairs test the last sort key
+        overlap = nmd_scanner.rules.pb.overlap
+        monkeypatch.setattr(nmd_scanner.rules.pb, "overlap", lambda *args, **kwargs: overlap(*args, **kwargs).reverse())
+    vcf = _join_vcf(
+        [
+            ("chr1", 150, 151, "last"),
+            ("chr1", 120, 121, "snv_a"),
+            ("chr1", 120, 125, "deletion"),
+            ("chr1", 120, 121, "snv_b"),
+            ("chr1", 90, 110, "first"),
+            ("chr1", 350, 351, "minus"),
+            ("chr1", 120, 121, "snv_c"),
+        ]
+    )
+    joined = join_variants_to_cds(_join_cds(), vcf)
+    assert _pairs(joined) == [
+        ("t_minus", "minus"),
+        ("t_plus", "first"),
+        ("t_plus", "deletion"),
+        ("t_plus", "snv_a"),
+        ("t_plus", "snv_b"),
+        ("t_plus", "snv_c"),
+        ("t_plus", "last"),
+    ]
+
+
+def test_join_variants_to_cds_gives_repeated_cds_text_as_category():
+    cds = pd.DataFrame(
+        {
+            "Chromosome": ["chr1"] * 4,
+            "Start": [100, 300, 500, 700],
+            "End": [200, 400, 600, 800],
+            "transcript_id": ["t1", "t2", "t3", "t4"],
+        }
+    )
+    joined = join_variants_to_cds(cds, _join_vcf([("chr1", 150, 151, "v1"), ("chr1", 350, 351, "v2")]))
+    assert _pairs(joined) == [("t1", "v1"), ("t2", "v2")]
+    assert isinstance(joined["Chromosome"].dtype, pd.CategoricalDtype)
+    assert pd.api.types.is_string_dtype(joined["transcript_id"].dtype)
+    assert pd.api.types.is_string_dtype(joined["ID"].dtype)
+
+
+@pytest.mark.parametrize("side", ["cds_df", "vcf"])
+def test_join_variants_to_cds_rejects_an_end_above_the_limit_of_polars_bio(side):
+    cds, vcf = _join_cds(), _join_vcf([("chr1", 150, 151, "v1")])
+    if side == "cds_df":
+        cds.loc[0, "End"] = 2**31
+    else:
+        vcf.loc[0, "End"] = 2**31
+    with pytest.raises(ValueError, match=f"Cannot join {side}: it has an End above 2147483647"):
+        join_variants_to_cds(cds, vcf)

@@ -2,17 +2,17 @@ Summary of the NMD-Scanner Script:
 
 1. Command Line argument Parser
 2. Check that Output Path is valid
-3. Reads genomic data files (VCF for variants, GTF for annotations, FASTA for sequences)
-4. Extracts coding regions and exons + exon length -> scan.read_annotation(). The coding regions are CDS rows that include the stop codon. A GTF CDS excludes it, so the stop_codon rows of a GTF are merged into the CDS rows, per transcript and exon -> scan.merge_stop_codons_into_cds(). The merge keys on exon_number, so it runs after the optional reassignment of exon numbers. A GFF3 CDS includes the stop codon -> scan.read_gff3()
+3. Reads genomic data files (VCF for variants, GFF3 for annotations, FASTA for sequences)
+4. Extracts coding regions and exons + exon length -> scan.read_annotation(). The coding regions are CDS rows that include the stop codon, as a GFF3 CDS does -> scan.read_gff3()
 5. Identifies premature termination codons (PTCs) —> extract_ptc()
     1. Check that the CDS rows are coding regions (column has_stop_codon)
-    2. Intersect variants with CDS regions
+    2. Intersect variants with CDS regions -> join_variants_to_cds()
     3. (in TCGA & MMRF only: adjust minus strand variants)
     4. Fetch reference CDS sequence for each variant region (on variant level: only CDS where a variant is located on) —> catch_sequence.add_exon_cds_sequence()
     5. Apply variant to CDS and compute alternative CDS sequence and get lengths of Ref-CDS and Alt-CDS (on variant level: only CDS where a variant is located on) —> apply_variant_edge_aware_with_lengths()
     6. Filter out variants with a reference mismatch and print those
     7. Limit to relevant transcripts (which are in the variant-CDS-intersection-DataFrame) for faster processing
-    8. Fetch reference sequence for all CDS entries per (relevant) transcripts —> we get cds_df (GTF filtered for CDS) with Exon_CDS_seq in the end
+    8. Fetch reference sequence for all CDS entries per (relevant) transcripts —> we get cds_df (annotation filtered for CDS) with Exon_CDS_seq in the end
     9. create_reference_cds()
         1. Get full reference CDS per transcript by stitching exon CDS regions together plus length
         2. Get full alternative CDS with length

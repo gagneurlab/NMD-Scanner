@@ -2,11 +2,12 @@
 
 import logging
 
+import numpy as np
 import pandas as pd
-import pyranges as pr
 from Bio.Seq import Seq
 
 from nmd_scanner import catch_sequence
+from nmd_scanner._polars_bio import pb
 from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table
 
 logger = logging.getLogger(__name__)
@@ -20,31 +21,29 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     :param cds_df: Coding regions of the annotation (DataFrame): CDS rows that include the stop codon, one row per
                    transcript and exon, with exon_number and the column has_stop_codon. has_stop_codon says whether
-                   the coding region of the transcript ends in an annotated stop codon. A GTF CDS excludes the stop
-                   codon; ``scan.merge_stop_codons_into_cds`` builds the coding regions from its CDS and stop_codon rows.
-                   ``scan.read_annotation`` returns the coding regions of a GTF or GFF3 as its CDS rows.
-    :param vcf: Parsed VCF variant entries (PyRanges object)
+                   the coding region of the transcript ends in an annotated stop codon. ``scan.read_annotation``
+                   returns the coding regions as its CDS rows.
+    :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
-    :param exons_df: All exonic entries from the GTF file (DataFrame)
+    :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
              It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has zero rows if no
              variant overlaps a CDS or every variant has a reference mismatch.
-    :raises ValueError: if cds_df has no has_stop_codon column, e.g. because it holds the GTF CDS rows as they are.
+    :raises ValueError: if cds_df has no has_stop_codon column, i.e. it does not hold the coding regions.
     """
 
     if "has_stop_codon" not in cds_df.columns:
         raise ValueError(
             "cds_df has no has_stop_codon column. extract_ptc takes the coding regions: CDS rows that include the "
-            "stop codon, with has_stop_codon. For a GTF, scan.merge_stop_codons_into_cds builds them from the CDS "
-            "and stop_codon rows."
+            "stop codon, with has_stop_codon, as scan.read_annotation returns them."
         )
 
     cds_df_adj = cds_df.copy()
-    # GTF attributes are parsed as strings; exon numbers are int in the output tuples (e.g. ref_cds_info)
+    # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_info)
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
 
     # Intersect variants with CDS regions
-    intersection_cds_vcf = pr.PyRanges(cds_df_adj).join(vcf, how=None, suffix="_variant").df
+    intersection_cds_vcf = join_variants_to_cds(cds_df_adj, vcf)
     logger.info("Joining variants with cds entries: done.")
 
     # Nothing to analyze: the steps below need at least one row
@@ -117,7 +116,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
-    # GTF attributes are parsed as strings; align with cds_df_adj so exon numbers are int
+    # annotation attributes are read as text; align with cds_df_adj so exon numbers are int
     # everywhere they end up together in a tuple (e.g. transcript_exon_info, *_stop_codon_exons).
     exons_df["exon_number"] = exons_df["exon_number"].astype(int)
     exon_seqs = get_transcript_sequence(exons_df, fasta)
@@ -199,6 +198,75 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
 
 # Functions used for extracting PTC:
+
+
+# polars-bio joins the intervals as 32-bit integers with sign
+MAX_JOIN_COORDINATE = 2**31 - 1
+
+
+def join_variants_to_cds(cds_df, vcf):
+    """
+    Joins every CDS row to the variants that overlap it.
+
+    A CDS row and a variant overlap if they are on the same Chromosome and their 0-based half-open
+    intervals share at least one base: a variant that ends at the Start of a CDS row, or starts at
+    its End, does not overlap it. Strand is ignored. polars-bio computes the overlaps.
+
+    :param cds_df: CDS rows (DataFrame) with Chromosome, Start and End
+    :param vcf: Variants (DataFrame) with Chromosome, Start and End
+    :return: DataFrame with one row per overlapping CDS row and variant, and a RangeIndex. It has the
+        columns of cds_df, then the columns of vcf except Chromosome, also if no variant overlaps a
+        CDS row. A column of vcf that cds_df has too gets the suffix "_variant", e.g. Start_variant
+        and End_variant. The columns keep their dtypes, except a text column of cds_df with fewer
+        distinct values than half its rows, which becomes category to save memory. The rows come in
+        the order of cds_df; the variants of one CDS row by Start, then by End descending, then in
+        the order of vcf.
+    :raises ValueError: if an End of cds_df or vcf is above 2**31 - 1, the largest coordinate that
+        polars-bio joins
+    """
+
+    for name, df in (("cds_df", cds_df), ("vcf", vcf)):
+        if (df["End"] > MAX_JOIN_COORDINATE).any():
+            raise ValueError(
+                f"Cannot join {name}: it has an End above {MAX_JOIN_COORDINATE}, the largest coordinate that polars-bio joins."
+            )
+
+    # a category column holds each distinct text once, which makes the copies of the rows below smaller
+    repeated_text = [
+        name
+        for name, column in cds_df.items()
+        if pd.api.types.is_string_dtype(column) and column.nunique() < len(cds_df) / 2
+    ]
+    cds_df = cds_df.astype(dict.fromkeys(repeated_text, "category"))
+
+    def intervals(df):
+        frame = pd.DataFrame(
+            {
+                "chrom": df["Chromosome"].astype(str).to_numpy(),
+                "start": df["Start"].to_numpy(dtype="int64"),
+                "end": df["End"].to_numpy(dtype="int64"),
+                "row": np.arange(len(df)),
+            }
+        )
+        # polars-bio reads this to treat the intervals as 0-based half-open
+        frame.attrs["coordinate_system_zero_based"] = True
+        return frame
+
+    order = ["row_cds", "start_variant", "end_variant", "row_variant"]
+    # A DataFrame, not a LazyFrame: the collect of a LazyFrame calls logging.info(), which configures
+    # the root logger, and shows a tqdm bar. The sort copies only the 4 columns selected before it.
+    pairs = (
+        pb.overlap(intervals(cds_df), intervals(vcf), suffixes=("_cds", "_variant"), output_type="polars.DataFrame")
+        .select(order)
+        # polars-bio returns the pairs in no fixed order
+        .sort(order, descending=[False, False, True, False])
+    )
+    row_cds, row_variant = pairs["row_cds"].to_numpy(), pairs["row_variant"].to_numpy()
+    # the copies of the rows below take the most memory, so the pairs go first
+    del pairs
+    cds_rows = cds_df.iloc[row_cds].reset_index(drop=True)
+    variant_rows = vcf.drop(columns="Chromosome").iloc[row_variant].reset_index(drop=True)
+    return cds_rows.join(variant_rows, rsuffix="_variant")
 
 
 def apply_variant_edge_aware_with_lengths(row):
@@ -336,7 +404,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
     results = []
 
-    for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id"):  # Only transcripts with a variant
+    # Only transcripts with a variant. transcript_id can be category (see join_variants_to_cds).
+    # observed=True: with the pandas 2 default (False), unused categories would be groups too.
+    for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id", observed=True):
         # 1. Get reference exons
         ref_exons = cds_df_test[cds_df_test["transcript_id"] == transcript_id].copy()
         ref_exons = ref_exons.sort_values("Start")
@@ -470,7 +540,7 @@ def get_transcript_sequence(exons_df, fasta):
     """
     Construct full transcript sequences by concatenating the exon sequences from the FASTA genome reference, grouped by transcript.
     Get transcript length and transcript information as well.
-    :param exons_df: DataFrame containing exon-level annotations from the GTF file.
+    :param exons_df: DataFrame with the exon rows of the annotation.
                      Must include: transcript_id, strand, chromosome, start, end, exon_number
     :param fasta: Fasta file, reference genome object
     :return: DataFrame with one row per transcript with full transcript sequence, start, end, strand, transcript sequence length, and
@@ -546,7 +616,7 @@ def cds_range_in_transcript(exons, cds):
     The start is the transcript position of the 5' CDS base. The end lies one past the 3' CDS base (half-open),
     i.e. after the stop codon if the CDS rows include it. The end is the start plus the summed length of the CDS rows.
     This equals the mapped 3' CDS base plus one, since every CDS row lies inside an exon, also the parts of a stop
-    codon split across exons (see scan.merge_stop_codons_into_cds).
+    codon split across exons.
 
     :param exons: Exon rows of one transcript (DataFrame with Start, End, Strand; 0-based half-open genomic coordinates)
     :param cds: CDS rows of the same transcript (DataFrame with Start, End)

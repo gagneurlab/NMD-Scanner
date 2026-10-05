@@ -102,7 +102,7 @@ def run_main(tmp_path, monkeypatch):
 
         monkeypatch.setattr(cli, "extract_ptc", recording_extract_ptc)
         monkeypatch.setattr(cli, "write_results", recording_write_results)
-        cli.main(vcf_path, "resources/chr18.gtf.gz", "resources/chr18.fa.gz", str(tmp_path / "out.parquet"))
+        cli.main(vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", str(tmp_path / "out.parquet"))
         return tables["extract_ptc"], tables["written"]
 
     return run
@@ -138,7 +138,7 @@ def test_empty_and_nonempty_results_have_the_same_schema(run_main, request, vcf,
 def test_annotate_returns_the_same_schema_for_empty_and_nonempty_results(request, vcf, has_rows):
     vcf_path = request.getfixturevalue(vcf) if vcf.endswith("_vcf") else vcf
 
-    results = cli.annotate(vcf_path, "resources/chr18.gtf.gz", "resources/chr18.fa.gz")
+    results = cli.annotate(vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
     assert (len(results) > 0) == has_rows
     assert_schema(results, OUTPUT_COLUMN_KINDS)
