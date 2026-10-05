@@ -222,6 +222,18 @@ def exon_end_in_alt_cds(row, exon):
     Exon numbers follow transcript order. The exon end in transcript coordinates, minus cds_start_in_transcript,
     gives the position in ref CDS coordinates. The length change of the CDS up to this exon converts it to alt CDS
     coordinates.
+
+    Example: exons of 100, 200 and 150 nt, a CDS from transcript position 40 to 400, and a 1 nt deletion in the CDS
+    part of exon 1. `u` is UTR, `=` is CDS, `|` is an exon junction, and `v` marks the deletion. The rows give each
+    exon end in transcript (tx), ref CDS and alt CDS coordinates. The function returns the alt row: 59 for exon 1, 259
+    for exon 2 and 409 for exon 3, the transcript end.
+
+              exon 1            exon 2              exon 3
+                  v  1 nt deletion
+        5' [uuuu======]|[====================]|[==========uuuuu] 3'
+    tx     0    40     100                    300              450
+    ref    -40  0      60                     260              410
+    alt    -40  0      59                     259              409
     """
 
     cds_start = row.get("cds_start_in_transcript")
@@ -247,7 +259,8 @@ def evaluate_nmd_escape_rules(row):
     3. Long exon rule: The PTC is in an exon with >407 nucleotides
     4. Start proximal rule: The PTC is within 150 nucleotides of the start codon
     5. Single exon rule: The transcript where the PTC lays consists only of a single exon
-    A PTC is considered to escape NMD if it satisfies any of the above rules.
+    A PTC is considered to escape NMD if it satisfies any of the above rules. "Technical Notes.md" has figures of the
+    rules.
 
     :param row: A row of the DataFrame including alt_is_premature (bool), alt_first_stop_pos (int),
                 alt_stop_codon_exons (list[int]), transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]),
@@ -319,7 +332,7 @@ def calculate_ptc_to_downstream_ej(row):
     """
     Calculate the distance from the PTC to the 3' end of the PTC exon. For an internal exon, that end is the downstream
     exon junction. For the last exon, it is the transcript end, so the distance is the length of the 3' UTR that the
-    PTC creates. Returns None if not applicable.
+    PTC creates. Returns None if not applicable. "Technical Notes.md" has a figure of each case.
     """
 
     # only calculate if we have PTC

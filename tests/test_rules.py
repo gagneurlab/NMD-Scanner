@@ -1,3 +1,12 @@
+"""
+The transcript drawings show a transcript 5' to 3' and are not to scale. `u` is UTR, `=` is CDS, `[...]` is an exon, `|`
+between two exons is an exon junction, `*` is the PTC, and `v` marks an indel. The numbers under a transcript are
+positions in CDS coordinates, as alt_first_stop_pos: 0 is the first base of the start codon. A row labelled tx gives
+transcript coordinates instead. The numbers under an alt transcript are in alt CDS coordinates. `*--->|` is the distance
+from the PTC to an exon junction or to the transcript end, and `<--->` is a length. "Technical Notes.md" defines the
+features and the NMD escape rules with figures in the same style.
+"""
+
 # Import dependencies
 import pandas as pd
 import pytest
@@ -502,6 +511,15 @@ def test_cds_range_in_transcript():
 
 def test_extract_ptc_locates_cds_in_transcript(tmp_path_factory):
     # Exons of 100/300/100 nt; the CDS with stop codon lies inside exon 2, at transcript positions 150 to 330
+    #           100 nt                          300 nt                          100 nt
+    #     5' [uuuuuuuuuu]|[uuuuu==============================*=====uuuuuuu]|[uuuuuuuuuu] 3'
+    # tx     0           100    150                           324   330     400         500
+    # CDS    -150        -50    0                             174   180     250         350
+    #                                                         *------------>|  ptc_to_intron = 76
+    #        <------------------>  utr5_length = 150
+    #                                                               <------------------->  utr3_length = 170
+    # Both strands: the drawing is in transcript orientation, 5' to 3'. On the minus strand, the genomic
+    # coordinates run the other way.
     cds_seq = "ATG" + "CAA" * 58 + "TAA"
     transcript_seq = "C" * 150 + cds_seq + "C" * 170
     exon_seqs = [transcript_seq[:100], transcript_seq[100:400], transcript_seq[400:]]
@@ -564,13 +582,37 @@ def _ptc_exons(*exon_ends):
     ("exon_ends", "variant", "ptc_pos", "ptc_to_intron"),
     [
         # Nonsense variant CAA>TAA at CDS position 210, in the last exon: 400 - 40 - 210 = 150
+        # Both strands: the drawing is in transcript orientation, 5' to 3'. On the minus strand, the genomic
+        # coordinates run the other way.
+        #           100 nt       100 nt            200 nt
+        #     5' [uuuu======]|[==========]|[=====*===uuuuuuuuuuu] 3'
+        #        -40  0      60           160    210 252        360
+        #                                        *------------->|  ptc_to_intron = 150
         pytest.param((100, 200, 400), (250, "C", "T"), 210, 150, id="last_exon"),
+        #                          400 nt
+        #     5' [uuuu=====================*===uuuuuuuuuuu] 3'
+        #        -40  0                    210 252        360
+        #                                  *------------->|  ptc_to_intron = 150
         pytest.param((400,), (250, "C", "T"), 210, 150, id="single_exon"),
         # A 1 nt deletion in exon 2 makes the TAA at CDS position 181 the PTC, at 180 in alt CDS coordinates.
         # The alt transcript has 399 nt: 399 - 40 - 180 = 179
+        #           100 nt       100 nt            200 nt
+        #                            v  CA>C deletes the A at CDS position 121
+        # ref 5' [uuuu======]|[==========]|[=========uuuuuuuuuuu] 3'
+        #        -40  0      60           160        252        360
+        # alt 5' [uuuu======]|[==========]|[==*======uuuuuuuuuuu] 3'
+        #        -40  0      60           159 180    251        359
+        #                                     *---------------->|  ptc_to_intron = 179
         pytest.param((100, 200, 400), (160, "CA", "C"), 180, 179, id="last_exon_after_deletion"),
         # A 1 nt insertion in exon 2 makes the TAA at CDS position 200 the PTC, at 201 in alt CDS coordinates.
         # The alt transcript has 401 nt: 401 - 40 - 201 = 160
+        #           100 nt       100 nt            200 nt
+        #                            v  C>CA inserts an A after CDS position 120
+        # ref 5' [uuuu======]|[==========]|[=========uuuuuuuuuuu] 3'
+        #        -40  0      60           160        252        360
+        # alt 5' [uuuu======]|[==========]|[====*====uuuuuuuuuuu] 3'
+        #        -40  0      60           161   201  253        361
+        #                                       *-------------->|  ptc_to_intron = 160
         pytest.param((100, 200, 400), (160, "C", "CA"), 201, 160, id="last_exon_after_insertion"),
     ],
 )
@@ -589,9 +631,18 @@ def test_ptc_to_intron_of_a_ptc_in_the_last_exon(tmp_path, strand, exon_ends, va
     ("exon_ends", "variant", "ptc_to_intron"),
     [
         # Nonsense variant CAA>TAA at CDS position 90, in exon 2 of 3: 200 - 40 - 90 = 70
+        #           100 nt       100 nt            200 nt
+        #     5' [uuuu======]|[===*======]|[=========uuuuuuuuuuu] 3'
+        #        -40  0      60   90      160        252        360
+        #                         *------>|  ptc_to_intron = 70
         pytest.param((100, 200, 400), (130, "C", "T"), 70, id="internal_exon"),
         # CAA>TAA at CDS position 210, in exon 3, which holds the end of the CDS. Exon 4 holds only 3'UTR: 320 - 40 - 210
+        #           100 nt       100 nt        120 nt        80 nt
+        #     5' [uuuu======]|[==========]|[=====*===uuu]|[uuuuuuuu] 3'
+        #        -40  0      60           160    210 252 280       360
+        #                                        *------>|  ptc_to_intron = 70
         pytest.param((100, 200, 320, 400), (250, "C", "T"), 70, id="last_cds_exon_before_utr_exon"),
+        # last_exon and single_exon: see the drawings in test_ptc_to_intron_of_a_ptc_in_the_last_exon
         pytest.param((100, 200, 400), (250, "C", "T"), 150, id="last_exon"),
         pytest.param((400,), (250, "C", "T"), 150, id="single_exon"),
     ],

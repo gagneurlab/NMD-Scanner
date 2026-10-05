@@ -92,7 +92,7 @@ transcript:
     - all_stop_codons
     - stop_codon_exons
 ————————————————————————————————————————————————————————————
-NMD rules:
+NMD rules (figures at the end of this file):
 - Last exon rule: The PTC is in the last exon
 - 50nt penultimate rule: The PTC is within 50 nucleotides upstream of the last exon junction
 - Long exon rule: The PTC is in an exon with >407 nucleotides
@@ -100,7 +100,7 @@ NMD rules:
 - Single exon rule: The transcript where the PTC lays consists only of a single exon
 - NMD escape: A PTC is considered to escape NMD if it satisfies any of the above rules.
 ————————————————————————————————————————————————————————————
-extra features:
+extra features (figures at the end of this file):
 - utr3_length
 - utr5_length
 - total_exon_count
@@ -110,3 +110,83 @@ extra features:
 - ptc_less_than_150nt_to_start
 - ptc_exon_length
 - ptc_to_intron: distance in nt from the PTC to the 3' end of the PTC exon. For an internal exon, that end is the downstream exon junction. For the last exon, it is the transcript end, so the distance is the length of the 3' UTR that the PTC creates.
+
+Figures of the features and the NMD rules:
+
+The figures show a transcript 5' to 3' and are not to scale. `u` is UTR, `=` is CDS, `[...]` is an exon, `|` between two exons is an exon junction, and `*` is the PTC. `*--->|` is the distance from the PTC to an exon junction or to the transcript end, and `<--->` is a length. The numbers are positions in CDS coordinates, as alt_first_stop_pos: 0 is the first base of the start codon, and the 5' UTR has negative positions. After an indel, the positions are in alt CDS coordinates, so the exon junctions move with the PTC (see exon_end_in_alt_cds() in extra_features.py). The figures and the exon numbers follow the transcript. On the minus strand, the genomic coordinates run the other way.
+
+Features of a PTC in exon 2 of 3. The CDS starts at transcript position 50 and has 360 nt with its stop codon, so the stop codon of the reference starts at 357. The figure gives each feature its value:
+
+```
+        exon 1: 150 nt       exon 2: 200 nt              exon 3: 250 nt
+    5' [uuuuu==========]|[========*===========]|[============uuuuuuuuuuuuuuuuuuu] 3'
+       -50   0          100       180          300          357                 550
+       <----->  utr5_length = 50
+             <-------------------->  ptc_to_start_codon = 180
+                          <------------------>  ptc_exon_length = 200
+                                  *----------->|  ptc_to_intron = 120
+                                  <------------------------->  stop_codon_distance = 177
+                                                             <------------------>  utr3_length = 190
+```
+
+The exon counts are total_exon_count = 3, upstream_exon_count = 1 and downstream_exon_count = 1. ptc_less_than_150nt_to_start is False, because ptc_to_start_codon is 180.
+
+ptc_to_intron runs to the 3' end of the PTC exon. Where that end lies depends on the PTC exon:
+
+PTC in an internal exon: to the downstream exon junction.
+
+```
+5' [uuu=====]|[=====*======]|[=========uuuuuuu] 3'
+                    *------>|
+```
+
+PTC in the last CDS exon, followed by an exon with only 3' UTR: to the exon junction in the 3' UTR, not to the CDS end.
+
+```
+5' [uuu=====]|[============]|[====*===uuu]|[uuuuuuuuu] 3'
+                                  *------>|
+                                  *-->|  not to the CDS end
+```
+
+PTC in the last exon: to the transcript end. The value is the length of the 3' UTR that the PTC creates.
+
+```
+5' [uuu=====]|[============]|[====*======uuuuuuuuu] 3'
+                                  *-------------->|
+```
+
+PTC in a single exon transcript: to the transcript end, as in the last exon.
+
+```
+5' [uuuu=========*=======uuuuuu] 3'
+                 *------------>|
+```
+
+NMD rules. nmd_escape is True if one of the rules is True.
+
+nmd_last_exon_rule: the PTC lies in the last exon, i.e. downstream_exon_count is 0. See the figure "PTC in the last exon" above.
+
+nmd_single_exon_rule: the transcript has one exon, i.e. total_exon_count is 1. See the figure "PTC in a single exon transcript" above.
+
+nmd_50nt_penultimate_rule: the PTC lies 1 to 50 nt upstream of the last exon junction, the 3' end of the penultimate exon.
+
+```
+5' [uuu=====]|[=======*====]|[=========uuuuuuu] 3'
+                      *---->|  1 to 50 nt
+```
+
+If the last exon holds only 3' UTR, the last exon junction lies in the 3' UTR. The rule then measures to that junction, as in the figure "PTC in the last CDS exon" above.
+
+nmd_long_exon_rule: the PTC exon has more than 407 nt, UTR included.
+
+```
+5' [uuu=====]|[=========*==============================]|[=====uuuuuu] 3'
+               <-------------------------------------->  ptc_exon_length > 407
+```
+
+nmd_start_proximal_rule: the PTC lies less than 150 nt downstream of the start codon, i.e. alt_first_stop_pos - alt_start_codon_pos < 150.
+
+```
+5' [uuu=====*===]|[============]|[=========uuuuuuu] 3'
+       <---->  < 150 nt
+```

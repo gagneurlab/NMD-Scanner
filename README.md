@@ -22,6 +22,8 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Single-exon rule
 - Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 78 columns and dtypes for every input
 
+[Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
+
 ## Installation
 Requires Python >= 3.12.
 
