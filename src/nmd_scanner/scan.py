@@ -121,7 +121,7 @@ def detect_annotation_format(path):
     raise ValueError(f"Cannot detect annotation format from filename: {path!r}. Expected one of {GFF3_SUFFIXES}.")
 
 
-def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
+def read_annotation(path, fasta=None, reassign_exons=False):
     """
     Reads a GFF3 gene annotation file into a pandas DataFrame with the exon rows and the coding
     regions that ``rules.extract_ptc`` takes (see ``read_gff3``).
@@ -130,25 +130,17 @@ def read_annotation(path, fasta=None, fmt=None, reassign_exons=False):
     exon. On them, the column has_stop_codon says whether the coding region of the transcript ends
     in an annotated stop codon. On the exon rows, has_stop_codon is NA.
 
-    The format is checked from the filename suffix (``.gff3`` or ``.gff``, gzip-compressed or not),
-    unless ``fmt`` is given. GTF input is no longer supported.
+    The format is checked from the filename suffix (``.gff3`` or ``.gff``, gzip-compressed or not).
+    GTF input is no longer supported.
 
     :param path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object), which shows whether a CDS ends in a stop
         codon. Required: without it, read_annotation raises a ValueError.
-    :param fmt: "gff3", in any case, to skip the check of the filename suffix
     :param reassign_exons: Recompute the exon numbers with ``compute_exon_numbers``
     :return: DataFrame, as ``read_gff3`` returns it
-    :raises ValueError: for a GTF file name or ``fmt="gtf"``, for an unknown format, or without ``fasta``
+    :raises ValueError: for a GTF file name, for an unknown suffix, or without ``fasta``
     """
-    if fmt is None:
-        fmt = detect_annotation_format(path)
-    else:
-        fmt = fmt.lower()
-    if fmt == "gtf":
-        raise ValueError(f"Cannot read {os.fspath(path)!r} with fmt='gtf': {GTF_NOT_SUPPORTED}")
-    elif fmt != "gff3":
-        raise ValueError(f"Unknown annotation format {fmt!r}, expected 'gff3'.")
+    detect_annotation_format(path)
     if fasta is None:
         raise ValueError(
             "Reading a GFF3 needs the reference genome FASTA, which shows whether a CDS ends in a stop codon."

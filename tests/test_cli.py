@@ -1,4 +1,3 @@
-import gzip
 import logging
 import os
 import subprocess
@@ -651,21 +650,12 @@ def test_main_cli_rejects_an_annotation_of_unknown_format(monkeypatch, tmp_path,
     assert calls == {}
 
 
-@pytest.mark.parametrize(
-    ("name", "annotation_format", "prefix"),
-    [
-        ("annotation.gtf", None, "Cannot read 'annotation.gtf'"),
-        ("annotation.gtf.gz", None, "Cannot read 'annotation.gtf.gz'"),
-        ("resources/chr18.gff3.gz", "gtf", "Cannot read 'resources/chr18.gff3.gz' with fmt='gtf'"),
-    ],
-)
-def test_annotate_rejects_gtf(name, annotation_format, prefix):
+@pytest.mark.parametrize("name", ["annotation.gtf", "annotation.gtf.gz"])
+def test_annotate_rejects_gtf(name):
     with pytest.raises(ValueError) as error:
-        annotate(
-            "resources/test_files/test_variants.vcf", name, "resources/chr18.fa.gz", annotation_format=annotation_format
-        )
+        annotate("resources/test_files/test_variants.vcf", name, "resources/chr18.fa.gz")
     assert str(error.value) == (
-        f"{prefix}: GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
+        f"Cannot read {name!r}: GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
     )
 
 
@@ -791,18 +781,3 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     assert results["has_stop_codon"].tolist() == [True]
     assert results["ref_cds_len"].tolist() == [1335]
     pd.testing.assert_frame_equal(results, expected)
-
-
-def test_annotate_annotation_format_overrides_the_suffix(tmp_path):
-    vcf = "resources/test_files/test_variants_minus.vcf"
-    gff3 = tmp_path / "annotation.txt"
-    with gzip.open("resources/chr18.gff3.gz", "rb") as src:
-        gff3.write_bytes(src.read())
-    expected = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-
-    results = annotate(vcf, str(gff3), "resources/chr18.fa.gz", annotation_format="gff3")
-
-    assert not results.empty
-    pd.testing.assert_frame_equal(results, expected)
-    with pytest.raises(ValueError, match="Cannot detect annotation format"):
-        annotate(vcf, str(gff3), "resources/chr18.fa.gz")

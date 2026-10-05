@@ -1010,20 +1010,6 @@ def test_read_annotation_accepts_path_objects(tmp_path):
     assert _rows(nmd_scanner.scan.read_annotation(Path(gff3_path), fasta)) == (_GENCODE_ROWS, _GENCODE_TRANSCRIPTS)
 
 
-def test_read_annotation_fmt_overrides_the_file_suffix(tmp_path):
-    plain_path = _write(tmp_path, "plain.txt", _GENCODE_GFF3)
-    fasta = _fasta(tmp_path)
-    with pytest.raises(ValueError, match="Cannot detect annotation format"):
-        nmd_scanner.scan.read_annotation(plain_path, fasta)
-    via_fmt = nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="gff3")
-    pd.testing.assert_frame_equal(
-        via_fmt, nmd_scanner.scan.read_annotation(_write(tmp_path, "a.gff3", _GENCODE_GFF3), fasta)
-    )
-    pd.testing.assert_frame_equal(nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="GFF3"), via_fmt)
-    with pytest.raises(ValueError, match="Unknown annotation format 'bed', expected 'gff3'"):
-        nmd_scanner.scan.read_annotation(plain_path, fasta, fmt="bed")
-
-
 def test_read_gff3_gencode_keeps_the_transcript_id_and_gene_id_attributes(tmp_path):
     """GENCODE lift37 ids carry a _N suffix on the attributes, but not in ID/Parent; the GTF has the suffix."""
     content = """\
@@ -1090,10 +1076,3 @@ def test_read_annotation_rejects_a_gtf_file_name(tmp_path, name):
     assert str(error.value) == (
         f"Cannot read {path!r}: GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
     )
-
-
-def test_read_annotation_rejects_fmt_gtf(tmp_path):
-    path = _write(tmp_path, "a.gff3", _GENCODE_GFF3)
-    for fmt in ("gtf", "GTF"):
-        with pytest.raises(ValueError, match=r"with fmt='gtf': GTF input is no longer supported"):
-            nmd_scanner.scan.read_annotation(path, _fasta(tmp_path), fmt=fmt)

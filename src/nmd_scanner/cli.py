@@ -29,7 +29,7 @@ STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_
 logger = logging.getLogger(__name__)
 
 
-def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False, annotation_format=None):
+def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
     """
     Annotate the variants of a VCF file with NMD features and return the result table.
 
@@ -46,7 +46,6 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False, annota
     :param annotation_path: path to the input gene annotation file (GFF3, optionally gzip-compressed)
     :param fasta_path: path to the reference FASTA file. It also shows whether a CDS ends in a stop codon.
     :param reassign_exons: recompute the exon numbers of the annotation (recommended for hg19; may be slow)
-    :param annotation_format: "gff3", or None to check the format from the file suffix
     :return: DataFrame summarizing all annotated variants, with the columns and dtypes of OUTPUT_COLUMN_KINDS
              (see nmd_scanner.schema). It has zero rows if no variant gives a result.
     """
@@ -63,7 +62,7 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False, annota
     # read gene annotation file (GFF3) into exon rows and coding regions (CDS rows with has_stop_codon).
     # reassign_exons recomputes the exon numbers (need this for the (old) hg19 version).
     logger.info("Reading annotation file: %s", annotation_path)
-    annotation = read_annotation(annotation_path, fasta, fmt=annotation_format, reassign_exons=reassign_exons)
+    annotation = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
     logger.info("Annotation file shape: %s", annotation.shape)
     cds_df = annotation[annotation["Feature"] == "CDS"]
 
