@@ -390,9 +390,6 @@ def test_detect_annotation_format():
 
     with pytest.raises(ValueError, match="Cannot detect annotation format"):
         nmd_scanner.scan.detect_annotation_format("annotation.txt")
-    for name in ("annotation.gtf", "annotation.gtf.gz", "ANNOTATION.GTF"):
-        with pytest.raises(ValueError, match=f"Cannot read '{name}': GTF input is no longer supported"):
-            nmd_scanner.scan.detect_annotation_format(name)
 
 
 def _write(tmp_path, name, content):
@@ -1000,8 +997,8 @@ def test_compute_exon_numbers_cds_takes_the_exon_with_the_most_overlap():
 
 def test_detect_annotation_format_accepts_path_objects():
     assert nmd_scanner.scan.detect_annotation_format(Path("a.gff3.gz")) == "gff3"
-    with pytest.raises(ValueError, match="GTF input is no longer supported"):
-        nmd_scanner.scan.detect_annotation_format(Path("a.GTF"))
+    with pytest.raises(ValueError, match="Cannot detect annotation format from filename: 'a.txt'"):
+        nmd_scanner.scan.detect_annotation_format(Path("a.txt"))
 
 
 def test_read_annotation_accepts_path_objects(tmp_path):
@@ -1062,17 +1059,18 @@ chr1\tHAVANA\tCDS\t1051\t1200\t.\t+\t0\tgene_id "ENSG001.1"; transcript_id "ENST
 def test_a_gtf_with_a_gff3_name_raises_an_error_naming_the_file(tmp_path):
     path = _write(tmp_path, "really_a_gtf.gff3", _GTF_ROWS)
     with pytest.raises(
-        ValueError, match=r"really_a_gtf\.gff3.*as GFF3.*If it is a GTF: GTF input is no longer supported"
+        ValueError,
+        match=r"really_a_gtf\.gff3.*as GFF3: no row has an ID or Parent attribute, e\.g\. because it is a GTF",
     ):
         nmd_scanner.scan.read_annotation(path, _fasta(tmp_path))
 
 
-@pytest.mark.parametrize("name", ["a.gtf", "a.gtf.gz", "A.GTF"])
-def test_read_annotation_rejects_a_gtf_file_name(tmp_path, name):
+def test_read_annotation_rejects_a_gtf_file_name(tmp_path):
     """The file name decides, although this file holds a GFF3."""
-    path = _write(tmp_path, name, _GENCODE_GFF3)
+    path = _write(tmp_path, "a.gtf", _GENCODE_GFF3)
     with pytest.raises(ValueError) as error:
         nmd_scanner.scan.read_annotation(path, _fasta(tmp_path))
     assert str(error.value) == (
-        f"Cannot read {path!r}: GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
+        f"Cannot detect annotation format from filename: {path!r}. "
+        "Expected one of the suffixes .gff3, .gff3.gz, .gff, .gff.gz."
     )

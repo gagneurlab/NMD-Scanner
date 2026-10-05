@@ -15,9 +15,6 @@ from nmd_scanner._polars_bio import pb
 
 # Create the functions used for reading in the files (VCF, GFF3, FASTA)
 
-# A GTF is rejected by its file name
-GTF_SUFFIXES = (".gtf", ".gtf.gz")
-GTF_NOT_SUPPORTED = "GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
 GFF3_SUFFIXES = (".gff3", ".gff3.gz", ".gff", ".gff.gz")
 
 # The polars-bio errors for a VCF without its header
@@ -109,16 +106,15 @@ def detect_annotation_format(path):
     gzip-compressed or not.
 
     :return: "gff3" for a ``.gff3`` or ``.gff`` file
-    :raises ValueError: for a ``.gtf`` file, since GTF input is no longer supported, and for any
-        other suffix
+    :raises ValueError: for any other suffix
     """
     path = os.fspath(path)
-    lowered = path.lower()
-    if lowered.endswith(GTF_SUFFIXES):
-        raise ValueError(f"Cannot read {path!r}: {GTF_NOT_SUPPORTED}")
-    if lowered.endswith(GFF3_SUFFIXES):
+    if path.lower().endswith(GFF3_SUFFIXES):
         return "gff3"
-    raise ValueError(f"Cannot detect annotation format from filename: {path!r}. Expected one of {GFF3_SUFFIXES}.")
+    raise ValueError(
+        f"Cannot detect annotation format from filename: {path!r}. "
+        f"Expected one of the suffixes {', '.join(GFF3_SUFFIXES)}."
+    )
 
 
 def read_annotation(path, fasta=None, reassign_exons=False):
@@ -131,14 +127,13 @@ def read_annotation(path, fasta=None, reassign_exons=False):
     in an annotated stop codon. On the exon rows, has_stop_codon is NA.
 
     The format is checked from the filename suffix (``.gff3`` or ``.gff``, gzip-compressed or not).
-    GTF input is no longer supported.
 
     :param path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object), which shows whether a CDS ends in a stop
         codon. Required: without it, read_annotation raises a ValueError.
     :param reassign_exons: Recompute the exon numbers with ``compute_exon_numbers``
     :return: DataFrame, as ``read_gff3`` returns it
-    :raises ValueError: for a GTF file name, for an unknown suffix, or without ``fasta``
+    :raises ValueError: for an unknown suffix, or without ``fasta``
     """
     detect_annotation_format(path)
     if fasta is None:
@@ -207,8 +202,8 @@ def read_gff3(gff3_path, fasta):
     if not {"ID", "Parent"} & columns:
         # polars-bio reads a GTF as GFF3 rows without attributes
         raise ValueError(
-            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: no row has an ID or Parent attribute. "
-            f"If it is a GTF: {GTF_NOT_SUPPORTED}"
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: no row has an ID or Parent attribute, "
+            "e.g. because it is a GTF."
         )
 
     if {"gene_type", "transcript_type"} <= columns:

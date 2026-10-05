@@ -564,32 +564,6 @@ def test_main_cli_requires_annotation(monkeypatch, tmp_path, capsys):
     assert "--annotation" in capsys.readouterr().err
 
 
-def test_main_cli_has_no_gtf_option(monkeypatch, tmp_path, capsys):
-    out = tmp_path / "out.csv"
-    calls = _patch_main(monkeypatch)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "nmd-scanner",
-            "--vcf",
-            "in.vcf",
-            "--annotation",
-            "annotation.gff3",
-            "--gtf",
-            "annotation.gtf",
-            "--fasta",
-            "ref.fa",
-            "--output",
-            str(out),
-        ],
-    )
-    with pytest.raises(SystemExit):
-        main_cli()
-    assert "unrecognized arguments: --gtf annotation.gtf" in capsys.readouterr().err
-    assert calls == {}
-
-
 def test_main_cli_annotation_option_reaches_main(monkeypatch, tmp_path):
     out = tmp_path / "out.csv"
     calls = _patch_main(monkeypatch)
@@ -622,20 +596,6 @@ def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
     assert "--annotation" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("name", ["annotation.gtf", "annotation.GTF.gz"])
-def test_main_cli_rejects_a_gtf_annotation_before_reading_anything(monkeypatch, tmp_path, capsys, name):
-    out = tmp_path / "out.csv"
-    calls = _patch_main(monkeypatch)
-    monkeypatch.setattr(
-        sys, "argv", ["nmd-scanner", "--vcf", "in.vcf", "--annotation", name, "--fasta", "ref.fa", "--output", str(out)]
-    )
-    with pytest.raises(SystemExit):
-        main_cli()
-    err = capsys.readouterr().err
-    assert f"argument --annotation: Cannot read '{name}': GTF input is no longer supported." in err
-    assert calls == {}
-
-
 def test_main_cli_rejects_an_annotation_of_unknown_format(monkeypatch, tmp_path, capsys):
     out = tmp_path / "out.csv"
     calls = _patch_main(monkeypatch)
@@ -648,22 +608,6 @@ def test_main_cli_rejects_an_annotation_of_unknown_format(monkeypatch, tmp_path,
         main_cli()
     assert "Cannot detect annotation format" in capsys.readouterr().err
     assert calls == {}
-
-
-@pytest.mark.parametrize("name", ["annotation.gtf", "annotation.gtf.gz"])
-def test_annotate_rejects_gtf(name):
-    with pytest.raises(ValueError) as error:
-        annotate("resources/test_files/test_variants.vcf", name, "resources/chr18.fa.gz")
-    assert str(error.value) == (
-        f"Cannot read {name!r}: GTF input is no longer supported. Use the GFF3 of the same GENCODE or Ensembl release."
-    )
-
-
-def test_main_rejects_a_gtf_and_writes_nothing(tmp_path):
-    out = tmp_path / "out.csv"
-    with pytest.raises(ValueError, match="GTF input is no longer supported"):
-        main("resources/test_files/test_variants.vcf", "annotation.gtf", "resources/chr18.fa.gz", str(out))
-    assert not out.exists()
 
 
 def test_main_accepts_a_path_object_for_the_annotation(tmp_path):

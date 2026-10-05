@@ -209,7 +209,7 @@ def main_cli():
         required=True,
         help=(
             "Path to gene annotation file (GFF3 with a .gff3 or .gff suffix, optionally gzip-compressed). "
-            "GENCODE and Ensembl GFF3 flavors are supported. GTF is not supported: use the GFF3 of the same release."
+            "GENCODE and Ensembl GFF3 flavors are supported."
         ),
     )
     parser.add_argument(
@@ -236,7 +236,7 @@ def main_cli():
 
     if args.annotation == "":
         parser.error("argument --annotation: expected a path, got an empty string")
-    # a GTF or an unknown suffix fails here, before the VCF and FASTA are read
+    # an unknown suffix fails here, before the VCF and FASTA are read
     try:
         detect_annotation_format(args.annotation)
     except ValueError as error:
