@@ -379,11 +379,6 @@ dependencies = [
     { name = "tqdm" },
 ]
 
-[package.optional-dependencies]
-parquet = [
-    { name = "pyarrow" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "tox" },
@@ -411,12 +406,10 @@ requires-dist = [
     { name = "polars" },
     { name = "polars-bio", specifier = ">=0.36.0,<0.37" },
     { name = "pyarrow", specifier = ">=23.0.1" },
-    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=23.0.1" },
     { name = "pyfaidx" },
     { name = "pysam" },
     { name = "tqdm", specifier = ">=4.66.5,<5" },
 ]
-provides-extras = ["parquet"]
 
 [package.metadata.requires-dev]
 dev = [

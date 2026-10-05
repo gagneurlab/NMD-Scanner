@@ -26,9 +26,6 @@ dependencies = [
     "pyarrow>=23.0.1",
 ]
 
-[project.optional-dependencies]
-parquet = ["pyarrow>=23.0.1"]
-
 [project.urls]
 "Homepage" = "https://github.com/gagneurlab/NMD-Scanner"
 
