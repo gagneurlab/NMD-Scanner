@@ -1105,6 +1105,7 @@ _ROW_WITHOUT_EXON_ROWS = {
     "nmd_start_proximal_rule": False,
     "nmd_single_exon_rule": False,
     "nmd_escape": False,
+    "nmd_model_status": "no_ptc",
 }
 
 

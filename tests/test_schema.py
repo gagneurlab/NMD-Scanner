@@ -3,10 +3,17 @@ import pandas as pd
 import pytest
 
 from nmd_scanner import cli
-from nmd_scanner.extra_features import add_features_and_rules, add_nmd_features, evaluate_nmd_escape_rules
+from nmd_scanner.extra_features import (
+    add_features_and_rules,
+    add_nmd_features,
+    evaluate_nmd_escape_rules,
+    nmd_model_status,
+)
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.schema import (
     KIND_DTYPES,
+    MODEL_INPUTS,
+    MODEL_STATUS_COLUMN_KINDS,
     NMD_FEATURE_COLUMN_KINDS,
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
@@ -28,10 +35,16 @@ def test_every_kind_has_a_dtype():
     assert set(OUTPUT_COLUMN_KINDS.values()) <= set(KIND_DTYPES)
 
 
-def test_output_columns_are_the_ptc_feature_and_rule_columns_in_order():
-    parts = [*PTC_COLUMN_KINDS, *NMD_FEATURE_COLUMN_KINDS, *NMD_RULE_COLUMN_KINDS]
+def test_output_columns_are_the_ptc_feature_rule_and_status_columns_in_order():
+    parts = [*PTC_COLUMN_KINDS, *NMD_FEATURE_COLUMN_KINDS, *NMD_RULE_COLUMN_KINDS, *MODEL_STATUS_COLUMN_KINDS]
     assert list(OUTPUT_COLUMN_KINDS) == parts
     assert len(set(parts)) == len(parts)
+
+
+def test_model_inputs_are_19_distinct_output_columns():
+    assert len(MODEL_INPUTS) == 19
+    assert len(set(MODEL_INPUTS)) == 19
+    assert set(MODEL_INPUTS) <= set(NMD_FEATURE_COLUMN_KINDS) | set(NMD_RULE_COLUMN_KINDS) | set(PTC_COLUMN_KINDS)
 
 
 def test_apply_schema_orders_columns_and_sets_dtypes():
@@ -169,7 +182,8 @@ def test_add_features_and_rules_equals_the_row_functions_applied_one_by_one(run_
     features = ptc_table.apply(add_nmd_features, axis=1, result_type="expand")
     table = pd.concat([ptc_table, features], axis=1)
     rules = table.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
-    expected = apply_schema(pd.concat([table, rules], axis=1), OUTPUT_COLUMN_KINDS)
+    table = pd.concat([table, rules], axis=1)
+    expected = apply_schema(table.assign(nmd_model_status=nmd_model_status(table)), OUTPUT_COLUMN_KINDS)
 
     pd.testing.assert_frame_equal(add_features_and_rules(ptc_table), expected)
 

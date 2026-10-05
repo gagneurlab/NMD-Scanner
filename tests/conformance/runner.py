@@ -117,7 +117,8 @@ NO_RULE = {
     "nmd_single_exon_rule": False,
     "nmd_escape": False,
 }
-# A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null
+# A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null, and the
+# model cannot score the row
 UNKNOWN_ALT = {
     "alt_cds_start": None,
     "alt_cds_stop": None,
@@ -154,6 +155,7 @@ UNKNOWN_ALT = {
     "nmd_start_proximal_rule": None,
     "nmd_single_exon_rule": None,
     "nmd_escape": None,
+    "nmd_model_status": "unknown_effect",
 }
 
 

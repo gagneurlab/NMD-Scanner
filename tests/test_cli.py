@@ -17,7 +17,7 @@ from nmd_scanner.cli import (
     to_parquet_safe,
     write_results,
 )
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
+from nmd_scanner.schema import MODEL_INPUTS, MODEL_STATUSES, NMD_RULE_COLUMN_KINDS, OUTPUT_COLUMN_KINDS
 from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
 RESOURCES = Path(__file__).resolve().parent.parent / "resources"
@@ -397,10 +397,12 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     assert unknown.any() and not unknown.all()
     assert set(loaded.loc[unknown, "unknown_reason"]) <= {SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS}
     assert schema.field("unknown_reason").type.equals(pa.string())
-    for column in ["start_loss", "stop_loss"] + [column for column in OUTPUT_COLUMN_KINDS if column.startswith("nmd_")]:
+    for column in ["start_loss", "stop_loss", *NMD_RULE_COLUMN_KINDS]:
         assert schema.field(column).type.equals(pa.bool_()), column
         assert loaded.loc[unknown, column].isna().all(), column
         assert loaded.loc[~unknown, column].notna().any(), column
+    assert (loaded.loc[unknown, "nmd_model_status"] == "unknown_effect").all()
+    assert (loaded.loc[~unknown, "nmd_model_status"] != "unknown_effect").all()
 
 
 def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, caplog):
@@ -777,6 +779,16 @@ def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp
 
     assert results.empty
     assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+
+
+def test_annotate_sets_nmd_model_status_ok_exactly_for_the_rows_the_model_can_score():
+    results = annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    new_ptc = results["alt_is_premature"].fillna(False) & ~results["ref_is_premature"].fillna(False)
+    scorable = new_ptc & results[MODEL_INPUTS].notna().all(axis=1)
+    assert (results["nmd_model_status"] == "ok").tolist() == scorable.tolist()
+    assert scorable.any()
+    assert set(results["nmd_model_status"]) <= set(MODEL_STATUSES)
 
 
 def test_annotate_reassign_exons_matches_main(tmp_path):

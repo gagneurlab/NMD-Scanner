@@ -18,8 +18,10 @@ from nmd_scanner.extra_features import (
     calculate_ptc_to_start_distance,
     calculate_stop_codon_dist,
     calculate_utr_lengths,
+    nmd_model_status,
 )
 from nmd_scanner.rules import analyze_sequence
+from nmd_scanner.schema import MODEL_INPUTS, MODEL_STATUSES
 
 
 def test_calculate_utr_lengths():
@@ -547,3 +549,81 @@ def test_add_likely_misannotated_flag():
     # No start codon position
     row5 = {"cds_in_transcript": True, "ref_start_codon_pos": None, "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row5) is True
+
+
+def _status_row(**values):
+    """A PTC row that the model can score: a new PTC and all model inputs set. ``values`` overrides columns."""
+
+    row = {name: 1 for name in MODEL_INPUTS}
+    row.update(
+        unknown_reason=None,
+        alt_is_premature=True,
+        ref_is_premature=False,
+        has_stop_codon=True,
+        has_start_codon=True,
+        start_loss=False,
+    )
+    row.update(values)
+    return row
+
+
+# The null model inputs of a row with an unknown alt transcript: 15 of the 19 model inputs
+_UNKNOWN_INPUTS = {
+    name: None
+    for name in MODEL_INPUTS
+    if name not in ("total_exon_count", "utr5_length", "utr3_length", "transcript_length")
+}
+
+
+@pytest.mark.parametrize(
+    ("values", "status"),
+    [
+        ({}, "ok"),
+        ({"unknown_reason": "splice_site_destroyed", "alt_is_premature": None, **_UNKNOWN_INPUTS}, "unknown_effect"),
+        ({"alt_is_premature": False}, "no_ptc"),
+        ({"alt_is_premature": None}, "no_ptc"),
+        ({"ref_is_premature": True}, "ref_ptc"),
+        ({"has_stop_codon": False, "stop_codon_distance": None, "utr3_length": None}, "no_annotated_stop"),
+        ({"has_start_codon": False, "ptc_to_start_codon": None}, "no_annotated_start"),
+        ({"start_loss": True, "ptc_to_start_codon": None}, "start_lost"),
+        ({"start_loss": True}, "ok"),
+        ({"ptc_to_start_codon": None}, "missing_input"),
+        ({"ptc_to_intron": None}, "missing_input"),
+        ({"ref_is_premature": None}, "ok"),
+        # overlapping reasons: the first one in MODEL_STATUSES wins
+        (
+            {"unknown_reason": "exon_boundary_ambiguous", "alt_is_premature": None, "has_stop_codon": False},
+            "unknown_effect",
+        ),
+        ({"alt_is_premature": False, "ref_is_premature": True, "ptc_to_start_codon": None}, "no_ptc"),
+        ({"ref_is_premature": True, "has_stop_codon": False, "utr3_length": None}, "ref_ptc"),
+        ({"has_stop_codon": False, "utr3_length": None, "ptc_to_start_codon": None}, "no_annotated_stop"),
+        (
+            {"has_stop_codon": False, "has_start_codon": False, "utr3_length": None, "ptc_to_start_codon": None},
+            "no_annotated_stop",
+        ),
+        ({"has_start_codon": False, "ptc_to_start_codon": None, "ptc_to_intron": None}, "no_annotated_start"),
+        ({"start_loss": True, "ptc_to_start_codon": None, "ptc_to_intron": None}, "start_lost"),
+    ],
+)
+def test_nmd_model_status(values, status):
+    table = pd.DataFrame([_status_row(), _status_row(**values)], index=[7, 3])
+
+    result = nmd_model_status(table)
+
+    assert result.tolist() == ["ok", status]
+    assert result.index.tolist() == [7, 3]
+    assert result.dtype == pd.StringDtype("python")
+
+
+def test_nmd_model_status_values_are_the_documented_ones():
+    assert MODEL_STATUSES == (
+        "unknown_effect",
+        "no_ptc",
+        "ref_ptc",
+        "no_annotated_stop",
+        "no_annotated_start",
+        "start_lost",
+        "missing_input",
+        "ok",
+    )

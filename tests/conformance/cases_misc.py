@@ -260,7 +260,7 @@ CASES = [
         """,
         THREE_EXONS,
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
         more_changes=(Change("CCATGG[C>T]CGTAAG", vcf_ref="A", vcf_id="var2"),),
     ),
     # MI-03, MI-18
@@ -377,7 +377,7 @@ CASES = [
             Transcript(THREE_EXONS.transcript.exons, edit_gff3=second_transcript_with_a_shorter_3utr), THREE_EXONS.ref
         ),
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
         more_rows=(
             {
                 "transcript_id": "tx2",
@@ -409,7 +409,7 @@ CASES = [
         """,
         Layout(Transcript(THREE_EXONS.transcript.exons, edit_gff3=copy_of_the_gene_on_chromosome_2), THREE_EXONS.ref),
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
     ),
     # MI-07: one row per variant; each row applies only its own variant
     Case(
@@ -424,7 +424,7 @@ CASES = [
         """,
         THREE_EXONS,
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
         more_changes=(Change("CTGG[G>A]CGTAAG", vcf_id="var2"),),
         more_rows=(
             {
@@ -448,6 +448,7 @@ CASES = [
             **MISSENSE_ROW,
             "variant_id": ".",
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
     ),
     # MI-10
@@ -460,6 +461,7 @@ CASES = [
             **MISSENSE_ROW,
             "variant_id": "007",
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
     ),
     # MI-10
@@ -472,6 +474,7 @@ CASES = [
             **MISSENSE_ROW,
             "variant_id": "NA",
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
     ),
     # MI-13: the CDS is located by its coordinates, at tx 12, not at the copy at tx 1
@@ -519,6 +522,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Mark("ref", 1, 10, "~", "copy of the CDS"),),
         ruler=Ruler((1, 12)),
@@ -530,7 +534,7 @@ CASES = [
         + "The GFF3 has exon_number 3 on exon 1 and 1 on exon 3. annotate() runs with reassign_exons.\n",
         Layout(Transcript(THREE_EXONS.transcript.exons, edit_gff3=exon_numbers_1_and_3_swapped), THREE_EXONS.ref),
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
         reassign_exons=True,
     ),
     # MI-16: README.md, section Arguments: the chromosome names must match in the VCF, the GFF3 and the FASTA
@@ -583,6 +587,7 @@ CASES = [
             **MISSENSE_ROW,
             "alt_cds_info": [(1, 7), (2, 9), (3, 5)],
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
     ),
     # UR-02: no placement keeps the donor GT after exon 1
@@ -653,6 +658,7 @@ CASES = [
             "alt_cds_seq": "ATGGCC" + "GAGCTGGGC" + "TCCTAA",
             "alt_transcript_seq": "GTCAGACCATGGCC" + "GAGCTGGGC" + "TCCTAAGCAGCCAGGC",
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("TTTCAG[AGG>GAG]CTG"),),
     ),

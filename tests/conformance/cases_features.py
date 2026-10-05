@@ -649,6 +649,7 @@ CASES = [
             "ptc_to_intron": 120,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 230, 233, "*", "PTC"),
@@ -729,6 +730,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Ruler((-35, -15, 0, 15, 30, 55, 85), "CDS"),
@@ -811,6 +813,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Ruler((-8, 0, 12, 27, 30, 57, 82), "CDS"),
@@ -889,6 +892,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 20), (2, 14), (3, 55)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("GCCA[A>]GGCC"),),
         marks=(
@@ -966,6 +970,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 20), (2, 16), (3, 55)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("GCCA[>A]AGGCC"), Change("GCCAA[>A]GGCC")),
         marks=(
@@ -1044,6 +1049,7 @@ CASES = [
             "nmd_start_proximal_rule": True,
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("TTTCA[GCAGCAGCTGCTGC>G]GTAAGT"),),
         marks=(
@@ -1116,6 +1122,7 @@ CASES = [
             "nmd_start_proximal_rule": True,
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 10, 13, "*", "PTC"),
@@ -1187,6 +1194,7 @@ CASES = [
             "stop_codon_distance": -9,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Ruler((-8, 0, 12, 27, 54, 57, 63, 82), "CDS"), Span("alt", 62, 71, "stop_codon_distance = -9")),
         ruler=Ruler((0, 8, 20, 35, 62, 65, 71, 90)),
@@ -1285,6 +1293,7 @@ CASES = [
             "nmd_single_exon_rule": True,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Ruler((-8, 0, 30, 57, 82), "CDS"),
@@ -1342,6 +1351,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 12, 21, 27)),
     ),
@@ -1392,6 +1402,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 4, 16, 25)),
     ),
@@ -1453,6 +1464,7 @@ CASES = [
             "ptc_to_intron": 60,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Ruler((-4, 0, 150, 210, 216), "CDS"),
@@ -1528,6 +1540,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Ruler((-3, 0, 30, 100, 159, 165, 173), "CDS"),
@@ -1600,6 +1613,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_annotated_start",
         },
         marks=(
             Ruler((-3, 0, 100, 159, 165, 173), "CDS"),
@@ -1656,6 +1670,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 4, 16, 22)),
     ),
@@ -1707,6 +1722,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 4, 16, 22, 28)),
     ),
@@ -1758,6 +1774,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 18)),
     ),

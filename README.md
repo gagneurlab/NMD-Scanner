@@ -20,7 +20,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 83 columns and dtypes for every input
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 84 columns and dtypes for every input
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
@@ -68,7 +68,7 @@ Output:
   - extra features such as UTR lengths, exon counts, distances, etc.
   - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
 
-`nmd_scanner.schema` lists the 83 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
+`nmd_scanner.schema` lists the 84 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
@@ -117,7 +117,15 @@ Add the extra NMD-related features (utr lengths, exon counts, ptc-related featur
 results = nmd_scanner.add_features_and_rules(results)
 ```
 
-To work on single rows, `nmd_scanner.add_nmd_features` and `nmd_scanner.evaluate_nmd_escape_rules` are public too. Run the features **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced by the features.
+The last column, `nmd_model_status`, says whether the NMD efficiency model can score a row: `ok`, or the first reason why not, e.g. `no_annotated_stop`. `nmd_scanner.schema.MODEL_INPUTS` lists the 19 model inputs in model order. [Model status](Technical%20Notes.md#model-status) in the Technical Notes lists all values:
+```python
+from nmd_scanner.schema import MODEL_INPUTS
+
+scorable = results[results["nmd_model_status"] == "ok"]
+X = scorable[MODEL_INPUTS]  # no null value
+```
+
+To work on single rows, `nmd_scanner.add_nmd_features` and `nmd_scanner.evaluate_nmd_escape_rules` are public too. Run the features **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced by the features. The row functions do not add `nmd_model_status`; `add_features_and_rules` adds it.
 
 ## License
 All source code in this repository is licensed under the [MIT License](https://github.com/gagneurlab/NMD-Scanner/blob/main/LICENSE).

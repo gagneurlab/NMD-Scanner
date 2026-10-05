@@ -117,11 +117,72 @@ NMD_RULE_COLUMN_KINDS = {
     "nmd_escape": "bool",
 }
 
+# Kind of the column that add_features_and_rules adds after the rules. It says whether the NMD efficiency model
+# can score the row (see MODEL_STATUSES).
+MODEL_STATUS_COLUMN_KINDS = {"nmd_model_status": "string"}
+
 # Kind of every output column, in output order. The kind gives the pandas dtype (KIND_DTYPES) and the
 # parquet type (cli.parquet_schema). Without a fixed schema, pandas and pyarrow infer each type from the
 # data. A column with only missing values, or a table without rows, then gets a different type from run
 # to run.
-OUTPUT_COLUMN_KINDS = {**PTC_COLUMN_KINDS, **NMD_FEATURE_COLUMN_KINDS, **NMD_RULE_COLUMN_KINDS}
+OUTPUT_COLUMN_KINDS = {
+    **PTC_COLUMN_KINDS,
+    **NMD_FEATURE_COLUMN_KINDS,
+    **NMD_RULE_COLUMN_KINDS,
+    **MODEL_STATUS_COLUMN_KINDS,
+}
+
+# The 19 inputs of the NMD efficiency model best_model.pkl (see scripts/train_new.ipynb), in the order that the
+# model takes them. The model cannot score a row in which one of them is null.
+MODEL_INPUTS = [
+    "start_loss",
+    "stop_loss",
+    "total_exon_count",
+    "ptc_less_than_150nt_to_start",
+    "nmd_long_exon_rule",
+    "nmd_start_proximal_rule",
+    "nmd_single_exon_rule",
+    "nmd_escape",
+    "downstream_exon_count",
+    "nmd_last_exon_rule",
+    "ptc_to_start_codon",
+    "stop_codon_distance",
+    "ptc_exon_length",
+    "ptc_to_intron",
+    "upstream_exon_count",
+    "nmd_50nt_penultimate_rule",
+    "utr5_length",
+    "utr3_length",
+    "transcript_length",
+]
+
+# The values of nmd_model_status, in the order they are checked. A row gets the first value whose condition holds:
+# - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_is_premature and 15 of the 19 model
+#   inputs are null. unknown_reason says why.
+# - no_ptc: alt_is_premature is not True, so there is no PTC to score.
+# - ref_ptc: ref_is_premature is True. The reference has a PTC already, so the variant does not create it.
+# - no_annotated_stop: has_stop_codon is False, which makes stop_codon_distance and utr3_length null.
+# - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
+#   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).
+# - start_lost: start_loss is True and ptc_to_start_codon is null. After a start loss, the scan of alt_transcript_seq
+#   takes the next ATG, and ptc_to_start_codon runs from it to the PTC. A scanned row is a PTC row only if the scan
+#   finds an ATG and a stop codon after it, so it always has a ptc_to_start_codon. Only a start-loss row without
+#   alt_transcript_seq gets start_lost, e.g. one of a transcript without exon rows. It is not scanned and keeps the
+#   PTC of the alt CDS.
+# - missing_input: another model input is null.
+# - ok: the variant creates the PTC, and no model input is null.
+# no_annotated_stop and no_annotated_start hold for every variant of the transcript. So they go before start_lost and
+# missing_input, which depend on the variant.
+MODEL_STATUSES = (
+    "unknown_effect",
+    "no_ptc",
+    "ref_ptc",
+    "no_annotated_stop",
+    "no_annotated_start",
+    "start_lost",
+    "missing_input",
+    "ok",
+)
 
 
 def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):

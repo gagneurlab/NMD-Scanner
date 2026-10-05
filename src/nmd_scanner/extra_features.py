@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from nmd_scanner.rules import annotated_stop_distance, classify_rescued_orf, ends_at_annotated_stop, first_stop_codon
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, apply_schema
+from nmd_scanner.schema import KIND_DTYPES, MODEL_INPUTS, MODEL_STATUSES, OUTPUT_COLUMN_KINDS, apply_schema
 
 
 def _plain_values(row):
@@ -423,8 +423,9 @@ def add_features_and_rules(results):
     Add the NMD features and the NMD escape rules to a result of ``extract_ptc``.
 
     This runs ``add_nmd_features`` on each row, then ``evaluate_nmd_escape_rules`` (it reads columns that the
-    features add), and applies the output schema. The result has the columns, column order and dtypes of
-    OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero rows. ``results`` is not changed.
+    features add). Then it adds the column nmd_model_status (see ``nmd_model_status``) and applies the output schema.
+    The result has the columns, column order and dtypes of OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero
+    rows. ``results`` is not changed.
 
     :param results: DataFrame returned by ``extract_ptc``, also an empty one
     :return: DataFrame with the columns and dtypes of OUTPUT_COLUMN_KINDS
@@ -438,4 +439,35 @@ def add_features_and_rules(results):
     results = pd.concat([results, extra_features], axis=1)
     nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
     results = pd.concat([results, nmd_results], axis=1)
+    results["nmd_model_status"] = nmd_model_status(results)
     return apply_schema(results, OUTPUT_COLUMN_KINDS)
+
+
+def nmd_model_status(results):
+    """
+    Return the nmd_model_status of each row: "ok" if the NMD efficiency model can score the row, else the first
+    reason why it cannot. MODEL_STATUSES in nmd_scanner.schema lists the values and their conditions, in the order
+    they are checked.
+
+    :param results: DataFrame with unknown_reason, alt_is_premature, ref_is_premature, has_stop_codon, has_start_codon
+                    and the columns of MODEL_INPUTS
+    :return: Series of the values of MODEL_STATUSES, with the index of ``results`` and the string dtype
+    """
+
+    def is_true(column):
+        return results[column].astype("boolean").fillna(False).to_numpy(dtype=bool)
+
+    def is_false(column):
+        return ~results[column].astype("boolean").fillna(True).to_numpy(dtype=bool)
+
+    conditions = [
+        results["unknown_reason"].notna().to_numpy(),
+        ~is_true("alt_is_premature"),
+        is_true("ref_is_premature"),
+        is_false("has_stop_codon"),
+        is_false("has_start_codon"),
+        is_true("start_loss") & results["ptc_to_start_codon"].isna().to_numpy(),
+        results[MODEL_INPUTS].isna().any(axis=1).to_numpy(),
+    ]
+    status = np.select(conditions, list(MODEL_STATUSES[:-1]), default=MODEL_STATUSES[-1])
+    return pd.Series(status, index=results.index, dtype=KIND_DTYPES["string"])

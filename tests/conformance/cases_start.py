@@ -165,6 +165,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 3, 8, 15, 18, 23)),
     ),
@@ -212,6 +213,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 3, 8, 15, 18, 23)),
     ),
@@ -259,6 +261,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 3, 8, 10, 15, 18, 23)),
     ),
@@ -554,6 +557,7 @@ CASES += [
             "stop_codon_distance": 6,
             **columns(RULE_COLUMNS, True, False, False, False, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 162, 165, "*", "PTC"),
@@ -595,6 +599,7 @@ CASES += [
             "stop_codon_distance": -6,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 2, 7, 8, 14, 20, 25)),
     ),
@@ -641,6 +646,7 @@ CASES += [
             "stop_codon_distance": 114,
             **columns(RULE_COLUMNS, False, False, False, True, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 9, 12, "a", "ATG of the scan"),
@@ -689,6 +695,7 @@ CASES += [
             "stop_codon_distance": 155,
             **columns(RULE_COLUMNS, False, False, False, True, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
@@ -735,6 +742,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 7), (2, 24)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("gggA[TG>G]GT"),),
         marks=(
@@ -780,6 +788,7 @@ CASES += [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 15, 18, "s", "the annotated stop codon"),
@@ -825,6 +834,7 @@ CASES += [
             "stop_codon_distance": -4,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
@@ -870,6 +880,7 @@ CASES += [
             "stop_codon_distance": -5,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 14, 17, "a", "ATG of the scan"),
@@ -915,6 +926,7 @@ CASES += [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 15, 18, "s", "the annotated stop codon"),
@@ -1152,6 +1164,7 @@ CASES += [
             "stop_codon_distance": -5,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 15), (2, 17)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("gggAT[>GATT]GCCC"), Change("gggATG[>ATTG]CCCC")),
         marks=(
@@ -1197,6 +1210,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 19, 22, "a", "ATG of the scan"),
@@ -1242,6 +1256,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 19, 22, "a", "ATG of the scan"),
@@ -1288,6 +1303,7 @@ CASES += [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 15)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("cc[ATGAAACCCTA>]Agatg"),),
         marks=(
@@ -1334,6 +1350,7 @@ CASES += [
             "stop_codon_distance": None,
             **columns(RULE_COLUMNS, False, True, False, True, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_annotated_stop",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
@@ -1379,6 +1396,7 @@ CASES += [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Mark("alt", 7, 10, "a", "ATG of the scan"), Mark("alt", 28, 31, "s", "the stop codon of the scan")),
         ruler=Ruler((0, 3, 7, 18, 28, 33)),
@@ -1421,6 +1439,7 @@ CASES += [
             "stop_codon_distance": 95,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
@@ -1469,6 +1488,7 @@ CASES += [
             "stop_codon_distance": 14,
             **columns(RULE_COLUMNS, False, True, False, True, False, True),
             "alt_transcript_exon_info": [(1, 17), (2, 16)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("gggt[caATGG>G]ATG"),),
         marks=(
@@ -1567,6 +1587,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 3, 8, 15, 18)),
     ),
@@ -1606,6 +1627,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Mark("alt", 16, 19, "s", "the annotated stop codon"),),
         ruler=Ruler((0, 3, 8, 16, 19)),
@@ -1645,6 +1667,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 3, 5, 15, 18)),
     ),
@@ -1682,6 +1705,7 @@ CASES += [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 3, 8, 15, 18)),
     ),
@@ -1836,7 +1860,7 @@ CASES += [
         """,
         frame_layout(0),
         Change("gggTG[C>T]AA"),
-        {**frame_snv_row(0), "alt_transcript_exon_info": SAME_EXONS},
+        {**frame_snv_row(0), "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
         ruler=Ruler((0, 3, 8, 12, 18, 21)),
     ),
     # FR-01, the SNV that makes a PTC in frame
@@ -1857,7 +1881,7 @@ CASES += [
         """,
         frame_layout(0),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(0), "alt_transcript_exon_info": SAME_EXONS},
+        {**frame_ptc_row(0), "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_annotated_start"},
         marks=(
             Mark("alt", 12, 15, "*", "PTC"),
             Mark("alt", 18, 21, "s", "the annotated stop codon"),
@@ -1879,7 +1903,7 @@ CASES += [
         """,
         frame_layout(1),
         Change("gggATG[C>T]A"),
-        {**frame_snv_row(1), "alt_transcript_exon_info": SAME_EXONS},
+        {**frame_snv_row(1), "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
     # FR-02, FR-04
@@ -1899,7 +1923,7 @@ CASES += [
         """,
         frame_layout(1),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(1), "alt_transcript_exon_info": SAME_EXONS},
+        {**frame_ptc_row(1), "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_annotated_start"},
         marks=(
             Mark("alt", 13, 16, "*", "PTC"),
             Mark("alt", 19, 22, "s", "the annotated stop codon"),
@@ -1921,7 +1945,7 @@ CASES += [
         """,
         frame_layout(2),
         Change("gggACTG[C>T]"),
-        {**frame_snv_row(2), "alt_transcript_exon_info": SAME_EXONS},
+        {**frame_snv_row(2), "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_ptc"},
         ruler=Ruler((0, 3, 8, 14, 20, 23)),
     ),
     # FR-03, FR-04
@@ -1941,7 +1965,7 @@ CASES += [
         """,
         frame_layout(2),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(2), "alt_transcript_exon_info": SAME_EXONS},
+        {**frame_ptc_row(2), "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_annotated_start"},
         marks=(
             Mark("alt", 14, 17, "*", "PTC"),
             Mark("alt", 20, 23, "s", "the annotated stop codon"),
@@ -1966,7 +1990,7 @@ CASES += [
         """,
         frame_layout(1, edit_gff3=exon_2_cds_row_with_phase_0),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(1), "alt_transcript_exon_info": SAME_EXONS},
+        {**frame_ptc_row(1), "alt_transcript_exon_info": SAME_EXONS, "nmd_model_status": "no_annotated_start"},
         marks=(
             Mark("alt", 13, 16, "*", "PTC"),
             Mark("alt", 19, 22, "s", "the annotated stop codon"),
@@ -2008,6 +2032,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
@@ -2158,6 +2183,7 @@ CASES += [
             "stop_codon_distance": -12,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 13, 16, "s", "the annotated stop codon"),
@@ -2202,6 +2228,7 @@ CASES += [
             "stop_codon_distance": -6,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 15, 18, "s", "the annotated stop codon"),
@@ -2246,6 +2273,7 @@ CASES += [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Mark("ref", 15, 18, "s", "the annotated TAA, out of frame"),),
         ruler=Ruler((0, 3, 8, 15, 18)),
@@ -2287,6 +2315,7 @@ CASES += [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Mark("alt", 7, 10, "a", "ATG of the scan"), Mark("alt", 16, 19, "s", "the annotated stop codon")),
         ruler=Ruler((0, 3, 4, 7, 11, 16)),

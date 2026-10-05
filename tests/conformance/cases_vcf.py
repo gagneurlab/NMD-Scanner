@@ -448,6 +448,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_cds_seq": "ATGCAACTGGCCGCCGCCTACAAGTGGTAA",
             "alt_transcript_seq": "GACCATGCAACTGGCCGCCGCCTACAAGTGGTAAACG",
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(
             Change("GCC[TT>TA]CAAG"),
@@ -471,6 +472,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_cds_seq": "ATGCAACTGGCCGCCGCCTNCAAGTGGTAA",
             "alt_transcript_seq": "GACCATGCAACTGGCCGCCGCCTNCAAGTGGTAAACG",
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
     ),
     # VD-09: REF equal to ALT, also if only the case differs
@@ -530,6 +532,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_seq": "GACCATGCAACTGGCCGCCTTCAAGTGGTAAACG",
             "alt_transcript_length": 34,
             "alt_transcript_exon_info": [(1, 10), (2, 15), (3, 9)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(
             Change("CTGGCCGCC[GCC>]TTC"),
@@ -568,6 +571,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_seq": "CCGCCGCCACCGC" + "ATGGCCGCCGCCCTGACCGCCGCCTGGTAA" + "CTGCCC",
             "alt_transcript_length": 49,
             "alt_transcript_exon_info": [(1, 25), (2, 24)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("TGGTA[A>]ACTG"), Change("TGGTAA[A>]CTG"), Change("TGGTAA[AC>C]TG")),
         ruler=Ruler((41, 43)),
@@ -605,6 +609,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_seq": "CCGCCGCCACCGC" + "ATGGCCGCCGCCCTGACCGCCGCCGCCTCCTAA" + "CCCCTGACCTAGCCC",
             "alt_transcript_length": 61,
             "alt_transcript_exon_info": [(1, 25), (2, 36)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(
             Change("GCCGCCGC[>CTC]CTAA"),
@@ -644,6 +649,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_seq": "CCGCCGCCACCGC" + "ATGGCCGCCGCCCTGACCGCCGCCGCCTGGCCCTAA" + "CCCCTGACCTAGCCC",
             "alt_transcript_length": 64,
             "alt_transcript_exon_info": [(1, 25), (2, 39)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(
             Change("GCCGCCG[>CCTGGC]CCTAA"),
@@ -684,6 +690,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_seq": "CCGCCGCCACCGC" + "ATGGCCGCCGCCCTGACCGCCGCCTAA" + "CCCCTGACCTAGCCC",
             "alt_transcript_length": 55,
             "alt_transcript_exon_info": [(1, 25), (2, 30)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCG[CCT>]CCTAA"), Change("GCCGCCT[CCT>]AA")),
         ruler=Ruler((35, 38)),
@@ -726,6 +733,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_seq": "CCGCCGCCACCGC" + "ATGGCCGCCGCCCTGACCGCCGCCGC" + "CTAGCCC",
             "alt_transcript_length": 46,
             "alt_transcript_exon_info": [(1, 25), (2, 21)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(
             Change("GCCGCCG[CCTAA>]CCTAG"),
@@ -792,6 +800,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "stop_codon_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 29)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCC[TAACC>T]CCTGA"), Change("GCCT[AACCC>C]CTGA")),
         marks=(
@@ -829,6 +838,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_seq": "CCGCCGCCACCGC" + "ATGGCCGCCGCCCTGACCGCCGCCGCCTAG" + "CCCTGACCTAGCCC",
             "alt_transcript_length": 57,
             "alt_transcript_exon_info": [(1, 25), (2, 32)],
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((42,)),
     ),
@@ -888,6 +898,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "stop_codon_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 24)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("G[TATAG>TT]TAGCAT"), Change("GT[ATAGT>TT]AGCAT")),
         marks=(
@@ -968,6 +979,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "alt_transcript_length": 21,
             "alt_cds_start_in_transcript": 4,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         more_changes=(Change("AAG[C>A]TAA", vcf_id="var2"),),
         more_rows=({"variant_id": "var2"},),

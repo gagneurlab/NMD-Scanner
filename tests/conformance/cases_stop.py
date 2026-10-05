@@ -535,6 +535,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 14, 17, "*", "PTC"),
@@ -590,6 +591,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 13, 25, 40)),
     ),
@@ -639,6 +641,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 13, 25, 40)),
     ),
@@ -699,6 +702,7 @@ CASES = [
             "stop_codon_distance": -12,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 40, 43, "s", "annotated stop codon"),
@@ -762,6 +766,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Mark("alt", 40, 43, "s", "annotated stop codon"),),
         ruler=Ruler((0, 13, 25, 40, 55)),
@@ -827,6 +832,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 24), (2, 50)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("ATGG[C>]CGCCGCC"), Change("ATG[GCC>GC]GCCGCC")),
         marks=(
@@ -895,6 +901,7 @@ CASES = [
             "stop_codon_distance": -7,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 49)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("ACCG[C>]CGCCGCCTAA"),),
         marks=(
@@ -958,6 +965,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 51)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("ACCGC[C>GC]GCCGCCTAA"),),
         ruler=Ruler((0, 13, 25, 33, 40)),
@@ -1010,6 +1018,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 51)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCT[A>GA]ACCCC"),),
         marks=(Mark("alt", 40, 43, "s", "annotated stop codon TGA, stop_codon_distance = 0"),),
@@ -1063,6 +1072,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 41)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("TGGTA[A>]ACTG"), Change("TGGTAA[A>]CTG")),
         marks=(Mark("alt", 40, 41, "s", "annotated stop codon TAA, stop_codon_distance = 0"),),
@@ -1116,6 +1126,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 53)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GA[>CCG]CCGCCGCCGCCTAA"), Change("GCCGCCGC[C>CGCC]TAACCCC")),
         marks=(Mark("alt", 43, 46, "s", "annotated stop codon, stop_codon_distance = 0"),),
@@ -1169,6 +1180,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 47)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("CTGA[CCG>]CCGCCGCCTAA"),),
         marks=(Mark("alt", 37, 40, "s", "annotated stop codon, stop_codon_distance = 0"),),
@@ -1221,6 +1233,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 53)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("CCGCCG[>CCT]CCTAACC"), Change("GCCGCCGCCT[>CCT]AACCCC")),
         marks=(Mark("alt", 43, 46, "s", "annotated stop codon, stop_codon_distance = 0"),),
@@ -1273,6 +1286,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 56)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGCCGCCT[>GGCCCT]AACCCC"),),
         marks=(Mark("alt", 46, 49, "s", "annotated stop codon, stop_codon_distance = 0"),),
@@ -1325,6 +1339,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 47)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGCCT[CCT>]AACCCC"),),
         marks=(Mark("alt", 37, 40, "s", "annotated stop codon, stop_codon_distance = 0"),),
@@ -1392,6 +1407,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 25), (2, 56)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("GCCGCCGCCT[>CCTAGT]AACCCC"),),
         marks=(
@@ -1467,6 +1483,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 25), (2, 54)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("GCCT[CT>CGTGAC]TAACC"), Change("GCCTC[TT>GTGACT]AACC")),
         marks=(
@@ -1525,6 +1542,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 47)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGCC[TCCTA>TG]ACCCC"),),
         marks=(Mark("alt", 37, 38, "s", "annotated stop codon TGA, stop_codon_distance = 0"),),
@@ -1578,6 +1596,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 47)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGCC[TCTTA>TG]ACCCC"),),
         marks=(Mark("alt", 37, 38, "s", "annotated stop codon TGA, stop_codon_distance = 0"),),
@@ -1631,6 +1650,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 40)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGCC[TCCTA>TG]ATAACC"),),
         marks=(Mark("alt", 37, 38, "s", "annotated stop codon TGA, stop_codon_distance = 0"),),
@@ -1694,6 +1714,7 @@ CASES = [
             "stop_codon_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 37)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGCCT[CCTAAT>]AACC"),),
         marks=(
@@ -1761,6 +1782,7 @@ CASES = [
             "stop_codon_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 38)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGC[CGTATAG>C]TAGCAT"),),
         marks=(
@@ -1828,6 +1850,7 @@ CASES = [
             "stop_codon_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 38)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCG[CCGTATA>C]GTAGCAT"),),
         marks=(
@@ -1902,6 +1925,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 25), (2, 37)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("GCCTA[CTA>A]AGCCC"),),
         marks=(
@@ -1974,6 +1998,7 @@ CASES = [
             "stop_codon_distance": -1,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 35)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCTA[CTAA>]GCCCC"), Change("GCCT[ACTAA>A]GCCCC")),
         marks=(
@@ -2041,6 +2066,7 @@ CASES = [
             "stop_codon_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 41)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCG[TATAG>TT]TAGCAT"),),
         marks=(
@@ -2108,6 +2134,7 @@ CASES = [
             "stop_codon_distance": -4,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 38)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("GCCGCC[GCTTAAC>]TAAGCC"),),
         marks=(
@@ -2187,6 +2214,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ref_ptc",
         },
         marks=(
             Mark("ref", 28, 31, "u", "in-frame TGA of the ref CDS"),
@@ -2259,6 +2287,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ref_ptc",
         },
         marks=(
             Mark("ref", 28, 31, "u", "in-frame TGA of the ref CDS"),
@@ -2318,6 +2347,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("ref", 40, 43, "x", "stop_codon rows on the sense codon TCA"),
@@ -2391,6 +2421,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ref_ptc",
         },
         marks=(
             Mark("ref", 40, 43, "u", "in-frame TAA of the ref CDS"),
@@ -2471,6 +2502,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ref_ptc",
         },
         marks=(
             Mark("ref", 26, 29, "u", "in-frame TGA of the ref CDS"),
@@ -2542,6 +2574,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 24), (2, 50)],
+            "nmd_model_status": "no_annotated_stop",
         },
         equivalent=(Change("ATGG[C>]CGCCGCC"),),
         marks=(
@@ -2600,6 +2633,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 49)],
+            "nmd_model_status": "no_ptc",
         },
         equivalent=(Change("ACCG[C>]CGCCGCCTAA"),),
         marks=(
@@ -2655,6 +2689,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 51)],
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
@@ -2719,6 +2754,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_annotated_stop",
         },
         marks=(
             Mark("alt", 37, 40, "*", "PTC"),
@@ -2776,6 +2812,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 39, 40, "e", "last base of the alt CDS"),
@@ -2842,6 +2879,7 @@ CASES = [
             "stop_codon_distance": -12,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 40, 43, "s", "annotated stop codon"),
@@ -2907,6 +2945,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(Mark("alt", 40, 43, "s", "annotated stop codon"),),
         ruler=Ruler((0, 13, 25, 40, 43)),
@@ -2966,6 +3005,7 @@ CASES = [
             "stop_codon_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 13, 15, 40)),
     ),
@@ -3016,6 +3056,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 13, 15, 20, 40)),
     ),
@@ -3066,6 +3107,7 @@ CASES = [
             "stop_codon_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         ruler=Ruler((0, 13, 25, 40, 42, 52)),
     ),
@@ -3127,6 +3169,7 @@ CASES = [
             "stop_codon_distance": -12,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 40, 41, "s", "annotated stop codon"),
@@ -3195,6 +3238,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 25, 26, "*", "PTC TAG"),
@@ -3263,6 +3307,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 25, 26, "*", "PTC TAG"),
@@ -3329,6 +3374,7 @@ CASES = [
             "stop_codon_distance": -6,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
         },
         marks=(
             Mark("alt", 40, 43, "s", "annotated stop codon"),
@@ -3408,6 +3454,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exon_info": [(1, 10), (2, 10)],
+            "nmd_model_status": "ok",
         },
         equivalent=(Change("GACC[ATG>AG]GATG"),),
         marks=(

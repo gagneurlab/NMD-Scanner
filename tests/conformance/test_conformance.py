@@ -74,6 +74,16 @@ VALUES = {
     "nmd_start_proximal_rule": {True, False, None},
     "nmd_single_exon_rule": {True, False, None},
     "nmd_escape": {True, False, None},
+    "nmd_model_status": {
+        "unknown_effect",
+        "no_ptc",
+        "ref_ptc",
+        "no_annotated_stop",
+        "no_annotated_start",
+        "start_lost",
+        "missing_input",
+        "ok",
+    },
 }
 
 
@@ -325,6 +335,11 @@ NULL_CASES = [
         lambda row: (
             _ptc_row(row) and row["ref_start_codon_pos"] == 0 and row["ref_cds_seq"][:3] in {"TAA", "TAG", "TGA"}
         ),
+    ),
+    (
+        "ptc_to_start_codon",
+        "after a start loss: the row has no `alt_transcript_seq`",
+        lambda row: _ptc_row(row) and row["start_loss"] and row["alt_transcript_seq"] is None,
     ),
     ("stop_codon_distance", "`has_stop_codon` is False", lambda row: _known(row) and not row["has_stop_codon"]),
     (
