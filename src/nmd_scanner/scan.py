@@ -153,10 +153,10 @@ def read_gff3(gff3_path, fasta):
     be on the transcript rows, not only on the gene rows:
 
     - GENCODE: every feature row carries ``gene_id``/``transcript_id`` directly, and they are kept
-      (as in the GTF; e.g. hg19 lift37 has ``ENST00000477874.1_2`` there but ``ENST00000477874.1``
-      in ``ID``). Only chrY PAR transcripts reuse the chrX value on that attribute (the "_PAR_Y"
-      suffix only shows up in ``ID``/``Parent``), so for those the ``ID``/``Parent`` hierarchy gives
-      ``gene_id``/``transcript_id``, which is what the GTF has too.
+      (e.g. hg19 lift37 has ``ENST00000477874.1_2`` there but ``ENST00000477874.1`` in ``ID``).
+      Only chrY PAR transcripts reuse the chrX value on that attribute (the "_PAR_Y" suffix only
+      shows up in ``ID``/``Parent``), so for those the ``ID``/``Parent`` hierarchy gives
+      ``gene_id``/``transcript_id``.
     - Ensembl: ``gene_id``/``transcript_id`` are never given directly on exon/CDS rows and are
       resolved from the ``ID``/``Parent`` hierarchy (``gene:``/``transcript:`` prefixed). Exon rows
       carry their number as ``rank``; a CDS row takes the number of the exon it lies in. Without
@@ -164,12 +164,12 @@ def read_gff3(gff3_path, fasta):
 
     The coding regions are the CDS rows. A GFF3 CDS includes the stop codon, so the result has no
     stop_codon rows. On the CDS rows, the column has_stop_codon says whether the coding region of
-    the transcript ends in an annotated stop codon. On the exon rows, it is NA. Both flavors get the
-    coding regions and has_stop_codon of the GTF of the same release:
+    the transcript ends in an annotated stop codon. On the exon rows, it is NA. The two flavors get
+    the coding regions and has_stop_codon as follows:
 
     - GENCODE: has_stop_codon is True if the transcript has stop_codon rows. A few cds_end_NF
-      transcripts have 3 more CDS bases than in the GTF; ``_trim_cds_end_nf_stop_codons`` removes
-      them.
+      transcripts without stop_codon rows have a CDS that ends in a complete stop codon;
+      ``_trim_cds_end_nf_stop_codons`` removes it from the CDS.
     - Ensembl: the GFF3 has no stop_codon rows, so has_stop_codon comes from the last 3 CDS bases
       in ``fasta`` (``_has_stop_codon_from_sequence``).
 
@@ -220,9 +220,9 @@ def read_gff3(gff3_path, fasta):
             "(gene_type/transcript_type) or Ensembl-style attributes (biotype)."
         )
 
-    # ID/Parent are GFF3 structural columns with no GTF equivalent; they served their purpose
-    # in _resolve_ids_via_hierarchy. Drop them so a stray "ID" column doesn't collide with the
-    # unrelated "ID" column read_vcf uses for the VCF record ID once CDS rows are joined to it.
+    # ID/Parent are GFF3 structural columns; _resolve_ids_via_hierarchy has used them by this
+    # point. Drop them so a stray "ID" column doesn't collide with the unrelated "ID" column
+    # read_vcf uses for the VCF record ID once CDS rows are joined to it.
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
     return df.reset_index(drop=True)
@@ -331,14 +331,13 @@ def _count_gff3_data_lines(gff3_path):
 
 def _has_stop_codon_from_sequence(df, fasta):
     """
-    Sets has_stop_codon on the CDS rows of an Ensembl GFF3 as the Ensembl GTF has it.
+    Sets has_stop_codon on the CDS rows of an Ensembl GFF3 from the last 3 CDS bases in ``fasta``.
 
-    The Ensembl GTF has stop_codon rows for a transcript if the last 3 bases of its CDS are a stop
-    codon (see ``_last_codons``), unless its last coding exon ends mid-codon or it is tagged
-    cds_end_NF. The GFF3 gives the first condition by the exon attribute ``ensembl_end_phase`` (1 or
-    2), but has no cds_end_NF tag. So a cds_end_NF transcript whose CDS ends in stop codon bases gets
-    has_stop_codon True here, but has no stop codon in the GTF: 13 transcripts in Ensembl 108, none
-    on chr22.
+    A transcript has a stop codon if the last 3 bases of its CDS are a stop codon (see
+    ``_last_codons``), unless its last coding exon ends mid-codon: the exon attribute
+    ``ensembl_end_phase`` is 1 or 2 there. Ensembl annotates no stop codon for a transcript tagged
+    cds_end_NF either, but the GFF3 has no cds_end_NF tag. So a cds_end_NF transcript whose CDS ends
+    in stop codon bases gets has_stop_codon True here: 13 transcripts in Ensembl 108, none on chr22.
 
     :param df: Exon and CDS rows of an Ensembl GFF3 (DataFrame) with transcript_id and exon_number
     :param fasta: Reference genome (pyfaidx.Fasta object)
@@ -379,11 +378,10 @@ def _set_has_stop_codon(df, stop_transcripts):
 
 def _trim_cds_end_nf_stop_codons(df, fasta):
     """
-    Removes the last codon from the CDS of a GENCODE GFF3 where the GENCODE GTF has it as UTR.
+    Removes the last codon from the CDS of a GENCODE GFF3 for transcripts tagged cds_end_NF,
+    without stop_codon rows, whose CDS ends in a complete stop codon (see ``_last_codons``).
 
-    This concerns transcripts tagged cds_end_NF, without stop_codon rows, whose CDS ends in a
-    complete stop codon (see ``_last_codons``): 10 transcripts in GENCODE 42, none on chr22. All
-    other CDS and stop_codon rows are the same as in the GTF. GENCODE GFF3 repeats the transcript
+    This concerns 10 transcripts in GENCODE 42, none on chr22. GENCODE GFF3 repeats the transcript
     tags on every row, so the tags of the CDS rows are used.
 
     :param df: Exon, CDS and stop_codon rows of a GENCODE GFF3 (DataFrame) with transcript_id and tag
@@ -408,7 +406,7 @@ def _trim_cds_end_nf_stop_codons(df, fasta):
             df.at[cds_index, "Start"] = end
     logger.info(
         "Stop codons: %d cds_end_NF transcripts without stop_codon rows end in a stop codon; "
-        "it is removed from the CDS, as in the GENCODE GTF.",
+        "it is removed from the CDS.",
         len(stops),
     )
     # a CDS row that held only stop codon bases is gone
@@ -497,9 +495,8 @@ def _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=False):
     in the gene_id/transcript_id attributes).
 
     With ``keep_attributes``, the gene_id/transcript_id attributes stay where a row has them, and
-    the hierarchy only fills in the rows without one and the "_PAR_Y" rows. The attribute is the
-    GTF's value; the ID can differ from it (GENCODE lift37: ``ENST00000477874.1_2`` vs
-    ``ENST00000477874.1``).
+    the hierarchy only fills in the rows without one and the "_PAR_Y" rows. The ID can differ from
+    the attribute (GENCODE lift37: ``ENST00000477874.1_2`` vs ``ENST00000477874.1``).
 
     :param df: Attribute-parsed GFF3 dataframe; must have ``ID`` and ``Parent`` columns.
     :param transcript_mask: Boolean mask selecting the rows that define a transcript (their
@@ -606,9 +603,8 @@ def compute_exon_numbers(annotation):
     Exon numbers are assigned based on genomic order per transcript and strand.
     CDS and stop_codon features inherit the exon number of the exon they overlap.
 
-    On + Strand: Smallest exon number is the Start, Largest exon number is the End.
-    On - Strand: Smallest exon number is the Start, Largest exon number is the End.
-    (was different for hg19: the smallest exon number was the end, that is why we need to adjust it here.)
+    The exon numbers follow the direction of transcription: exon 1 has the smallest Start on
+    the + strand and the largest Start on the - strand.
 
     :param annotation: DataFrame with Feature, transcript_id, Start, End and Strand, e.g. as
         ``read_annotation`` returns it

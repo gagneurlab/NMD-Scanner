@@ -1002,7 +1002,7 @@ def test_read_annotation_accepts_path_objects(tmp_path):
 
 
 def test_read_gff3_gencode_keeps_the_transcript_id_and_gene_id_attributes(tmp_path):
-    """GENCODE lift37 ids carry a _N suffix on the attributes, but not in ID/Parent; the GTF has the suffix."""
+    """GENCODE lift37 ids carry a _N suffix on the attributes, but not in ID/Parent."""
     content = """\
 ##gff-version 3
 chr1\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1;gene_id=ENSG001.1_9;gene_type=protein_coding
