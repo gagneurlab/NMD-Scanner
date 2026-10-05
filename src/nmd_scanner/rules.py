@@ -61,13 +61,6 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     #   lambda seq: str(Seq(seq).reverse_complement()))
     ##########################################################################################
 
-    # intersection = intersection_test.copy()
-    # df3["Exon_CDS_seq"] = df3.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    # intersection_cds_vcf["Exon_CDS_seq"] = [
-    #    fasta[chrom][start:end].seq.upper()
-    #    for chrom, start, end in zip(intersection_cds_vcf["Chromosome"], intersection_cds_vcf["Start"], intersection_cds_vcf["End"])
-    # ]
-
     # Fetch reference CDS sequence for each variant region
     logger.info("Begin creating exon CDS sequence.")
     intersection_cds_vcf = catch_sequence.add_exon_cds_sequence(intersection_cds_vcf, fasta)  # for faster access
@@ -98,12 +91,6 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # Limit to relevant transcript (to save time)
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
     cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
-
-    # cds_df_adj["Exon_CDS_seq"] = cds_df_adj.apply(lambda row: fasta[row["Chromosome"]][row["Start"]:row["End"]].seq.upper(), axis=1)
-    # cds_df_adj["Exon_CDS_seq"] = [
-    #    fasta[chrom][start:end].seq.upper()
-    #    for chrom, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
-    # ]
 
     # Fetch reference sequence for all CDS entries per (relevant) transcripts
     cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta)  # for faster access
