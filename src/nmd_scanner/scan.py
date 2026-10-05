@@ -617,23 +617,23 @@ def compute_exon_numbers(annotation):
         exon_number; a CDS or stop_codon row without an overlapping exon keeps its exon_number too.
     """
     # a unique index for _assign_exon_numbers_to_cds
-    gtf_df = annotation.reset_index(drop=True)
+    annotation_df = annotation.reset_index(drop=True)
 
     # The computed numbers are ints, so hold the column as nullable integer. A caller may give it as
     # text, e.g. "1", with missing values on features without one.
-    if "exon_number" in gtf_df.columns:
-        gtf_df["exon_number"] = gtf_df["exon_number"].astype("Int64")
+    if "exon_number" in annotation_df.columns:
+        annotation_df["exon_number"] = annotation_df["exon_number"].astype("Int64")
     else:
-        gtf_df["exon_number"] = pd.Series(pd.NA, index=gtf_df.index, dtype="Int64")
+        annotation_df["exon_number"] = pd.Series(pd.NA, index=annotation_df.index, dtype="Int64")
 
     # Step 1: Compute exon numbers for exon features, by genomic order per transcript and strand
-    exons = gtf_df[(gtf_df["Feature"] == "exon") & gtf_df["transcript_id"].notna()]
+    exons = annotation_df[(annotation_df["Feature"] == "exon") & annotation_df["transcript_id"].notna()]
     sign = np.where(exons["Strand"] == "+", 1, -1)
     order = exons.assign(_key=exons["Start"].to_numpy() * sign).sort_values(["transcript_id", "_key"], kind="stable")
-    gtf_df.loc[order.index, "exon_number"] = (order.groupby("transcript_id").cumcount() + 1).astype("Int64")
+    annotation_df.loc[order.index, "exon_number"] = (order.groupby("transcript_id").cumcount() + 1).astype("Int64")
 
     # Step 2: Assign exon numbers to CDS and stop_codon features
-    return _assign_exon_numbers_to_cds(gtf_df)
+    return _assign_exon_numbers_to_cds(annotation_df)
 
 
 def _assign_exon_numbers_to_cds(df):
