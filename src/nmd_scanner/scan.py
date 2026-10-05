@@ -381,6 +381,9 @@ def _trim_cds_end_nf_stop_codons(df, fasta):
     Removes the last codon from the CDS of a GENCODE GFF3 for transcripts tagged cds_end_NF,
     without stop_codon rows, whose CDS ends in a complete stop codon (see ``_last_codons``).
 
+    cds_end_NF means that the end of the CDS is not confirmed, so these 3 bases are no annotated
+    stop codon. The GENCODE GTF of the same release has them as UTR.
+
     This concerns 10 transcripts in GENCODE 42, none on chr22. GENCODE GFF3 repeats the transcript
     tags on every row, so the tags of the CDS rows are used.
 
