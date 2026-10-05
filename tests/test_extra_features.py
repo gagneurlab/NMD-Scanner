@@ -549,22 +549,21 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_start_proximal_rule"] == True
     assert result["nmd_escape"] == True
 
-    # Example 6: multiple escape rules
-    # The row puts the PTC in exon 3 (alt_stop_codon_exons, downstream_exon_count = 0, ptc_exon_length = 500), but
-    # position 145 lies in exon 2. The last exon rule and the long exon rule read these fields, so they fire.
-    #           100 nt       100 nt              500 nt
-    #     5' [==========]|[====*=====]|[=========================] 3'
-    #        0           100   145    200                        700
-    #        <----------------->  145 nt from the start codon, < 150
-    #                          *----->|  55 nt to the last exon junction, > 50
+    # Example 6: multiple escape rules. The PTC lies in the last exon, which is longer than 407 nt, and less than 150 nt
+    # from the start codon. It lies past the last exon junction at 100, so the 50 nt rule does not fire.
+    #         50 nt   50 nt            500 nt
+    #     5' [=====]|[=====]|[==*=======================] 3'
+    #        0      50      100 120                     600
+    #        <------------------>  120 nt from the start codon, < 150
+    #                         <------------------------>  ptc_exon_length = 500, > 407
     row = {
         "alt_is_premature": True,
-        "alt_first_stop_pos": 145,
+        "alt_first_stop_pos": 120,
         "alt_stop_codon_exons": [3],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100), (2, 100), (3, 500)],
-        "ref_cds_info": [(1, 100), (2, 100), (3, 500)],
-        "alt_cds_info": [(1, 100), (2, 100), (3, 500)],
+        "transcript_exon_info": [(1, 50), (2, 50), (3, 500)],
+        "ref_cds_info": [(1, 50), (2, 50), (3, 500)],
+        "alt_cds_info": [(1, 50), (2, 50), (3, 500)],
         "cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 0,
