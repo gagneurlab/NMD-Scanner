@@ -148,7 +148,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     # TODO: Analyze reference and alternative CDS for start / stop codons
     analysis_df = analyze_sequence(results_df)
-    loss_df = start_stop_loss(analysis_df)  # instead of loss_analysis_df (test for start stop loss)
+    loss_df = start_stop_loss(analysis_df)
     logger.info("Analyzing sequence: done.")
 
     # Annotate transcript information (transcript start, end, sequence, length, exon info) in case of start or stop loss

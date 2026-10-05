@@ -60,7 +60,7 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
     fasta = Fasta(fasta_path)
 
     # read gene annotation file (GFF3) into exon rows and coding regions (CDS rows with has_stop_codon).
-    # reassign_exons recomputes the exon numbers (need this for the (old) hg19 version).
+    # reassign_exons recomputes the exon numbers (recommended for hg19).
     logger.info("Reading annotation file: %s", annotation_path)
     annotation = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
     logger.info("Annotation file shape: %s", annotation.shape)
