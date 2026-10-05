@@ -17,7 +17,14 @@ from nmd_scanner.cli import (
     to_parquet_safe,
     write_results,
 )
-from nmd_scanner.schema import MODEL_INPUTS, MODEL_STATUSES, NMD_RULE_COLUMN_KINDS, OUTPUT_COLUMN_KINDS
+from nmd_scanner.schema import (
+    MODEL_INPUTS,
+    MODEL_STATUSES,
+    NMD_RULE_COLUMN_KINDS,
+    OUTPUT_COLUMN_KINDS,
+    SEQUENCE_COLUMNS,
+    output_column_kinds,
+)
 from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
 RESOURCES = Path(__file__).resolve().parent.parent / "resources"
@@ -587,8 +594,9 @@ def test_main_cli_shows_no_progress_bars(cli_stderr):
 def _patch_main(monkeypatch):
     calls = {}
 
-    def fake_main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False):
+    def fake_main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True):
         calls["annotation_path"] = annotation_path
+        calls["sequences"] = sequences
         return pd.DataFrame()
 
     monkeypatch.setattr(cli_module, "main", fake_main)
@@ -623,6 +631,16 @@ def test_main_cli_annotation_option_reaches_main(monkeypatch, tmp_path):
     )
     main_cli()
     assert calls["annotation_path"] == "annotation.gff3"
+
+
+@pytest.mark.parametrize("flags, sequences", [([], True), (["--no-sequences"], False)])
+def test_main_cli_no_sequences_flag_reaches_main(monkeypatch, tmp_path, flags, sequences):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    argv = ["nmd-scanner", "--vcf", "in.vcf", "--annotation", "annotation.gff3", "--fasta", "ref.fa", "--output"]
+    monkeypatch.setattr(sys, "argv", [*argv, str(out), *flags])
+    main_cli()
+    assert calls["sequences"] is sequences
 
 
 def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
@@ -825,3 +843,29 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     assert results["has_stop_codon"].tolist() == [True]
     assert results["ref_cds_len"].tolist() == [1335]
     pd.testing.assert_frame_equal(results, expected)
+
+
+@pytest.mark.parametrize("extension", [".csv", ".parquet"])
+@pytest.mark.parametrize("vcf", ["resources/test_files/variants.vcf", "intergenic_vcf"])
+def test_main_without_sequences_writes_the_full_output_without_the_4_sequence_columns(
+    request, tmp_path, vcf, extension
+):
+    import pyarrow.parquet as pq
+
+    vcf_path = request.getfixturevalue(vcf) if vcf.endswith("_vcf") else vcf
+    args = (vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+    full_out = tmp_path / f"full{extension}"
+    reduced_out = tmp_path / f"reduced{extension}"
+    write_results(annotate(*args), str(full_out))
+
+    reduced = main(*args, str(reduced_out), sequences=False)
+
+    assert list(reduced.columns) == list(output_column_kinds(sequences=False))
+    if extension == ".csv":
+        loaded = pd.read_csv(reduced_out)
+        assert list(loaded.columns) == list(reduced.columns)
+        pd.testing.assert_frame_equal(loaded, pd.read_csv(full_out).drop(columns=list(SEQUENCE_COLUMNS)))
+    else:
+        table = pq.read_table(reduced_out)
+        assert table.column_names == list(reduced.columns)
+        assert table.equals(pq.read_table(full_out).drop_columns(list(SEQUENCE_COLUMNS)))

@@ -57,6 +57,8 @@ Each row of the result is the variant of one VCF record in one transcript whose 
 
 The tables below list the 84 columns in output order, as `OUTPUT_COLUMN_KINDS` in `nmd_scanner.schema` does. There is one table for each of its four parts: the PTC columns, the NMD features, the NMD rules and the model status. The tables assume a well-formed GFF3. "Input Defects.md" lists the null cases that a misannotation adds.
 
+With `sequences=False` (CLI flag `--no-sequences`), the result lacks the 4 sequence columns of `schema.SEQUENCE_COLUMNS` and has 80 columns; the other columns stay the same.
+
 ### Kinds and dtypes
 
 The kind of a column sets its pandas dtype (`schema.KIND_DTYPES`) and its Parquet type (`cli.parquet_schema`):

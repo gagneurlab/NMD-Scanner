@@ -18,8 +18,10 @@ from nmd_scanner.schema import (
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
     PTC_COLUMN_KINDS,
+    SEQUENCE_COLUMNS,
     apply_schema,
     empty_table,
+    output_column_kinds,
 )
 
 
@@ -88,6 +90,26 @@ def test_empty_table_has_the_schema():
 
     assert len(table) == 0
     assert_schema(table, OUTPUT_COLUMN_KINDS)
+
+
+def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_columns():
+    reduced = output_column_kinds(sequences=False)
+
+    assert len(OUTPUT_COLUMN_KINDS) == 84
+    assert len(reduced) == 80
+    assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
+    assert reduced == {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
+    assert list(reduced) == [column for column in OUTPUT_COLUMN_KINDS if column not in SEQUENCE_COLUMNS]
+    assert output_column_kinds() == OUTPUT_COLUMN_KINDS
+    assert output_column_kinds() is not OUTPUT_COLUMN_KINDS
+
+
+def test_empty_table_without_sequences_has_the_80_columns_and_their_dtypes():
+    table = empty_table(output_column_kinds(sequences=False))
+
+    assert len(table) == 0
+    assert len(table.columns) == 80
+    assert_schema(table, output_column_kinds(sequences=False))
 
 
 @pytest.fixture

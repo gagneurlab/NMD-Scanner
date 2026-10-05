@@ -20,7 +20,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 84 columns and dtypes for every input
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 84 columns and dtypes for every input, or 80 without the sequence columns
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
@@ -47,6 +47,9 @@ nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa
 
 # option: fix exon numbering (recommended for hg19)
 nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.csv --reassign_exons
+
+# option: leave out the 4 sequence columns
+nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.parquet --no-sequences
 ```
 
 The equivalent `python -m nmd_scanner.cli ...` invocation also works without installing the console script.
@@ -57,18 +60,19 @@ Arguments:
 - `--fasta`: Path to reference genome FASTA.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
+- `--no-sequences`: (flag) Leave out the 4 sequence columns `ref_cds_seq`, `alt_cds_seq`, `transcript_seq` and `alt_transcript_seq`. The output then has 80 columns. On the pathogenic ClinVar variants of chr22, these 4 columns make up 92% of the compressed Parquet bytes and about 216 of 272 MiB in pandas.
 
 The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `chr1` or all `1`.
 
 Output:
 - The file specified by `--output`, containing:
-  - reconstructed reference / alternative CDS and transcript sequences (+ metadata)
+  - reconstructed reference / alternative CDS and transcript sequences (+ metadata); `--no-sequences` leaves out the sequences
   - PTC detection and start / stop-loss flags
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.
   - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
 
-`nmd_scanner.schema` lists the 84 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
+`nmd_scanner.schema` lists the 84 output columns and their dtypes. `nmd_scanner.schema.output_column_kinds(sequences=False)` gives the 80 columns without the sequences. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
@@ -78,7 +82,7 @@ This is useful if you want to
 - integrate NMD-Scanner into a larger workflow
 - build custom features
 
-To get the result table of the CLI as a `pandas.DataFrame` without writing it, call `annotate`. It takes the inputs and options of the CLI, except the output path. It does not configure logging or write files:
+To get the result table of the CLI as a `pandas.DataFrame` without writing it, call `annotate`. It takes the inputs and options of the CLI, except the output path; `sequences=False` is the flag `--no-sequences`. It does not configure logging or write files:
 ```python
 import nmd_scanner
 

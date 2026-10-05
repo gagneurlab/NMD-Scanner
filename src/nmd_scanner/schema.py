@@ -132,6 +132,10 @@ OUTPUT_COLUMN_KINDS = {
     **MODEL_STATUS_COLUMN_KINDS,
 }
 
+# The 4 columns that hold a sequence. They make up most of the table's size, in memory and on disk.
+# annotate(..., sequences=False) and the CLI flag --no-sequences leave them out (see output_column_kinds).
+SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
+
 # The 19 inputs of the NMD efficiency model best_model.pkl (see scripts/train_new.ipynb), in the order that the
 # model takes them. The model cannot score a row in which one of them is null.
 MODEL_INPUTS = [
@@ -192,7 +196,8 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
     pandas raises if a value does not fit its column's dtype, e.g. 1.5 in an int column.
 
     :param table: DataFrame with exactly the columns of ``column_kinds``, in any order
-    :param column_kinds: dict of column name to kind, e.g. OUTPUT_COLUMN_KINDS or PTC_COLUMN_KINDS
+    :param column_kinds: dict of column name to kind, e.g. OUTPUT_COLUMN_KINDS, PTC_COLUMN_KINDS or
+        output_column_kinds(sequences=False)
     :return: DataFrame with the schema of ``column_kinds``
     :raises ValueError: if ``table`` lacks a column of ``column_kinds`` or has a column it does not list
     """
@@ -205,6 +210,19 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
         )
 
     return table[list(column_kinds)].astype({column: KIND_DTYPES[kind] for column, kind in column_kinds.items()})
+
+
+def output_column_kinds(sequences=True):
+    """
+    Return the kind of every output column, in output order. With ``sequences=False``, the 4 columns of
+    SEQUENCE_COLUMNS are left out, and the other 80 columns keep their order. Pass the result to
+    ``apply_schema`` or ``empty_table``.
+
+    :param sequences: whether to keep the columns of SEQUENCE_COLUMNS
+    :return: a new dict of column name to kind: OUTPUT_COLUMN_KINDS, or OUTPUT_COLUMN_KINDS without SEQUENCE_COLUMNS
+    """
+
+    return {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if sequences or column not in SEQUENCE_COLUMNS}
 
 
 def empty_table(column_kinds=OUTPUT_COLUMN_KINDS):

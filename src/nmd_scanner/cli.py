@@ -13,7 +13,7 @@ from pyfaidx import Fasta
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import detect_annotation_format, read_annotation, read_vcf
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
 
@@ -29,7 +29,7 @@ STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_
 logger = logging.getLogger(__name__)
 
 
-def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
+def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False, sequences=True):
     """
     Annotate the variants of a VCF file with NMD features and return the result table.
 
@@ -47,8 +47,10 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
     :param fasta_path: path to the reference FASTA file. It also shows whether a CDS ends in a stop codon, and for
                        an Ensembl GFF3 whether it starts with one.
     :param reassign_exons: recompute the exon numbers of the annotation (recommended for hg19; may be slow)
-    :return: DataFrame summarizing all annotated variants, with the columns and dtypes of OUTPUT_COLUMN_KINDS
-             (see nmd_scanner.schema). It has zero rows if no variant gives a result.
+    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS. With False, they are left out, which saves
+                      most of the table's memory. The other columns stay the same.
+    :return: DataFrame summarizing all annotated variants, with the columns and dtypes of
+             output_column_kinds(sequences) (see nmd_scanner.schema). It has zero rows if no variant gives a result.
     """
 
     # read VCF file (variants)
@@ -80,10 +82,14 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
     # Add the NMD features (inspired by the NMD efficiency benchmark dataset) and the NMD escape rules
     results = add_features_and_rules(results)
 
+    # add_features_and_rules applies the schema with the sequences, so they are dropped after it
+    if not sequences:
+        results = results.drop(columns=list(SEQUENCE_COLUMNS))
+
     return results
 
 
-def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False):
+def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True):
     """
     Main function for NMD scanner: annotate the variants and write the results to a file
 
@@ -92,10 +98,11 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False):
     :param fasta_path: path to the reference FASTA file
     :param output: path to the output file (.csv, .parquet, or .pq)
     :param reassign_exons: recompute the exon numbers of the annotation
+    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS (see annotate())
     :return: DataFrame summarizing all annotated variants: the table that annotate() returns
     """
 
-    results = annotate(vcf_path, annotation_path, fasta_path, reassign_exons=reassign_exons)
+    results = annotate(vcf_path, annotation_path, fasta_path, reassign_exons=reassign_exons, sequences=sequences)
 
     # Write output
     logger.info("Writing results to %s", output)
@@ -236,6 +243,15 @@ def main_cli():
     parser.add_argument(
         "--reassign_exons", action="store_true", help="Recompute exon numbers (recommended for hg19; may be slow)"
     )
+    parser.add_argument(
+        "--no-sequences",
+        dest="sequences",
+        action="store_false",
+        help=(
+            "Leave out the 4 sequence columns ref_cds_seq, alt_cds_seq, transcript_seq and alt_transcript_seq. "
+            "They make up most of the output size."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -257,7 +273,14 @@ def main_cli():
         )
 
     # Run the main pipeline
-    main(args.vcf, args.annotation, args.fasta, args.output, reassign_exons=args.reassign_exons)
+    main(
+        args.vcf,
+        args.annotation,
+        args.fasta,
+        args.output,
+        reassign_exons=args.reassign_exons,
+        sequences=args.sequences,
+    )
 
 
 if __name__ == "__main__":

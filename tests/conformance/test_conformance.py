@@ -1,6 +1,6 @@
 """
-Run every conformance case, and check that the cases cover every output column, every value of the bool and
-categorical columns, every documented null case and every reason for no row.
+Run every conformance case, also without the sequence columns, and check that the cases cover every output column,
+every value of the bool and categorical columns, every documented null case and every reason for no row.
 Check that the drawing of each case holds its rendered layout block.
 """
 
@@ -35,6 +35,27 @@ def test_drawing_holds_its_layout_block(case):
     wanted = block.splitlines()
     held = any(lines[i : i + len(wanted)] == wanted for i in range(len(lines)))
     assert held, f"the drawing does not hold its layout block, at the indentation of its other lines:\n{block}"
+
+
+# The 4 sequence columns, which annotate(..., sequences=False) leaves out ("Technical Notes.md", "Output columns")
+SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
+
+
+@pytest.mark.parametrize(
+    "case",
+    [pytest.param(case, marks=[pytest.mark.xfail(reason=case.bug, strict=True)] if case.bug else []) for case in CASES],
+    ids=[case.name for case in CASES],
+)
+def test_case_without_sequences(case, tmp_path):
+    """
+    With sequences=False, each case gives its expected result without the 4 sequence columns: its rows, with the
+    values and dtypes of the other columns, or no row with these columns, or its error. Once per case: on the plus
+    strand, with the first description of the variant.
+    """
+    columns = {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
+    assert len(columns) == len(OUTPUT_COLUMN_KINDS) - 4
+
+    check(case, case.change, "+", tmp_path, sequences=False, columns=columns)
 
 
 def test_case_names_are_unique():

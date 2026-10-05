@@ -554,14 +554,17 @@ def write_inputs(transcript, changes, strand, directory):
     return (str(vcf), str(gff3), str(fasta)), records
 
 
-def run(case, change, strand, directory):
+def run(case, change, strand, directory, sequences=True):
     """
     Run annotate() on the case, with the given description of its variant and the further variants of the case.
     Return the result table and the VCF record of the given description, None without one.
+
+    :param sequences: the sequences argument of annotate()
     """
     changes = ([] if change is None else [change]) + list(case.more_changes)
     paths, records = write_inputs(case.layout.transcript, changes, strand, directory)
-    return annotate(*paths, reassign_exons=case.reassign_exons), (records[0] if change is not None else None)
+    results = annotate(*paths, reassign_exons=case.reassign_exons, sequences=sequences)
+    return results, (records[0] if change is not None else None)
 
 
 def on_strand(value, strand):
@@ -581,18 +584,24 @@ def expected_row(case, strand, more=None):
     return row
 
 
-def check(case, change, strand, directory):
-    """Run the case and compare the result with its expected values, or check the error that it expects."""
+def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN_KINDS):
+    """
+    Run the case and compare the result with its expected values, or check the error that it expects.
+
+    :param sequences: the sequences argument of annotate()
+    :param columns: the kind of each column that the result has, in output order. The expected values of the other
+        output columns are not checked.
+    """
     if isinstance(case.expected, Raises):
         with pytest.raises(case.expected.exception, match=on_strand(case.expected.match, strand)):
-            run(case, change, strand, directory)
+            run(case, change, strand, directory, sequences)
         return
-    results, record = run(case, change, strand, directory)
+    results, record = run(case, change, strand, directory, sequences)
 
-    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS), "the columns are not those of OUTPUT_COLUMN_KINDS"
+    assert list(results.columns) == list(columns), "the columns are not the expected ones"
     wrong_dtypes = [
         f"{column}: {results[column].dtype}"
-        for column, kind in OUTPUT_COLUMN_KINDS.items()
+        for column, kind in columns.items()
         if results[column].dtype != pd.api.types.pandas_dtype(KIND_DTYPES[kind])
     ]
     assert not wrong_dtypes, f"wrong dtypes: {wrong_dtypes}"
@@ -618,7 +627,7 @@ def check(case, change, strand, directory):
         (f"{key(expected)}: " if len(rows) > 1 else "")
         + f"{column}: expected {expected[column]!r}, got {actual[column]!r}"
         for expected, actual in zip(sorted(rows, key=key), sorted(actual_rows, key=key))
-        for column in OUTPUT_COLUMN_KINDS
+        for column in columns
         if actual[column] != expected[column] or type(actual[column]) is not type(expected[column])
     ]
     assert not differences, "\n".join(differences)
