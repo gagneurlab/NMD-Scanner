@@ -8,3 +8,4 @@ from .scan import (
     read_gff3,
     read_vcf,
 )
+from .schema import to_arrow

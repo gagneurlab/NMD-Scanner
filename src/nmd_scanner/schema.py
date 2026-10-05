@@ -2,10 +2,12 @@
 Schema of the result table: its columns, their order and their dtypes.
 
 Each function that returns results gives them this schema, also for a table without rows. The section "Output
-columns" of "Technical Notes.md" gives the meaning of each column and says when it is null.
+columns" of "Technical Notes.md" gives the meaning of each column and says when it is null. ``to_arrow`` converts
+a result to a pyarrow Table with the same types for every input.
 """
 
 import pandas as pd
+import pyarrow as pa
 
 # pandas dtype of each column kind. The int, bool and string dtypes are nullable, so a missing value is
 # pd.NA, and a column with missing values keeps its dtype. The string dtype has "python" storage: it
@@ -20,6 +22,17 @@ KIND_DTYPES = {
     "pair_list": object,
     "int_list": object,
     "stop_codon_list": object,
+}
+
+# Arrow type of each column kind, which to_arrow and the Parquet output use. A pair_list becomes a list of
+# [exon_number, length] lists, and a stop_codon_list a list of {"position": ..., "codon": ...} structs.
+KIND_ARROW_TYPES = {
+    "string": pa.string(),
+    "int": pa.int64(),
+    "bool": pa.bool_(),
+    "pair_list": pa.list_(pa.list_(pa.int64())),
+    "int_list": pa.list_(pa.int64()),
+    "stop_codon_list": pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())])),
 }
 
 # Kind of every column that extract_ptc returns, in output order
@@ -122,7 +135,7 @@ NMD_RULE_COLUMN_KINDS = {
 MODEL_STATUS_COLUMN_KINDS = {"nmd_model_status": "string"}
 
 # Kind of every output column, in output order. The kind gives the pandas dtype (KIND_DTYPES) and the
-# parquet type (cli.parquet_schema). Without a fixed schema, pandas and pyarrow infer each type from the
+# Arrow and Parquet type (KIND_ARROW_TYPES, see to_arrow). Without a fixed schema, pandas and pyarrow infer each type from the
 # data. A column with only missing values, or a table without rows, then gets a different type from run
 # to run.
 OUTPUT_COLUMN_KINDS = {
@@ -135,6 +148,12 @@ OUTPUT_COLUMN_KINDS = {
 # The 4 columns that hold a sequence. They make up most of the table's size, in memory and on disk.
 # annotate(..., sequences=False) and the CLI flag --no-sequences leave them out (see output_column_kinds).
 SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
+
+# The columns of kind stop_codon_list. They hold lists of (position, codon) tuples, e.g. (5442, "TGA").
+# pyarrow's pandas conversion treats each tuple as a flat list of one type: it infers int from the first
+# field and then fails on the string. to_arrow turns the tuples into {"position": ..., "codon": ...}
+# records instead, which fit the struct of KIND_ARROW_TYPES["stop_codon_list"].
+STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons")
 
 # The 19 inputs of the NMD efficiency model best_model.pkl (see scripts/train_new.ipynb), in the order that the
 # model takes them. The model cannot score a row in which one of them is null.
@@ -231,3 +250,60 @@ def empty_table(column_kinds=OUTPUT_COLUMN_KINDS):
     """
 
     return apply_schema(pd.DataFrame(columns=list(column_kinds)), column_kinds)
+
+
+def to_arrow(results: pd.DataFrame) -> pa.Table:
+    """
+    Return ``results`` as a pyarrow Table, with the Arrow type of each column's kind (KIND_ARROW_TYPES).
+
+    The types do not depend on the data. So they are the same for every input, also for zero rows or for a
+    column with only missing values. A missing value becomes null. The stop codon columns (STOP_CODON_COLUMNS)
+    become lists of {"position": ..., "codon": ...} records. ``results`` is not changed. ``write_results``
+    writes this table for a .parquet output, and ``pyarrow.parquet.write_table`` can write it too.
+
+    :param results: DataFrame with output columns, e.g. from ``annotate``, with or without SEQUENCE_COLUMNS.
+        Any subset of the output columns works, in any order.
+    :return: pyarrow Table with the columns of ``results``, in that order, and without the index
+    :raises KeyError: if ``results`` has a column that OUTPUT_COLUMN_KINDS does not list
+    """
+
+    return pa.Table.from_pandas(
+        _stop_codon_records(results), schema=_arrow_schema(results.columns), preserve_index=False
+    )
+
+
+def _arrow_schema(columns):
+    """
+    Return the pyarrow schema of ``columns``, with the Arrow type of each column's kind (KIND_ARROW_TYPES).
+    A column that OUTPUT_COLUMN_KINDS does not list raises a KeyError.
+    """
+
+    return pa.schema([pa.field(column, KIND_ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]]) for column in columns])
+
+
+def _stop_codon_records(results):
+    """
+    Return ``results`` with the (position, codon) tuples of STOP_CODON_COLUMNS turned into
+    {"position": ..., "codon": ...} records. Without a stop codon column, return ``results`` itself.
+    Otherwise return a copy, and leave ``results`` unchanged.
+    """
+
+    columns_present = [column for column in STOP_CODON_COLUMNS if column in results.columns]
+    if not columns_present:
+        return results
+
+    results = results.copy()
+    for column in columns_present:
+        results[column] = results[column].apply(_stop_codons_to_records)
+    return results
+
+
+def _stop_codons_to_records(stop_codons):
+    """
+    Turn a list of (position, codon) tuples into {"position": ..., "codon": ...} records.
+    A missing value (None, np.nan, pd.NA) stays missing.
+    """
+
+    if pd.api.types.is_scalar(stop_codons) and pd.isna(stop_codons):
+        return None
+    return [{"position": position, "codon": codon} for position, codon in stop_codons]

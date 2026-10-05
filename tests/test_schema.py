@@ -11,6 +11,7 @@ from nmd_scanner.extra_features import (
 )
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.schema import (
+    KIND_ARROW_TYPES,
     KIND_DTYPES,
     MODEL_INPUTS,
     MODEL_STATUS_COLUMN_KINDS,
@@ -22,6 +23,7 @@ from nmd_scanner.schema import (
     apply_schema,
     empty_table,
     output_column_kinds,
+    to_arrow,
 )
 
 
@@ -33,8 +35,9 @@ def assert_schema(table, column_kinds):
     assert dict(table.dtypes) == expected
 
 
-def test_every_kind_has_a_dtype():
+def test_every_kind_has_a_dtype_and_an_arrow_type():
     assert set(OUTPUT_COLUMN_KINDS.values()) <= set(KIND_DTYPES)
+    assert set(OUTPUT_COLUMN_KINDS.values()) <= set(KIND_ARROW_TYPES)
 
 
 def test_output_columns_are_the_ptc_feature_rule_and_status_columns_in_order():
@@ -110,6 +113,28 @@ def test_empty_table_without_sequences_has_the_80_columns_and_their_dtypes():
     assert len(table) == 0
     assert len(table.columns) == 80
     assert_schema(table, output_column_kinds(sequences=False))
+
+
+@pytest.mark.parametrize("sequences", [True, False])
+def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences):
+    kinds = output_column_kinds(sequences)
+
+    table = to_arrow(empty_table(kinds))
+
+    assert table.num_rows == 0
+    assert table.column_names == list(kinds)
+    assert [field.type for field in table.schema] == [KIND_ARROW_TYPES[kind] for kind in kinds.values()]
+
+
+def test_to_arrow_rejects_a_column_outside_the_schema():
+    with pytest.raises(KeyError, match="my_key"):
+        to_arrow(pd.DataFrame({"transcript_id": ["t1"], "my_key": ["sample_1"]}))
+
+
+def test_to_arrow_is_exported_from_the_package():
+    import nmd_scanner
+
+    assert nmd_scanner.to_arrow is to_arrow
 
 
 @pytest.fixture

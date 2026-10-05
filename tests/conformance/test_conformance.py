@@ -1,6 +1,7 @@
 """
-Run every conformance case, also without the sequence columns, and check that the cases cover every output column,
-every value of the bool and categorical columns, every documented null case and every reason for no row.
+Run every conformance case, also without the sequence columns and through to_arrow, and check that the cases cover
+every output column, every value of the bool and categorical columns, every documented null case and every reason for
+no row.
 Check that the drawing of each case holds its rendered layout block.
 """
 
@@ -9,11 +10,14 @@ import re
 import textwrap
 from pathlib import Path
 
+import pandas as pd
+import pyarrow as pa
 import pytest
 
+from nmd_scanner import to_arrow
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
 
-from .runner import NO_ROW_REASONS, NoRow, case_params, check, expected_row, render_case
+from .runner import NO_ROW_REASONS, NoRow, Raises, case_params, check, expected_row, render_case, run
 
 CASE_MODULES = {
     path.stem: importlib.import_module(f".{path.stem}", __package__)
@@ -56,6 +60,71 @@ def test_case_without_sequences(case, tmp_path):
     assert len(columns) == len(OUTPUT_COLUMN_KINDS) - 4
 
     check(case, case.change, "+", tmp_path, sequences=False, columns=columns)
+
+
+# The Arrow type of each column kind: its Parquet type in "Technical Notes.md" ("Kinds and dtypes")
+ARROW_TYPES = {
+    "int": pa.int64(),
+    "bool": pa.bool_(),
+    "string": pa.string(),
+    "pair_list": pa.list_(pa.list_(pa.int64())),
+    "int_list": pa.list_(pa.int64()),
+    "stop_codon_list": pa.list_(pa.struct([("position", pa.int64()), ("codon", pa.string())])),
+}
+# The columns of kind stop_codon_list: lists of (position, codon) tuples, which to_arrow turns into records
+STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons")
+CASES_WITH_A_RESULT = [case for case in CASES if not isinstance(case.expected, Raises)]
+
+
+@pytest.mark.parametrize("sequences", [True, False], ids=["sequences", "no_sequences"])
+@pytest.mark.parametrize("case", CASES_WITH_A_RESULT, ids=[case.name for case in CASES_WITH_A_RESULT])
+def test_to_arrow_of_the_case_result(case, sequences, tmp_path):
+    """
+    to_arrow gives each column of the case result the Arrow type of its kind: with rows, without rows, in a column
+    with only nulls, and without the sequence columns. The stop codon columns hold {"position", "codon"} records with
+    the expected values. to_arrow leaves the result unchanged. Once per case: on the plus strand, with the first
+    description of the variant.
+    """
+    results, _ = run(case, case.change, "+", tmp_path, sequences=sequences)
+    original = results.copy()
+
+    table = to_arrow(results)
+
+    columns = [column for column in OUTPUT_COLUMN_KINDS if sequences or column not in SEQUENCE_COLUMNS]
+    assert [(field.name, field.type) for field in table.schema] == [
+        (column, ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]]) for column in columns
+    ]
+    pd.testing.assert_frame_equal(results, original)
+    if isinstance(case.expected, NoRow):
+        assert table.num_rows == 0
+        return
+    rows = [expected_row(case, "+", more) for more in ({}, *case.more_rows)]
+    by_key = {(row["transcript_id"], row["variant_id"]): row for row in rows}
+    assert table.num_rows == len(by_key) == len(rows)
+    keys = zip(table.column("transcript_id").to_pylist(), table.column("variant_id").to_pylist())
+    expected = [by_key[key] for key in keys]
+    for column in STOP_CODON_COLUMNS:
+        records = [
+            None if row[column] is None else [{"position": position, "codon": codon} for position, codon in row[column]]
+            for row in expected
+        ]
+        assert table.column(column).to_pylist() == records, column
+
+
+def test_to_arrow_types_a_column_with_only_nulls(tmp_path):
+    """The one row of a destroyed splice site has a null in a column of each kind: the alt CDS columns."""
+    case = next(case for case in CASES if case.name == "snv_at_donor_plus_1_destroys_the_splice_site")
+    null_columns = (
+        *("alt_cds_len", "start_loss", "alt_cds_seq"),
+        *("alt_cds_info", "alt_stop_codon_exons", "alt_all_stop_codons"),
+    )
+    assert {OUTPUT_COLUMN_KINDS[column] for column in null_columns} == set(ARROW_TYPES)
+
+    table = to_arrow(run(case, case.change, "+", tmp_path)[0])
+
+    for column in null_columns:
+        assert table.column(column).null_count == table.num_rows == 1, column
+        assert table.schema.field(column).type == ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]], column
 
 
 def test_case_names_are_unique():

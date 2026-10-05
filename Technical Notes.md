@@ -61,7 +61,7 @@ With `sequences=False` (CLI flag `--no-sequences`), the result lacks the 4 seque
 
 ### Kinds and dtypes
 
-The kind of a column sets its pandas dtype (`schema.KIND_DTYPES`) and its Parquet type (`cli.parquet_schema`):
+The kind of a column sets its pandas dtype (`schema.KIND_DTYPES`) and its Arrow and Parquet type (`schema.KIND_ARROW_TYPES`, used by `nmd_scanner.to_arrow`):
 
 | Kind | pandas dtype | Parquet type |
 |---|---|---|

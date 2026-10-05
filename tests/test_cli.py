@@ -14,7 +14,6 @@ from nmd_scanner.cli import (
     is_valid_output_path,
     main,
     main_cli,
-    to_parquet_safe,
     write_results,
 )
 from nmd_scanner.schema import (
@@ -23,7 +22,9 @@ from nmd_scanner.schema import (
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
     SEQUENCE_COLUMNS,
+    STOP_CODON_COLUMNS,
     output_column_kinds,
+    to_arrow,
 )
 from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
@@ -177,7 +178,7 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
 
 def test_write_results_parquet_types_stop_codon_columns(tmp_path):
     """
-    ``to_parquet_safe`` (used by ``write_results``) turns (position, codon) tuples into
+    ``to_arrow`` (used by ``write_results``) turns (position, codon) tuples into
     {"position": ..., "codon": ...} records for every stop-codon column, including
     ``transcript_all_stop_codons`` and rows holding None, so Parquet gets a typed struct
     schema instead of raising ArrowInvalid.
@@ -216,19 +217,26 @@ def test_write_results_parquet_types_stop_codon_columns(tmp_path):
     assert df["ref_all_stop_codons"].iloc[0] == [(5442, "TGA"), (10, "TAA")]
 
 
-def test_to_parquet_safe_leaves_other_columns_untouched():
-    df = pd.DataFrame({"transcript_id": ["t1"], "nmd_escape": [True]})
-    assert to_parquet_safe(df) is df
+def test_the_deprecated_aliases_parquet_schema_and_to_parquet_safe_still_work():
+    no_stop_codons = pd.DataFrame({"transcript_id": ["t1"], "nmd_escape": [True]})
+    with pytest.warns(DeprecationWarning, match="to_arrow"):
+        assert cli_module.to_parquet_safe(no_stop_codons) is no_stop_codons
 
     df = pd.DataFrame(
         {"transcript_id": ["t1"], "transcript_exon_info": [[(1, 36)]], "ref_all_stop_codons": [[(5442, "TGA")]]}
     )
     original = df.copy()
-    safe = to_parquet_safe(df)
+    with pytest.warns(DeprecationWarning, match="to_arrow"):
+        safe = cli_module.to_parquet_safe(df)
+    with pytest.warns(DeprecationWarning, match="to_arrow"):
+        schema = cli_module.parquet_schema(df)
+
     assert safe is not df
     pd.testing.assert_frame_equal(safe.drop(columns="ref_all_stop_codons"), df.drop(columns="ref_all_stop_codons"))
     assert safe["ref_all_stop_codons"].tolist() == [[{"position": 5442, "codon": "TGA"}]]
     pd.testing.assert_frame_equal(df, original)
+    assert schema.equals(to_arrow(df).schema)
+    assert cli_module.STOP_CODON_COLUMNS == STOP_CODON_COLUMNS
 
 
 @pytest.mark.parametrize("missing", [None, float("nan"), pd.NA])

@@ -3,9 +3,9 @@ import argparse
 import functools
 import logging
 import os
+import warnings
 
 import pandas as pd
-import pyarrow as pa
 import pyarrow.parquet as pq
 import tqdm
 from pyfaidx import Fasta
@@ -13,27 +13,29 @@ from pyfaidx import Fasta
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import detect_annotation_format, read_annotation, read_vcf
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS
+from nmd_scanner.schema import SEQUENCE_COLUMNS, _arrow_schema, _stop_codon_records, to_arrow
+
+# Deprecated alias of schema.STOP_CODON_COLUMNS, kept for one release together with parquet_schema and
+# to_parquet_safe. It goes in a later release.
+from nmd_scanner.schema import STOP_CODON_COLUMNS as STOP_CODON_COLUMNS
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
-
-# Columns that hold lists of (position, codon) tuples, e.g. (5442, "TGA"). pyarrow's
-# pandas conversion treats each tuple as a flat, homogeneously-typed sub-list rather
-# than a struct: it infers the element type from the tuple's first field (an int) and
-# then fails on the second, string field. Parquet output needs these turned into
-# {"position": ..., "codon": ...} records instead, so pyarrow can infer
-# list<struct<position: int64, codon: string>>. CSV output and the in-memory results
-# table are unaffected; only the parquet copy is rewritten.
-STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons")
 
 logger = logging.getLogger(__name__)
 
 
-def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False, sequences=True):
+def annotate(
+    vcf_path: str | os.PathLike,
+    annotation_path: str | os.PathLike,
+    fasta_path: str | os.PathLike,
+    reassign_exons: bool = False,
+    sequences: bool = True,
+) -> pd.DataFrame:
     """
     Annotate the variants of a VCF file with NMD features and return the result table.
 
-    Nothing is written to disk and logging is not configured. Use `write_results` to save the table.
+    Nothing is written to disk and logging is not configured. Use `write_results` to save the table, or `to_arrow`
+    to convert it to a typed pyarrow Table.
 
     Steps:
     1. Read input files (VCF, FASTA, annotation)
@@ -114,62 +116,45 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, se
 def write_results(results, output):
     """
     Write the results DataFrame to a CSV or Parquet file based on the output extension.
+    A Parquet file gets the table of ``to_arrow``, with the same types for every input.
     """
 
     ext = os.path.splitext(output)[1].lower()
     if ext == ".csv":
         results.to_csv(output, index=False)
     elif ext in (".parquet", ".pq"):
-        table = pa.Table.from_pandas(to_parquet_safe(results), schema=parquet_schema(results), preserve_index=False)
-        pq.write_table(table, output)
+        pq.write_table(to_arrow(results), output)
     else:
         raise ValueError(f"Unsupported output extension: {ext!r}. Supported: {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}")
 
 
 def parquet_schema(results):
     """
-    Return the pyarrow schema for the columns of ``results``, with the types listed in
-    ``OUTPUT_COLUMN_KINDS``. A column that is not listed raises a KeyError.
+    Deprecated: use ``nmd_scanner.to_arrow``, whose Table has this schema. This alias goes in a later release.
+
+    Return the pyarrow schema for the columns of ``results``, with the types of schema.KIND_ARROW_TYPES.
+    A column that OUTPUT_COLUMN_KINDS does not list raises a KeyError.
     """
 
-    stop_codon = pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())])
-    kind_types = {
-        "string": pa.string(),
-        "int": pa.int64(),
-        "bool": pa.bool_(),
-        "pair_list": pa.list_(pa.list_(pa.int64())),
-        "int_list": pa.list_(pa.int64()),
-        "stop_codon_list": pa.list_(stop_codon),
-    }
-    return pa.schema([pa.field(column, kind_types[OUTPUT_COLUMN_KINDS[column]]) for column in results.columns])
+    warnings.warn(
+        "nmd_scanner.cli.parquet_schema is deprecated, use nmd_scanner.to_arrow", DeprecationWarning, stacklevel=2
+    )
+    return _arrow_schema(results.columns)
 
 
 def to_parquet_safe(results):
     """
-    Return a copy of ``results`` with the stop-codon columns given a parquet-friendly,
-    typed representation. See ``STOP_CODON_COLUMNS`` for why this is needed. Every other
-    column, and the ``results`` table passed in, is left untouched.
+    Deprecated: use ``nmd_scanner.to_arrow``, which does this conversion. This alias goes in a later release.
+
+    Return a copy of ``results`` with the (position, codon) tuples of schema.STOP_CODON_COLUMNS turned into
+    {"position": ..., "codon": ...} records. Without a stop codon column, return ``results`` itself.
+    ``results`` is not changed.
     """
 
-    columns_present = [column for column in STOP_CODON_COLUMNS if column in results.columns]
-    if not columns_present:
-        return results
-
-    results = results.copy()
-    for column in columns_present:
-        results[column] = results[column].apply(_stop_codons_to_records)
-    return results
-
-
-def _stop_codons_to_records(stop_codons):
-    """
-    Turn a list of (position, codon) tuples into {"position": ..., "codon": ...} records.
-    A missing value (None, np.nan, pd.NA) stays missing.
-    """
-
-    if pd.api.types.is_scalar(stop_codons) and pd.isna(stop_codons):
-        return None
-    return [{"position": position, "codon": codon} for position, codon in stop_codons]
+    warnings.warn(
+        "nmd_scanner.cli.to_parquet_safe is deprecated, use nmd_scanner.to_arrow", DeprecationWarning, stacklevel=2
+    )
+    return _stop_codon_records(results)
 
 
 def is_valid_output_path(path):

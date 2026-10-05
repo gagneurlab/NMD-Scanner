@@ -91,6 +91,14 @@ results["my_key"] = "sample_1"  # add your own columns
 results.to_csv("results.csv", index=False)
 ```
 
+To convert the table to a `pyarrow.Table`, call `to_arrow`. Each column gets the Arrow type of its kind, so the types are the same for every input, also for a result without rows. The CLI writes this table for Parquet output. `to_arrow` takes the output columns, with or without the sequences; a column of your own, such as `my_key` above, raises a KeyError:
+```python
+import pyarrow.parquet as pq
+
+results = nmd_scanner.annotate("input.vcf", "annotation.gff3.gz", "reference.fa")
+pq.write_table(nmd_scanner.to_arrow(results), "results.parquet")
+```
+
 `polars-bio` shows tqdm progress bars on stderr, e.g. one for every file it reads. To turn them off, set `TQDM_DISABLE=1` in the environment before Python starts. Importing `nmd_scanner` imports `polars-bio`, which sets `POLARS_FORCE_NEW_STREAMING` in `os.environ` if it is not set, and adds 4 filters to the `warnings` module.
 
 For reconstructing reference and alternative coding and transcript sequences, PTC detection and start / stop-loss information:
