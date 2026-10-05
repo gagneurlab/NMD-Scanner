@@ -295,7 +295,6 @@ def evaluate_nmd_escape_rules(row):
     )
 
     # Long exon rule (with exon longer than >407nt)
-    # rule_long_exon = any(exon_length_map.get(exon, 0) > 407 for exon in stop_exons) # old code
     rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
 
     # Start-proximal rule (closer than 150nt from the start codon)

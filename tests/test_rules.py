@@ -217,10 +217,9 @@ def test_create_reference_cds_using_file():
     # Load expected output
     expected = pd.read_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t")
 
-    # Load df3 and cds_df_test from the previous step of your pipeline
     df3 = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
     cds_df_test = pd.read_csv("resources/test_output_files/cds_df_adj.tsv", sep="\t")
-    # the fixture predates the flag; it gave every transcript a stop codon
+    # the fixture has no has_stop_codon column, and its expected output gives every transcript a stop codon
     cds_df_test["has_stop_codon"] = True
 
     # Run the function

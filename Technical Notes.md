@@ -46,7 +46,6 @@ final_nmd_results.csv: File with all features, saved in step 18
 - [x] scan.py
 - [x] rules.py
 - [x] catch_sequence.py
-- [ ] analyze_gtf.py (where called?) —> not used
 - [x] extra_features.py
 
 

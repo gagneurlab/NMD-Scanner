@@ -10,7 +10,6 @@ import pytest
 
 import nmd_scanner.cli as cli_module
 from nmd_scanner.cli import (
-    OUTPUT_COLUMN_KINDS,
     annotate,
     is_valid_output_path,
     main,
@@ -18,6 +17,7 @@ from nmd_scanner.cli import (
     to_parquet_safe,
     write_results,
 )
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
 
 RESOURCES = Path(__file__).resolve().parent.parent / "resources"
 

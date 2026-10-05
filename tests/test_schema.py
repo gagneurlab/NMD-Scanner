@@ -34,10 +34,6 @@ def test_output_columns_are_the_ptc_feature_and_rule_columns_in_order():
     assert len(set(parts)) == len(parts)
 
 
-def test_cli_output_column_kinds_is_the_schema():
-    assert cli.OUTPUT_COLUMN_KINDS is OUTPUT_COLUMN_KINDS
-
-
 def test_apply_schema_orders_columns_and_sets_dtypes():
     column_kinds = {"name": "string", "count": "int", "flag": "bool", "exons": "int_list"}
     table = pd.DataFrame(
