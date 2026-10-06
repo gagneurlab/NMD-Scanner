@@ -30,25 +30,43 @@ def _plain_values(row):
     return values
 
 
-def ptc_position_and_exons(row):
+def ptc_in_alt_transcript(row):
     """
-    Return the position of the PTC in alt CDS coordinates (as alt_first_stop_pos) and the exon numbers of the stop
-    codons, of which the smallest is the PTC exon.
+    Locate the PTC in the exons of the alt transcript, the mRNA.
 
-    The PTC is the first in-frame stop codon of the alt CDS: alt_first_stop_pos and alt_stop_codon_exons. After a
-    start loss, translation starts at the ATG of the scan, and the PTC is the first in-frame stop codon after it:
-    transcript_first_stop_pos, minus alt_cds_start_in_transcript, and transcript_stop_codon_exons.
+    The PTC is the first in-frame stop codon of the alt CDS, at alt_first_stop_pos in alt CDS coordinates. Its position
+    in the alt transcript adds alt_cds_start_in_transcript. After a start loss, translation starts at the ATG of the
+    scan, and the PTC is the first in-frame stop codon after it, at transcript_first_stop_pos in the alt transcript.
+    alt_transcript_exon_info gives the exons of the alt transcript, with the length changes of the variant in the CDS
+    and in the UTRs. An exon that the variant deletes has length 0. It is not in the mRNA, so it is left out.
 
     :param row: A dict of plain values (see _plain_values)
-    :return: Tuple (position or None, list of exon numbers)
+    :return: Tuple (position, exons, index): the position of the PTC in the alt transcript, (exon_number, start, end)
+             of each exon of the alt transcript with bases, 5' to 3', in alt transcript positions (end is the position
+             after the last base), and the index of the PTC exon in this list. None if the row is not a PTC row, or if
+             the PTC position or alt_transcript_exon_info is null.
     """
 
+    if not row.get("alt_is_premature"):
+        return None
     if row.get("start_loss"):
-        stop = row.get("transcript_first_stop_pos")
+        position = row.get("transcript_first_stop_pos")
+    else:
+        stop = row.get("alt_first_stop_pos")
         cds_start = row.get("alt_cds_start_in_transcript")
-        position = None if stop is None or cds_start is None else stop - cds_start
-        return position, row.get("transcript_stop_codon_exons") or []
-    return row.get("alt_first_stop_pos"), row.get("alt_stop_codon_exons") or []
+        position = None if stop is None or cds_start is None else cds_start + stop
+    exon_info = row.get("alt_transcript_exon_info")
+    if position is None or not exon_info:
+        return None
+
+    exons = []
+    end = 0
+    for exon_number, length in exon_info:
+        if int(length) > 0:
+            exons.append((int(exon_number), end, end + int(length)))
+        end += int(length)
+    index = next((i for i, (_, exon_start, exon_end) in enumerate(exons) if exon_start <= position < exon_end), None)
+    return None if index is None else (position, exons, index)
 
 
 def add_nmd_features(row):
@@ -147,39 +165,26 @@ def calculate_utr_lengths(row):
 def calculate_exon_features(row):
     """
     Calculate exon-related features:
-    - total_exon_count: always computed if transcript_exon_info is available
-    - upstream_exon_count / downstream_exon_count: only computed if a PTC exists
+    - total_exon_count: the number of exons of the ref transcript (transcript_exon_info)
+    - upstream_exon_count / downstream_exon_count: the number of exons of the alt transcript upstream and downstream of
+      the PTC exon, only on a PTC row (see ptc_in_alt_transcript). An exon that the variant deletes is not in the mRNA,
+      so it does not count there.
     """
 
-    exon_info = row.get("transcript_exon_info") or []
-    _, stop_exons = ptc_position_and_exons(row)
-
-    total_exons = len(exon_info)
-
-    if not row.get("alt_is_premature") or not stop_exons or not exon_info:
+    total_exons = len(row.get("transcript_exon_info") or [])
+    ptc = ptc_in_alt_transcript(row)
+    if ptc is None:
         return {
             "total_exon_count": total_exons if total_exons > 0 else None,
             "upstream_exon_count": None,
             "downstream_exon_count": None,
         }
 
-    # Take the PTC exon closest to CDS start
-    ptc_exon = min(int(e) for e in stop_exons)
-
-    # get exon numbers from transcript_exon_info
-    exon_numbers = [int(e[0]) for e in exon_info]
-
-    # If the PTC exon is not in transcript → cannot compute
-    if ptc_exon not in exon_numbers:
-        return {"total_exon_count": int(total_exons), "upstream_exon_count": None, "downstream_exon_count": None}
-
-    upstream = sum(1 for e in exon_numbers if e < ptc_exon)
-    downstream = sum(1 for e in exon_numbers if e > ptc_exon)
-
+    _, exons, index = ptc
     return {
-        "total_exon_count": int(total_exons),
-        "upstream_exon_count": int(upstream),
-        "downstream_exon_count": int(downstream),
+        "total_exon_count": total_exons if total_exons > 0 else None,
+        "upstream_exon_count": index,
+        "downstream_exon_count": len(exons) - 1 - index,
     }
 
 
@@ -219,23 +224,16 @@ def calculate_ptc_to_start_distance(row):
 
 def calculate_ptc_exon_length(row):
     """
-    Return the length of the exon containing the first premature stop codon (PTC).
+    Return the length of the PTC exon in the ref transcript (transcript_exon_info), UTR included. The PTC exon is the
+    exon of the alt transcript that holds the PTC (see ptc_in_alt_transcript). None if there is none.
     """
 
-    if not row.get("alt_is_premature"):
+    ptc = ptc_in_alt_transcript(row)
+    if ptc is None:
         return None
-
-    _, stop_exons = ptc_position_and_exons(row)
-    exon_info = row.get("transcript_exon_info") or []
-
-    if not stop_exons or not exon_info:
-        return None
-
-    # First PTC exon = smallest exon number (transcript-order, strand-corrected)
-    ptc_exon = min(int(e) for e in stop_exons)
-
-    exon_dict = {int(e): int(length) for e, length in exon_info}
-    return exon_dict.get(ptc_exon)
+    _, exons, index = ptc
+    ref_lengths = {int(exon_number): int(length) for exon_number, length in row.get("transcript_exon_info") or []}
+    return ref_lengths.get(exons[index][0])
 
 
 def calculate_stop_codon_dist(row):
@@ -281,42 +279,6 @@ def calculate_stop_codon_dist(row):
     return annotated_stop_distance(row, first_stop)
 
 
-def exon_end_in_alt_cds(row, exon):
-    """
-    Return where a transcript exon ends in alt CDS coordinates (as alt_first_stop_pos), or None if the CDS position
-    in the transcript is unknown. The value is the CDS position of the first base after the exon: its downstream exon
-    junction, or the transcript end for the last exon. It is negative for an exon upstream of the CDS.
-
-    Exon numbers follow transcript order. The exon end in transcript coordinates, minus cds_start_in_transcript,
-    gives the position in ref CDS coordinates. The length change of the CDS up to this exon converts it to alt CDS
-    coordinates.
-
-    Example: exons of 100, 200 and 150 nt, a CDS from transcript position 40 to 400, and a 1 nt deletion in the CDS
-    part of exon 1. `u` is UTR, `=` is CDS, `|` is an exon junction, and `v` marks the deletion. The rows give each
-    exon end in transcript (tx), ref CDS and alt CDS coordinates. The function returns the alt row: 59 for exon 1, 259
-    for exon 2 and 409 for exon 3, the transcript end.
-
-              exon 1            exon 2              exon 3
-                  v  1 nt deletion
-        5' [uuuu======]|[====================]|[==========uuuuu] 3'
-    tx     0    40     100                    300              450
-    ref    -40  0      60                     260              410
-    alt    -40  0      59                     259              409
-    """
-
-    cds_start = row.get("cds_start_in_transcript")
-    tx_exons = row.get("transcript_exon_info") or []
-    alt_cds = {int(e): int(length) for e, length in row.get("alt_cds_info") or []}
-    ref_cds = {int(e): int(length) for e, length in row.get("ref_cds_info") or []}
-
-    if cds_start is None or not tx_exons or alt_cds.keys() != ref_cds.keys():
-        return None
-
-    exon_end = sum(int(length) for e, length in tx_exons if int(e) <= exon)
-    cds_length_change = sum(alt_cds[e] - ref_cds[e] for e in alt_cds if e <= exon)
-    return exon_end - cds_start + cds_length_change
-
-
 def evaluate_nmd_escape_rules(row):
     """
     Evaluate whether a premature stop codon in a transcript is likely to escape nonsense-mediated decay (NMD) based on
@@ -330,10 +292,9 @@ def evaluate_nmd_escape_rules(row):
     A PTC is considered to escape NMD if it satisfies any of the above rules. "Technical Notes.md" has figures of the
     rules.
 
-    :param row: A row of the DataFrame including alt_is_premature (bool), the PTC columns that ptc_position_and_exons
-                reads, transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]), alt_cds_info and
-                ref_cds_info (same format, CDS part per exon), cds_start_in_transcript (int), and the columns that
-                calculate_ptc_to_start_distance reads
+    :param row: A row of the DataFrame including alt_is_premature (bool), the columns that ptc_in_alt_transcript reads
+                (the PTC position and alt_transcript_exon_info), total_exon_count, downstream_exon_count and
+                ptc_exon_length (see add_nmd_features), and the columns that calculate_ptc_to_start_distance reads
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
@@ -362,8 +323,7 @@ def evaluate_nmd_escape_rules(row):
         }
 
     # Extract relevant data
-    stop_pos, _ = ptc_position_and_exons(row)
-    tx_exon_nums = sorted(int(e) for e, _ in row.get("transcript_exon_info") or [])
+    ptc = ptc_in_alt_transcript(row)
 
     total_exons = row.get("total_exon_count")
     downstream_exons = row.get("downstream_exon_count")
@@ -375,15 +335,13 @@ def evaluate_nmd_escape_rules(row):
     # Last exon rule
     rule_last_exon = downstream_exons == 0 if downstream_exons is not None else False
 
-    # 50nt upstream of the last exon junction, i.e. the 3' end of the penultimate exon (CDS-relative, matching stop_pos).
+    # 1 to 50 nt upstream of the last exon junction of the alt transcript, i.e. the 3' end of its penultimate exon.
     # The junction lies past the CDS end if the last exon holds no CDS.
-    last_junction = exon_end_in_alt_cds(row, tx_exon_nums[-2]) if len(tx_exon_nums) >= 2 else None
-    rule_50nt_penultimate = (
-        last_junction is not None
-        and stop_pos is not None
-        and (stop_pos >= last_junction - 50)
-        and (stop_pos < last_junction)
-    )
+    rule_50nt_penultimate = False
+    if ptc is not None and len(ptc[1]) >= 2:
+        stop_pos, exons, _ = ptc
+        last_junction = exons[-2][2]
+        rule_50nt_penultimate = last_junction - 50 <= stop_pos < last_junction
 
     # Long exon rule (with exon longer than >407nt)
     rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
@@ -408,30 +366,17 @@ def evaluate_nmd_escape_rules(row):
 
 def calculate_ptc_to_downstream_ej(row):
     """
-    Calculate the distance from the PTC to the 3' end of the PTC exon. For an internal exon, that end is the downstream
-    exon junction. For the last exon, it is the transcript end, so the distance is the length of the 3' UTR that the
-    PTC creates. Returns None if not applicable. "Technical Notes.md" has a figure of each case.
+    Calculate the distance from the PTC to the 3' end of the PTC exon in the alt transcript (see ptc_in_alt_transcript).
+    For an internal exon, that end is the downstream exon junction. For the last exon, it is the transcript end, so the
+    distance is the length of the 3' UTR that the PTC creates. Returns None if not applicable. "Technical Notes.md" has a
+    figure of each case.
     """
 
-    # only calculate if we have PTC
-    if not row.get("alt_is_premature"):
+    ptc = ptc_in_alt_transcript(row)
+    if ptc is None:
         return None
-
-    ptc_pos, stop_exons = ptc_position_and_exons(row)
-    tx_exon_nums = [int(e) for e, _ in row.get("transcript_exon_info") or []]
-
-    if not stop_exons or not tx_exon_nums or ptc_pos is None:
-        return None
-
-    # Choose the PTC exon (smallest number, closer to start)
-    ptc_exon = min(stop_exons)
-
-    if ptc_exon not in tx_exon_nums:
-        return None
-
-    # The PTC exon can go on with 3' UTR, so its 3' end can lie past the CDS end
-    exon_end = exon_end_in_alt_cds(row, ptc_exon)
-    return exon_end - ptc_pos if exon_end is not None else None
+    position, exons, index = ptc
+    return exons[index][2] - position
 
 
 def add_likely_misannotated_flag(row):

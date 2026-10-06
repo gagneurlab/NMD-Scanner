@@ -41,16 +41,18 @@ class SyntheticTranscript:
         self.tmp_path = tmp_path
         self.strand = strand
         self.chrom = f"chr_{tmp_path.name}"
-        layout = self.flank + self.intron.join(exons) + self.flank
-        self.genome = layout if strand == "+" else str(Seq(layout).reverse_complement())
+        # The layout is the chromosome in transcript orientation: the flanks, the exons and the introns
+        self.layout = self.flank + self.intron.join(exons) + self.flank
+        self.genome = self.layout if strand == "+" else str(Seq(self.layout).reverse_complement())
 
-        # 0-based genomic position of each transcript position
+        # Layout position and 0-based genomic position of each transcript position
         positions = []
         offset = len(self.flank)
         for exon in exons:
             positions.extend(range(offset, offset + len(exon)))
             offset += len(exon) + len(self.intron)
-        self.positions = positions if strand == "+" else [len(layout) - 1 - p for p in positions]
+        self.layout_positions = positions
+        self.positions = positions if strand == "+" else [len(self.layout) - 1 - p for p in positions]
 
         tag = "" if start_codon else ";tag=cds_start_NF"
         types = "gene_type=protein_coding;transcript_type=protein_coding"
@@ -92,19 +94,27 @@ class SyntheticTranscript:
         VCF record (POS, REF, ALT) of a change in transcript orientation within one exon: ref at transcript position
         ``position`` becomes alt. An indel gets a padding base on its left in the genome.
         """
-        if self.strand == "+":
-            start = self.positions[position]
-        else:
-            start = self.positions[position + len(ref) - 1]
+        return self.layout_variant(self.layout_positions[position], ref, alt)
+
+    def layout_variant(self, start, ref, alt):
+        """
+        VCF record (POS, REF, ALT) of a change in transcript orientation: ref at layout position ``start`` becomes
+        alt. The change can reach into the introns. An indel gets a padding base on its left in the genome.
+        """
+        assert self.layout[start : start + len(ref)] == ref
+        if self.strand == "-":
+            start = len(self.layout) - start - len(ref)
             ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
-        assert self.genome[start : start + len(ref)] == ref
         if len(ref) != len(alt):
             start, ref, alt = start - 1, self.genome[start - 1] + ref, self.genome[start - 1] + alt
         return start + 1, ref, alt
 
     def run(self, position, ref, alt):
         """Run annotate() on this transcript and the variant (see ``variant``); return the single result row."""
-        pos, vcf_ref, vcf_alt = self.variant(position, ref, alt)
+        return self.run_record(*self.variant(position, ref, alt))
+
+    def run_record(self, pos, vcf_ref, vcf_alt):
+        """Run annotate() on this transcript and the VCF record; return the single result row."""
         (self.tmp_path / "genome.fa").write_text(f">{self.chrom}\n{self.genome}\n")
         (self.tmp_path / "tx.gff3").write_text("##gff-version 3\n" + "\n".join(self.lines) + "\n")
         (self.tmp_path / "variant.vcf").write_text(
@@ -615,6 +625,7 @@ def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_al
             "alt_is_premature": True,
             "alt_transcript_seq": "GACCAGGATGTAAGCTAAGC",
             "transcript_exon_info": [(1, 11), (2, 10)],
+            "alt_transcript_exon_info": [(1, 10), (2, 10)],
             "transcript_start_codon_pos": 7,
             "transcript_start_codon_exon": 1,
             "transcript_first_stop_pos": 10,
@@ -658,15 +669,22 @@ def test_scan_after_a_deletion_of_5utr_and_start_codon_bases_takes_the_alt_exon_
             "alt_is_premature": True,
             "alt_transcript_seq": "GACGGATGTAAGCTAAGC",
             "alt_cds_start_in_transcript": 3,
+            "transcript_exon_info": [(1, 11), (2, 10)],
+            "alt_transcript_exon_info": [(1, 8), (2, 10)],
             "transcript_start_codon_pos": 5,
             "transcript_start_codon_exon": 1,
             "transcript_first_stop_pos": 8,
             "transcript_stop_codon_exons": [2],
+            "total_exon_count": 2,
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 3,
+            "ptc_exon_length": 10,
             "ptc_to_intron": 10,
             "nmd_last_exon_rule": True,
+            "nmd_50nt_penultimate_rule": False,
+            "nmd_long_exon_rule": False,
+            "nmd_single_exon_rule": False,
         },
     )
 
@@ -692,11 +710,110 @@ def test_scan_after_a_deletion_of_the_stop_codon_and_3utr_bases_takes_the_alt_ex
             "stop_loss": True,
             "alt_is_premature": False,
             "alt_transcript_seq": "GACCATGAAGCCATGACC",
+            "transcript_exon_info": [(1, 10), (2, 7), (3, 7)],
+            "alt_transcript_exon_info": [(1, 10), (2, 1), (3, 7)],
             "transcript_start_codon_pos": 4,
             "transcript_start_codon_exon": 1,
             "transcript_first_stop_pos": 13,
             "transcript_all_stop_codons": [(13, "TGA")],
             "transcript_stop_codon_exons": [3],
             "stop_codon_distance": -9,
+        },
+    )
+
+
+def test_ptc_features_take_the_3utr_length_change_in_the_ptc_exon(tmp_path, strand):
+    """
+    The delins CCCGGGTTTGCCTAACCA>TGAGGGTTTGCCTAACCTTC at t160 to t177 (`x`) reaches from the CDS over the stop codon
+    into the 3' UTR of exon 2. Its bases are matched from the left, so its length change of +2 nt lies at the UTR end:
+    the CDS keeps its length and gets the PTC TGA at t160 (`*`), and the 3' UTR of exon 2 becomes 2 nt longer
+    (CCA>CCTTC). In the alt transcript, exon 2 has 55 nt, and the PTC lies 52 nt upstream of its end, the last exon
+    junction: no 50 nt rule. With the ref exon lengths, the junction would lie 50 nt downstream of the PTC.
+
+    ref 5' [uuuu===...===]|[===xxxxxxxxxxxxxxxxxxuuuuuuuuuu]|[uuuuuuuuuu] 3'
+        tx 0    4         157 160            172  178         210        220
+    alt 5' [uuuu===...===]|[===*=============uuuuuuuuuuuuuuu]|[uuuuuuuuuu] 3'
+        tx 0    4         157 160            172               212        222
+                              *------------------------------>|  ptc_to_intron = 52
+    """
+    exons = ["GACC" + "ATG" + "GCA" * 50, "GCACCCGGGTTTGCCTAACCA" + "CCCA" * 8, "CCACCACCAC"]
+    tx = SyntheticTranscript(tmp_path, strand, exons, 4, 172)
+
+    row = tx.run(160, "CCCGGGTTTGCCTAACCA", "TGAGGGTTTGCCTAACCTTC")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": False,
+            "stop_loss": False,
+            "alt_is_premature": True,
+            "alt_first_stop_pos": 156,
+            "alt_cds_start_in_transcript": 4,
+            "transcript_exon_info": [(1, 157), (2, 53), (3, 10)],
+            "alt_transcript_exon_info": [(1, 157), (2, 55), (3, 10)],
+            "total_exon_count": 3,
+            "upstream_exon_count": 1,
+            "downstream_exon_count": 1,
+            "ptc_to_start_codon": 156,
+            "ptc_exon_length": 53,
+            "ptc_to_intron": 52,
+            "stop_codon_distance": 12,
+            "nmd_last_exon_rule": False,
+            "nmd_50nt_penultimate_rule": False,
+            "nmd_long_exon_rule": False,
+            "nmd_start_proximal_rule": False,
+            "nmd_single_exon_rule": False,
+            "nmd_escape": False,
+        },
+    )
+
+
+def test_a_deleted_exon_is_no_upstream_exon_of_the_ptc(tmp_path, strand):
+    """
+    The deletion (`x`) takes exon 2 with the intron bases next to it, from the sixth base of intron 1 to the fourth
+    base of intron 2. It keeps the splice sites: AG stays before the deletion and GT after it. So the alt transcript
+    skips exon 2, which has length 0 there. The CDS loses its 7 nt in exon 2, and the frameshift gives the PTC TAG at
+    t13 (`*`) in exon 3. The deleted exon is not in the mRNA, so the PTC has 1 upstream exon, exon 1. The exon numbers
+    of the ref transcript would give 2.
+
+    ref 5' [uuuu======]|[xxxxxxx]|[============]|[==uuuuuuuuu] 3'
+        tx 0    4      10        17             29            40
+    alt 5' [uuuu======]|[===*========]|[==uuuuuuuuu] 3'
+        tx 0    4      10  13         22            33
+                           *-------->|  ptc_to_intron = 9
+    """
+    tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGCA", "GCAGCAG", "GCCTAGCCGCCG", "CATAAGCCACC"], 4, 31)
+    # From the sixth base of intron 1, after the last base of exon 1 at t9, to the fourth base of intron 2, before
+    # the first base of exon 3 at t17
+    start = tx.layout_positions[9] + 1 + 5
+    end = tx.layout_positions[17] - len(tx.intron) + 4
+
+    row = tx.run_record(*tx.layout_variant(start, tx.layout[start:end], ""))
+
+    _assert_values(
+        row,
+        {
+            "start_loss": False,
+            "stop_loss": False,
+            "alt_is_premature": True,
+            "alt_cds_seq": "ATGGCAGCCTAGCCGCCGCATAA",
+            "alt_cds_info": [(1, 6), (2, 0), (3, 12), (4, 5)],
+            "alt_first_stop_pos": 9,
+            "alt_stop_codon_exons": [3],
+            "transcript_exon_info": [(1, 10), (2, 7), (3, 12), (4, 11)],
+            "alt_transcript_exon_info": [(1, 10), (2, 0), (3, 12), (4, 11)],
+            "total_exon_count": 4,
+            "upstream_exon_count": 1,
+            "downstream_exon_count": 1,
+            "ptc_to_start_codon": 9,
+            "ptc_exon_length": 12,
+            "ptc_to_intron": 9,
+            "stop_codon_distance": 11,
+            "nmd_last_exon_rule": False,
+            "nmd_50nt_penultimate_rule": True,
+            "nmd_long_exon_rule": False,
+            "nmd_start_proximal_rule": True,
+            "nmd_single_exon_rule": False,
+            "nmd_escape": True,
         },
     )

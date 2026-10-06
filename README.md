@@ -20,7 +20,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 82 columns and dtypes for every input
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 83 columns and dtypes for every input
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
@@ -73,7 +73,7 @@ Output:
   - extra features such as UTR lengths, exon counts, distances, etc.
   - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
 
-`nmd_scanner.schema` lists the 82 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
+`nmd_scanner.schema` lists the 83 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.

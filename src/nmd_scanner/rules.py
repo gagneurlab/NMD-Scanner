@@ -234,7 +234,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     # Classify the first in-frame stop codon of the alternative transcript, and analyze the transcript sequence
     # (e.g., frame, length, stop codon position, etc.) in case of start or stop loss
-    analyze_transcript_df = analyze_transcript(loss_df).drop(columns="alt_transcript_exon_info")
+    analyze_transcript_df = analyze_transcript(loss_df)
 
     return apply_schema(analyze_transcript_df, PTC_COLUMN_KINDS)
 
