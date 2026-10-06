@@ -202,7 +202,7 @@ A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcri
 | `total_exon_count` | int | Number of exons in `transcript_exon_info` | the transcript has no exon rows |
 | `upstream_exon_count` | int | Number of exons upstream of the PTC exon | not a PTC row; the PTC exon is not in `transcript_exon_info` |
 | `downstream_exon_count` | int | Number of exons downstream of the PTC exon | as `upstream_exon_count` |
-| `ptc_to_start_codon` | int | Distance in nt from the annotated start codon to the PTC: `alt_first_stop_pos - alt_start_codon_pos` | not a PTC row; `alt_start_codon_pos` is null: the transcript has no annotated start codon, or the variant changes it |
+| `ptc_to_start_codon` | int | Distance in nt from the start codon to the PTC. Without a start loss: from the annotated start codon, `alt_first_stop_pos - alt_start_codon_pos`. After a start loss, translation starts at the ATG of the scan: `transcript_first_stop_pos - transcript_start_codon_pos`, both positions in `alt_transcript_seq` | not a PTC row; without a start loss: the transcript has no annotated start codon; after a start loss: the scan found no ATG or no stop codon |
 | `ptc_less_than_150nt_to_start` | bool | Whether `ptc_to_start_codon` is less than 150. False if `ptc_to_start_codon` is null | `unknown_reason` is set |
 | `ptc_exon_length` | int | Length of the PTC exon, UTR included | not a PTC row; the PTC exon is not in `transcript_exon_info` |
 | `stop_codon_distance` | int | Distance in nt from the first in-frame stop codon of the alt transcript to the annotated stop codon, both at their positions in `alt_transcript_seq`. Unless the row keeps the flags from the CDS, it compares the same two stop codons as the [stop codon classification](#stop-codon-classification), so its sign gives the class. Positive: a PTC upstream of the annotated stop codon. On a PTC row, the first stop codon is the PTC. 0: the annotated stop codon, also after an insertion inside it (TAA>TGAA) or an in-frame indel right before it. Negative: a stop loss, with the new stop codon downstream, e.g. -3 for ATAG>T in GTA TAG TAG CAT. On a row that keeps the flags from the CDS, the first stop codon is the one at `alt_first_stop_pos`. Without `alt_transcript_seq`, both positions are in alt CDS coordinates, and the annotated stop codon starts at `alt_cds_len - 3` | `unknown_reason` is set; `has_stop_codon` is False; a nonstop: the alt transcript has no in-frame stop codon; on a row that keeps the flags from the CDS, the alt CDS has no in-frame stop codon |
@@ -218,7 +218,7 @@ A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcri
 | `nmd_last_exon_rule` | bool | The PTC lies in the last exon: `downstream_exon_count` is 0 | `unknown_reason` is set |
 | `nmd_50nt_penultimate_rule` | bool | The PTC lies 1 to 50 nt upstream of the last exon junction | `unknown_reason` is set |
 | `nmd_long_exon_rule` | bool | The PTC exon has more than 407 nt: `ptc_exon_length` > 407 | `unknown_reason` is set |
-| `nmd_start_proximal_rule` | bool | The PTC lies less than 150 nt downstream of the start codon. It equals `ptc_less_than_150nt_to_start` | `unknown_reason` is set |
+| `nmd_start_proximal_rule` | bool | The PTC lies less than 150 nt downstream of the start codon, which after a start loss is the ATG of the scan. It equals `ptc_less_than_150nt_to_start` | `unknown_reason` is set |
 | `nmd_single_exon_rule` | bool | The transcript has one exon: `total_exon_count` is 1 | `unknown_reason` is set |
 | `nmd_escape` | bool | One of the 5 rules above is True | `unknown_reason` is set |
 
@@ -295,7 +295,7 @@ nmd_long_exon_rule: the PTC exon has more than 407 nt, UTR included.
                <-------------------------------------->  ptc_exon_length > 407
 ```
 
-nmd_start_proximal_rule: the PTC lies less than 150 nt downstream of the start codon, i.e. alt_first_stop_pos - alt_start_codon_pos < 150. The start codon is the annotated one. Without one, the rule is False.
+nmd_start_proximal_rule: the PTC lies less than 150 nt downstream of the start codon, i.e. ptc_to_start_codon < 150. The start codon is the annotated one, and without one the rule is False. After a start loss, the start codon is the ATG that the scan found, and the distance runs to the first in-frame stop codon after it: transcript_first_stop_pos - transcript_start_codon_pos < 150.
 
 ```
 5' [uuu=====*===]|[============]|[=========uuuuuuu] 3'

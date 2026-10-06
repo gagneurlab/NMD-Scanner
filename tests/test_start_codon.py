@@ -432,3 +432,41 @@ def test_stop_loss_scan_starts_at_the_annotated_start_codon(tmp_path, strand, st
             "stop_codon_distance": -6,
         },
     )
+
+
+def test_start_proximal_rule_after_a_start_loss_measures_from_the_atg_of_the_scan(tmp_path, strand):
+    """
+    The CDS is ATG GCC ATG CAG, 36 times AAA, GAC, then the stop codon TAA at t126 (`s`). One MNV changes the start
+    codon ATG>ACG at t3 (`x`) and CAG>TAG at t12 (`*`). The start loss makes the scan look for the next ATG from t3 on.
+    It finds the in-frame ATG at t9 (`a`), whose first stop codon is the TAG at t12. This TAG is the PTC: 3 nt
+    downstream of the ATG of the scan, < 150. Measured from the CDS start, it would be 9 nt.
+
+              63 nt               60 nt          11 nt
+    5' [uuuxxx===aaa***=======]|[=============]|[====sssuuuuu] 3'
+    tx  0  3     9  12          63              123  126   134
+                 <-->  ptc_to_start_codon = 3
+    """
+    cds = "ATGGCCATGCAG" + "AAA" * 36 + "GAC"
+    exons = ["GGG" + cds[:60], cds[60:120], cds[120:] + "TAA" + "GGGGG"]
+    tx = SyntheticTranscript(tmp_path, strand, exons, 3, 126)
+
+    row = tx.run(4, "TGGCCATGC", "CGGCCATGT")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": True,
+            "alt_start_codon_pos": None,
+            "alt_is_premature": True,
+            "transcript_start_codon_pos": 9,
+            "transcript_first_stop_pos": 12,
+            "ptc_to_start_codon": 3,
+            "ptc_less_than_150nt_to_start": True,
+            "nmd_start_proximal_rule": True,
+            "nmd_last_exon_rule": False,
+            "nmd_50nt_penultimate_rule": False,
+            "nmd_long_exon_rule": False,
+            "nmd_single_exon_rule": False,
+            "nmd_escape": True,
+        },
+    )

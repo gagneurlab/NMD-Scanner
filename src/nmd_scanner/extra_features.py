@@ -164,17 +164,24 @@ def calculate_exon_features(row):
 
 def calculate_ptc_to_start_distance(row):
     """
-    Calculate the distance in nt from the start codon to the PTC in the alternative CDS.
-    The start codon is the annotated one at CDS position 0 (alt_start_codon_pos). The distance is None if the transcript
-    has no annotated start codon (e.g. cds_start_NF: the true start lies upstream of the CDS, at an unknown distance)
-    or if the variant changed it (start loss).
+    Calculate the distance in nt from the start codon to the PTC.
+    The start codon is the annotated one at CDS position 0 (alt_start_codon_pos), and the PTC lies at
+    alt_first_stop_pos, both CDS positions. The distance is None if the transcript has no annotated start codon (e.g.
+    cds_start_NF: the true start lies upstream of the CDS, at an unknown distance).
+    After a start loss, translation starts at the ATG that the scan of the alt transcript found. So the distance runs
+    from that ATG (transcript_start_codon_pos) to the first in-frame stop codon after it (transcript_first_stop_pos),
+    both alt transcript positions. It is None if the scan found no ATG or no stop codon.
     """
 
     if not row.get("alt_is_premature"):
         return None
 
-    start = row.get("alt_start_codon_pos")
-    stop = row.get("alt_first_stop_pos")
+    if row.get("start_loss"):
+        start = row.get("transcript_start_codon_pos")
+        stop = row.get("transcript_first_stop_pos")
+    else:
+        start = row.get("alt_start_codon_pos")
+        stop = row.get("alt_first_stop_pos")
 
     if start is None or stop is None:
         return None
@@ -300,8 +307,7 @@ def evaluate_nmd_escape_rules(row):
     :param row: A row of the DataFrame including alt_is_premature (bool), alt_first_stop_pos (int),
                 alt_stop_codon_exons (list[int]), transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]),
                 alt_cds_info and ref_cds_info (same format, CDS part per exon), cds_start_in_transcript (int),
-                alt_start_codon_pos (int: the annotated start codon at CDS position 0, None if there is none or the
-                variant changed it)
+                and the columns that calculate_ptc_to_start_distance reads
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
@@ -331,7 +337,6 @@ def evaluate_nmd_escape_rules(row):
 
     # Extract relevant data
     stop_pos = row.get("alt_first_stop_pos")
-    start_pos = row.get("alt_start_codon_pos")
     tx_exon_nums = sorted(int(e) for e, _ in row.get("transcript_exon_info") or [])
 
     total_exons = row.get("total_exon_count")
@@ -358,10 +363,9 @@ def evaluate_nmd_escape_rules(row):
     rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
 
     # Start-proximal rule (closer than 150nt from the start codon). Without a known start codon, the rule does not
-    # apply.
-    rule_start_proximal = (
-        start_pos is not None and stop_pos is not None and (stop_pos - start_pos) < 150 and (stop_pos - start_pos) >= 0
-    )
+    # apply. After a start loss, the start codon is the ATG of the scan.
+    ptc_to_start_codon = calculate_ptc_to_start_distance(row)
+    rule_start_proximal = ptc_to_start_codon is not None and ptc_to_start_codon < 150
 
     # NMD escape if any rule is true
     escape = rule_last_exon or rule_50nt_penultimate or rule_long_exon or rule_start_proximal or rule_single_exon
