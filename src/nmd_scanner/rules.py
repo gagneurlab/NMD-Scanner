@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 # An ALT allele that names a structural variant instead of giving its sequence: a symbolic allele such as <DEL>,
 # <DUP:TANDEM> or <*>, a breakend such as G]chr2:100] or [chr2:100[G, or a single breakend such as G. or .G
 SYMBOLIC_ALT_PATTERN = r"^<[^>]*>$|[\[\]]|^\.[A-Za-z]+$|^[A-Za-z]+\.$"
+# An ALT allele that changes no base: "." says that the record has no alternate allele, and "*" stands for the bases
+# that an overlapping deletion removes. That deletion has its own record.
+MISSING_ALT_PATTERN = r"^[.*]$"
 
 
 # Main extract PTC script:
@@ -30,7 +33,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    start codon and ends in an annotated stop codon. ``scan.read_annotation`` returns the coding
                    regions as its CDS rows.
     :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them.
-                A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``).
+                A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is
+                a record with ALT "." or "*" (see ``drop_missing_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
@@ -55,8 +59,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_info)
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
 
-    # The variant application below cannot apply a structural variant
-    vcf = drop_symbolic_alleles(vcf)
+    # The variant application below cannot apply a structural variant, and "." or "*" changes no base
+    vcf = drop_missing_alleles(drop_symbolic_alleles(vcf))
 
     # Join the variants with the coding regions and the splice dinucleotides at their exon edges
     references = {}
@@ -251,6 +255,27 @@ def drop_symbolic_alleles(vcf):
             int(symbolic.sum()),
         )
     return vcf[~symbolic]
+
+
+def drop_missing_alleles(vcf):
+    """
+    Returns the variants without the records whose ALT is "." or "*" (see MISSING_ALT_PATTERN), and logs a warning
+    with their count. Such a record changes no base. "*" stands for the bases that an overlapping deletion removes, e.g.
+    after bcftools norm -m- splits a joint-called site. The deletion comes from its own record and gets its own rows.
+    The variant application would insert the character into the sequence, e.g. "*" into the alt CDS.
+
+    :param vcf: Variants (DataFrame) with the column Alt
+    :return: The rows of ``vcf`` whose ALT is not "." or "*", in their order and with their index
+    """
+
+    missing = vcf["Alt"].astype(str).str.contains(MISSING_ALT_PATTERN, regex=True)
+    if missing.any():
+        logger.warning(
+            'Skipping %d variant(s) with ALT "." or "*". Such a record changes no base: "*" stands for the bases '
+            "that an overlapping deletion removes, and that deletion comes from its own record.",
+            int(missing.sum()),
+        )
+    return vcf[~missing]
 
 
 def join_variants_to_cds(cds_df, vcf):

@@ -8,6 +8,8 @@ features and the NMD escape rules with figures in the same style.
 """
 
 # Import dependencies
+import logging
+
 import pandas as pd
 import pytest
 from Bio.Seq import Seq
@@ -21,6 +23,7 @@ from nmd_scanner.rules import (
     annotated_stop_in_alt,
     cds_range_in_transcript,
     create_reference_cds,
+    drop_missing_alleles,
     drop_symbolic_alleles,
     extract_ptc,
     get_exon,
@@ -1592,6 +1595,35 @@ def test_extract_ptc_gives_a_row_per_vcf_record(tmp_path, strand):
 
 
 @pytest.mark.parametrize("strand", ["+", "-"])
+def test_extract_ptc_skips_records_with_alt_dot_or_star(tmp_path, strand, caplog):
+    """
+    Three VCF records change TGG at `x`, CDS position 46: var1 has ALT ".", var2 has ALT "*", and var3 is TGG>TAG.
+    ALT "." means no alternate allele, and "*" stands for the bases that an overlapping deletion removes. So var1 and
+    var2 change no base. They get no row, and a warning counts them. var3 gives the PTC TAG at 45, upstream of the
+    stop codon `s` at 48.
+
+            39 nt            36 nt
+    5' [uuu==========]|[======x=sssuuuu] 3'
+       -9  0           30       48
+
+    The drawing is in transcript orientation, also on the minus strand.
+    """
+    with caplog.at_level(logging.WARNING):
+        result = _extract_ptc_synthetic(
+            tmp_path, strand, True, {"var1": (46, "."), "var2": (46, "*"), "var3": (46, "A")}
+        )
+
+    assert list(result.index) == ["var3"]
+    assert result.loc["var3", "alt_is_premature"] == True
+    assert result.loc["var3", "alt_first_stop_pos"] == 45
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert [message for message in warnings if "ALT" in message] == [
+        'Skipping 2 variant(s) with ALT "." or "*". Such a record changes no base: "*" stands for the bases that an '
+        "overlapping deletion removes, and that deletion comes from its own record."
+    ]
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
 def test_extract_ptc_split_stop_codon(tmp_path, strand):
     # the stop codon TAA is split across an intron; its last base is the only coding base of exon 3
     variants = {"TAA>TAG": (50, "G"), "TAA>CAA": (48, "C")}
@@ -1645,6 +1677,25 @@ def test_drop_symbolic_alleles_keeps_sequence_alleles(alt, caplog):
     vcf = pd.DataFrame({"Alt": [alt]})
 
     pd.testing.assert_frame_equal(drop_symbolic_alleles(vcf), vcf)
+    assert caplog.text == ""
+
+
+# drop_missing_alleles: the records with ALT "." or "*" that extract_ptc skips
+
+
+@pytest.mark.parametrize("alt", [".", "*"])
+def test_drop_missing_alleles_drops_alt_dot_and_star(alt):
+    vcf = pd.DataFrame({"Alt": ["T", alt, "GT"]}, index=[10, 11, 12])
+
+    assert drop_missing_alleles(vcf)["Alt"].tolist() == ["T", "GT"]
+    assert drop_missing_alleles(vcf).index.tolist() == [10, 12]
+
+
+@pytest.mark.parametrize("alt", ["T", "GT", "ACGTN", "<*>", ".G", "G."])
+def test_drop_missing_alleles_keeps_other_alleles(alt, caplog):
+    vcf = pd.DataFrame({"Alt": [alt]})
+
+    pd.testing.assert_frame_equal(drop_missing_alleles(vcf), vcf)
     assert caplog.text == ""
 
 
