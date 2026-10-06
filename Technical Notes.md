@@ -183,14 +183,14 @@ A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcri
 | `alt_cds_start_in_transcript` | int | Position of the 5' base of the alt CDS in `alt_transcript_seq`. It differs from `cds_start_in_transcript` if the variant changes the length of the 5' UTR. The stop codon classification and the scan of the alt transcript read from here | as `alt_transcript_seq` |
 | `transcript_exon_info` | pair_list | (exon_number, length) of each exon of the transcript, 5' to 3' | the transcript has no exon rows |
 | `transcript_start_codon_pos` | int | Transcript position of the start codon of the scan. After a start loss: the ATG that the scan found. After a stop loss without a start loss: the annotated start codon, at `alt_cds_start_in_transcript` | not scanned; after a start loss: no ATG found; after a stop loss: `has_start_codon` is False |
-| `transcript_start_codon_exon` | int | Exon number of `transcript_start_codon_pos` | as `transcript_start_codon_pos` |
+| `transcript_start_codon_exon` | int | Exon number of `transcript_start_codon_pos`, from the exon lengths of `alt_transcript_seq`. An indel changes the length of the exon that holds it, also in the UTR next to the CDS, and a deleted exon has length 0 | as `transcript_start_codon_pos` |
 | `transcript_last_codon` | string | Last 3 nt of `alt_transcript_seq` | not scanned |
 | `transcript_valid_stop` | bool | Whether `transcript_last_codon` is a stop codon | not scanned |
 | `transcript_first_stop_codon` | string | First stop codon that the scan found | not scanned; no stop codon found |
 | `transcript_first_stop_pos` | int | Transcript position of `transcript_first_stop_codon` | as `transcript_first_stop_codon` |
 | `transcript_num_stop_codons` | int | Number of stop codons that the scan found | not scanned |
 | `transcript_all_stop_codons` | stop_codon_list | (transcript position, codon) of each stop codon that the scan found | not scanned |
-| `transcript_stop_codon_exons` | int_list | Exon number of each stop codon that the scan found | not scanned |
+| `transcript_stop_codon_exons` | int_list | Exon number of each stop codon that the scan found, from the exon lengths of `alt_transcript_seq` (see `transcript_start_codon_exon`) | not scanned |
 | `unknown_reason` | string | Why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous` (see [Variants at exon boundaries](#variants-at-exon-boundaries)). The section also lists the columns that are null on such a row | the alt transcript is known |
 
 ### NMD features

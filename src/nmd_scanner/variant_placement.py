@@ -148,12 +148,15 @@ class TranscriptEffect:
     ``utr5`` and ``utr3`` give the change of the UTR next to the coding region as (ref, alt), in transcript
     orientation: the ref bases right before the coding region (5'UTR) or right after it (3'UTR), and the alt bases
     that replace them. If the variant leaves that UTR unchanged, ref equals alt, and both are mostly empty.
+    ``alt_exon_lengths`` gives the length of each exon of the transcript in the alt, in the order of the given exons,
+    if the alt is known. An exon that the variant deletes has length 0.
     """
 
     unknown_reason: str | None = None
     alt_coding: dict = field(default_factory=dict)
     utr5: tuple[str, str] = ("", "")
     utr3: tuple[str, str] = ("", "")
+    alt_exon_lengths: tuple[int, ...] = ()
 
 
 def trim_alleles(start, ref, alt):
@@ -444,9 +447,10 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
             alt_bases = _exon_bases(bases, bases_start, alt_exons, alt_end, alt_side_end)
             right = (ref_bases, alt_bases)
 
+    alt_exon_lengths = tuple(max(end - start, 0) for start, end in alt_exons)
     # In transcript orientation, the left side is the 5'UTR on the plus strand and the 3'UTR on the minus strand
     if plus:
-        return TranscriptEffect(alt_coding=alt_coding, utr5=left, utr3=right)
+        return TranscriptEffect(alt_coding=alt_coding, utr5=left, utr3=right, alt_exon_lengths=alt_exon_lengths)
     utr5 = tuple(str(Seq(side).reverse_complement()) for side in right)
     utr3 = tuple(str(Seq(side).reverse_complement()) for side in left)
-    return TranscriptEffect(alt_coding=alt_coding, utr5=utr5, utr3=utr3)
+    return TranscriptEffect(alt_coding=alt_coding, utr5=utr5, utr3=utr3, alt_exon_lengths=alt_exon_lengths)

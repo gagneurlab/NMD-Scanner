@@ -834,6 +834,7 @@ def test_start_loss_with_a_deleted_stop_codon_reads_from_the_next_atg_into_the_3
         "ref_cds_seq": "ATGAAACCCTAA",
         "alt_cds_seq": "A",
         "transcript_exon_info": [(1, 15)],
+        "alt_transcript_exon_info": [(1, 15)],
         "alt_is_premature": False,
         "start_loss": True,
         "stop_loss": True,
@@ -905,6 +906,7 @@ def test_analyze_transcript():
                 "ref_cds_seq": "CCCATGAAATAA",
                 "alt_cds_seq": "CCCATGAAATAA",
                 "transcript_exon_info": [(1, 10), (2, 10)],
+                "alt_transcript_exon_info": [(1, 10), (2, 10)],
                 "start_loss": True,
                 "stop_loss": False,
             }
@@ -935,6 +937,7 @@ def test_analyze_transcript_without_cds_start_in_transcript():
                 "cds_start_in_transcript": None,
                 "alt_cds_start_in_transcript": None,
                 "transcript_exon_info": [(1, 10), (2, 10)],
+                "alt_transcript_exon_info": [(1, 10), (2, 10)],
                 "start_loss": True,
                 "stop_loss": False,
             }
@@ -971,6 +974,7 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
         "ref_cds_seq": "ATGAAATAA",
         "alt_cds_seq": "ATGAAACAA",
         "transcript_exon_info": [(1, 20)],
+        "alt_transcript_exon_info": [(1, 19)],
         "alt_is_premature": False,
         "start_loss": False,
         "stop_loss": True,

@@ -587,3 +587,116 @@ def test_start_loss_without_an_atg_upstream_of_the_stop_codon_is_neither(tmp_pat
             "nmd_escape": False,
         },
     )
+
+
+def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_alt_transcript(tmp_path, strand):
+    """
+    The deletion of the T of the start codon ATG at t5 (`x`) is a start loss, and it shortens exon 1 to 10 nt in the
+    alt transcript. The scan takes the ATG at t7 (`a`), out of frame, and its first stop codon is the TAA at t10 (`*`).
+    In the alt transcript, t10 is the first base of exon 2, the last exon. So the PTC exon is exon 2, and ptc_to_intron
+    runs to the transcript end. The ref exon lengths would put t10 into exon 1.
+
+    ref 5' [uuuu=x=====]|[========uu] 3'
+        tx 0    4        11         21
+    alt 5' [uuuu===aaa]|[***=====uu] 3'
+        tx 0    4  7    10         20
+                             *-------->|  ptc_to_intron = 10
+                   <---->  ptc_to_start_codon = 3
+    """
+    tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
+
+    row = tx.run(5, "T", "")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": True,
+            "stop_loss": False,
+            "alt_is_premature": True,
+            "alt_transcript_seq": "GACCAGGATGTAAGCTAAGC",
+            "transcript_exon_info": [(1, 11), (2, 10)],
+            "transcript_start_codon_pos": 7,
+            "transcript_start_codon_exon": 1,
+            "transcript_first_stop_pos": 10,
+            "transcript_all_stop_codons": [(10, "TAA")],
+            "transcript_stop_codon_exons": [2],
+            "upstream_exon_count": 1,
+            "downstream_exon_count": 0,
+            "ptc_to_start_codon": 3,
+            "ptc_exon_length": 10,
+            "ptc_to_intron": 10,
+            "stop_codon_distance": 5,
+            "nmd_last_exon_rule": True,
+            "nmd_50nt_penultimate_rule": False,
+            "nmd_long_exon_rule": False,
+            "nmd_start_proximal_rule": True,
+            "nmd_escape": True,
+        },
+    )
+
+
+def test_scan_after_a_deletion_of_5utr_and_start_codon_bases_takes_the_alt_exon_lengths(tmp_path, strand):
+    """
+    The deletion CAT at t3 to t5 (`x`) takes the last 5' UTR base C and the AT of the start codon: a start loss that
+    shortens the 5' UTR by 1 nt and the CDS by 2 nt. Exon 1 has 8 nt in the alt transcript. The scan takes the ATG at
+    t5 (`a`), and its first stop codon is the TAA at t8 (`*`), the first base of exon 2 in the alt transcript. Without
+    the 5' UTR change, exon 1 would have 9 nt and hold t8.
+
+    ref 5' [uuuxxx=====]|[========uu] 3'
+        tx 0   3         11         21
+    alt 5' [uuu==aaa]|[***=====uu] 3'
+        tx 0   3 5    8          18
+    """
+    tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
+
+    row = tx.run(3, "CAT", "")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": True,
+            "alt_is_premature": True,
+            "alt_transcript_seq": "GACGGATGTAAGCTAAGC",
+            "alt_cds_start_in_transcript": 3,
+            "transcript_start_codon_pos": 5,
+            "transcript_start_codon_exon": 1,
+            "transcript_first_stop_pos": 8,
+            "transcript_stop_codon_exons": [2],
+            "upstream_exon_count": 1,
+            "downstream_exon_count": 0,
+            "ptc_to_start_codon": 3,
+            "ptc_to_intron": 10,
+            "nmd_last_exon_rule": True,
+        },
+    )
+
+
+def test_scan_after_a_deletion_of_the_stop_codon_and_3utr_bases_takes_the_alt_exon_lengths(tmp_path, strand):
+    """
+    The deletion TAACCA at t10 to t15 (`x`) takes the stop codon TAA and 3 nt of the 3' UTR of exon 2: a stop loss
+    that shortens exon 2 to 1 nt in the alt transcript. The scan reads on in the frame of the CDS to the TGA at t13
+    (`*`), which lies in exon 3 of the alt transcript. Without the 3' UTR change, exon 2 would have 4 nt and hold t13.
+
+    ref 5' [uuuu======]|[xxxxxxu]|[uuuuuuu] 3'
+        tx 0    4       10        17       24
+    alt 5' [uuuu======]|[u]|[uu***uu] 3'
+        tx 0    4       10  11 13   18
+    """
+    tx = SyntheticTranscript(tmp_path, strand, ["GACCATGAAG", "TAACCAC", "CATGACC"], 4, 10)
+
+    row = tx.run(10, "TAACCA", "")
+
+    _assert_values(
+        row,
+        {
+            "stop_loss": True,
+            "alt_is_premature": False,
+            "alt_transcript_seq": "GACCATGAAGCCATGACC",
+            "transcript_start_codon_pos": 4,
+            "transcript_start_codon_exon": 1,
+            "transcript_first_stop_pos": 13,
+            "transcript_all_stop_codons": [(13, "TGA")],
+            "transcript_stop_codon_exons": [3],
+            "stop_codon_distance": -9,
+        },
+    )
