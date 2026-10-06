@@ -470,3 +470,120 @@ def test_start_proximal_rule_after_a_start_loss_measures_from_the_atg_of_the_sca
             "nmd_escape": True,
         },
     )
+
+
+def test_start_loss_classifies_the_first_stop_codon_of_the_rescued_orf(tmp_path, strand):
+    """
+    The CDS is ATG GAT GCC CTA, 50 times AAA, GAC, then the stop codon TAA at t168 (`s`). ATG>ACG at t4 (`x`) is a
+    start loss. Translation starts at the next ATG, at t7 (`a`), which is out of frame with the annotated stop codon.
+    Its ORF ATG CCC TAA ends at the TAA at t13 (`*`). Upstream of the annotated stop codon, this stop codon is a PTC,
+    as after a frameshift. The PTC features measure it in alt CDS coordinates: CDS position 10 in exon 1. The frame of
+    the CDS start reads on to the annotated stop codon, at alt_first_stop_pos 165.
+
+              63 nt                60 nt           53 nt
+    5' [uuuxxx=aaa===***=======]|[=============]|[====sssuuuuu] 3'
+    tx  0  3   7     13           63              123  168   176
+               <---->  ptc_to_start_codon = 6
+                     <-------------------------------->  stop_codon_distance = 155
+                     *--------->|  ptc_to_intron = 50
+    """
+    cds = "ATGGATGCCCTA" + "AAA" * 50 + "GAC"
+    exons = ["GGG" + cds[:60], cds[60:120], cds[120:] + "TAA" + "GGGGG"]
+    tx = SyntheticTranscript(tmp_path, strand, exons, 3, 168)
+
+    row = tx.run(4, "T", "C")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": True,
+            "stop_loss": False,
+            "alt_is_premature": True,
+            "alt_first_stop_pos": 165,
+            "transcript_start_codon_pos": 7,
+            "transcript_first_stop_pos": 13,
+            "stop_codon_distance": 155,
+            "upstream_exon_count": 0,
+            "downstream_exon_count": 2,
+            "ptc_exon_length": 63,
+            "ptc_to_intron": 50,
+            "ptc_to_start_codon": 6,
+            "ptc_less_than_150nt_to_start": True,
+            "nmd_last_exon_rule": False,
+            "nmd_50nt_penultimate_rule": False,
+            "nmd_long_exon_rule": False,
+            "nmd_start_proximal_rule": True,
+            "nmd_single_exon_rule": False,
+            "nmd_escape": True,
+        },
+    )
+
+
+def test_start_loss_with_a_frameshift_reads_the_frame_of_the_next_atg(tmp_path, strand):
+    """
+    The CDS is ATG GTA AGC ATG GCC AAA GAC, then the stop codon TAA. The deletion of the T of the start codon at t4 is a
+    start loss and a frameshift. The drawing shows the alt transcript. Read from the alt CDS start at t3, the frame
+    meets the TAA at t6 (`*`), across the exon junction. But translation starts at the next ATG, at t11 (`a`), which is
+    the Met at CDS position 9 of the reference, in frame with the annotated stop codon. Its ORF ends at the annotated
+    stop codon, at t23 (`s`). So the row is neither a PTC nor a stop loss.
+
+           7 nt              24 nt
+    5' [uuu===*]|[**==aaa======sssuuuuu] 3'
+    tx  0  3  6   7   11       23     31
+    """
+    cds = "ATGGTAAGCATGGCCAAAGAC"
+    tx = SyntheticTranscript(tmp_path, strand, ["GGG" + cds[:5], cds[5:] + "TAA" + "GGGGG"], 3, 24)
+
+    row = tx.run(4, "T", "")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": True,
+            "stop_loss": False,
+            "alt_is_premature": False,
+            "alt_first_stop_pos": 3,
+            "transcript_start_codon_pos": 11,
+            "transcript_first_stop_pos": 23,
+            "stop_codon_distance": 0,
+            "ptc_to_start_codon": None,
+            "nmd_start_proximal_rule": False,
+            "nmd_escape": False,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("utr3", "start_pos", "stop_pos"),
+    [("GGATGCCCTGAGG", 20, 26), ("GGACGCCCTGAGG", None, None)],
+    ids=["atg_in_the_3utr", "no_atg"],
+)
+def test_start_loss_without_an_atg_upstream_of_the_stop_codon_is_neither(tmp_path, strand, utr3, start_pos, stop_pos):
+    """
+    The CDS is ATG CCC AAA GAC, then the stop codon TAA at t15 (`s`). ATG>ACG at t4 (`x`) is a start loss, and no ATG
+    follows in the CDS. In the first case, the next ATG lies in the 3' UTR, at t20 (`a`), and its ORF ends at the TGA
+    at t26 (`t`). In the second case, the 3' UTR has ACG there, and the scan finds no ATG. Either way, no ORF overlaps
+    the CDS: the row is neither a PTC nor a stop loss, and stop_codon_distance is null.
+
+          8 nt              23 nt
+    5' [uuuxxx==]|[=======sssuuaaauuutttuu] 3'
+    tx  0  3       8      15   20    26   31
+    """
+    cds = "ATGCCCAAAGAC"
+    tx = SyntheticTranscript(tmp_path, strand, ["GGG" + cds[:5], cds[5:] + "TAA" + utr3], 3, 15)
+
+    row = tx.run(4, "T", "C")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": True,
+            "stop_loss": False,
+            "alt_is_premature": False,
+            "transcript_start_codon_pos": start_pos,
+            "transcript_first_stop_pos": stop_pos,
+            "stop_codon_distance": None,
+            "ptc_to_start_codon": None,
+            "nmd_escape": False,
+        },
+    )

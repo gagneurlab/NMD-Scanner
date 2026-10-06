@@ -756,10 +756,12 @@ def test_start_codon_pos_is_the_annotated_start_codon():
     assert result["alt_start_codon_pos"].tolist() == [0, None, None, None]
 
 
-def test_start_and_stop_loss_reads_from_the_next_atg_into_the_3utr():
+def test_start_loss_with_a_deleted_stop_codon_reads_from_the_next_atg_into_the_3utr():
     """
     A deletion removes the start codon and the stop codon of ATG AAA CCC TAA. Only the first base A of the CDS is left.
     After the start loss, the scan takes the next ATG, at t4, and reads its frame on into the 3' UTR, to the TGA at t10.
+    This ATG lies in the former 3' UTR, downstream of the deleted stop codon. So its ORF does not overlap the CDS, and
+    the row is neither a PTC nor a stop loss.
 
     ref tx  CC ATG AAA CCC TAA GATGCCCTGACC
             0  2           11
@@ -784,7 +786,8 @@ def test_start_and_stop_loss_reads_from_the_next_atg_into_the_3utr():
 
     result = analyze_transcript(pd.DataFrame([row])).loc[0]
 
-    assert result["stop_loss"] == True
+    assert result["alt_is_premature"] == False
+    assert result["stop_loss"] == False
     assert result["transcript_start_codon_pos"] == 4
     assert result["transcript_first_stop_codon"] == "TGA"
     assert result["transcript_first_stop_pos"] == 10

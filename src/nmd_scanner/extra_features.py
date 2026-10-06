@@ -3,7 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from nmd_scanner.rules import annotated_stop_distance, ends_at_annotated_stop, first_stop_codon
+from nmd_scanner.rules import annotated_stop_distance, classify_rescued_orf, ends_at_annotated_stop, first_stop_codon
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, apply_schema
 
 
@@ -28,6 +28,27 @@ def _plain_values(row):
             value = None
         values[column] = value
     return values
+
+
+def ptc_position_and_exons(row):
+    """
+    Return the position of the PTC in alt CDS coordinates (as alt_first_stop_pos) and the exon numbers of the stop
+    codons, of which the smallest is the PTC exon.
+
+    The PTC is the first in-frame stop codon of the alt CDS: alt_first_stop_pos and alt_stop_codon_exons. After a
+    start loss, translation starts at the ATG of the scan, and the PTC is the first in-frame stop codon after it:
+    transcript_first_stop_pos, minus alt_cds_start_in_transcript, and transcript_stop_codon_exons.
+
+    :param row: A dict of plain values (see _plain_values)
+    :return: Tuple (position or None, list of exon numbers)
+    """
+
+    if row.get("start_loss"):
+        stop = row.get("transcript_first_stop_pos")
+        cds_start = row.get("alt_cds_start_in_transcript")
+        position = None if stop is None or cds_start is None else stop - cds_start
+        return position, row.get("transcript_stop_codon_exons") or []
+    return row.get("alt_first_stop_pos"), row.get("alt_stop_codon_exons") or []
 
 
 def add_nmd_features(row):
@@ -131,7 +152,7 @@ def calculate_exon_features(row):
     """
 
     exon_info = row.get("transcript_exon_info") or []
-    stop_exons = row.get("alt_stop_codon_exons") or []
+    _, stop_exons = ptc_position_and_exons(row)
 
     total_exons = len(exon_info)
 
@@ -170,7 +191,7 @@ def calculate_ptc_to_start_distance(row):
     cds_start_NF: the true start lies upstream of the CDS, at an unknown distance).
     After a start loss, translation starts at the ATG that the scan of the alt transcript found. So the distance runs
     from that ATG (transcript_start_codon_pos) to the first in-frame stop codon after it (transcript_first_stop_pos),
-    both alt transcript positions. It is None if the scan found no ATG or no stop codon.
+    both alt transcript positions. Such a row is a PTC row only if the scan found both (see rules.classify_rescued_orf).
     """
 
     if not row.get("alt_is_premature"):
@@ -204,7 +225,7 @@ def calculate_ptc_exon_length(row):
     if not row.get("alt_is_premature"):
         return None
 
-    stop_exons = row.get("alt_stop_codon_exons") or []
+    _, stop_exons = ptc_position_and_exons(row)
     exon_info = row.get("transcript_exon_info") or []
 
     if not stop_exons or not exon_info:
@@ -234,6 +255,9 @@ def calculate_stop_codon_dist(row):
     upstream of the PTC shifts both positions by the same amount, so the distance is the same as in ref CDS
     coordinates.
     Without an annotated stop codon (has_stop_codon False), there is no reference stop codon and the distance is None.
+    After a start loss, the alternative stop codon is the first in-frame stop codon after the ATG of the scan (see
+    rules.classify_rescued_orf). The distance is None if the scan found no ATG, or an ATG downstream of the reference
+    stop codon.
     """
 
     if not row["has_stop_codon"]:
@@ -242,6 +266,8 @@ def calculate_stop_codon_dist(row):
     alt_seq = row.get("alt_transcript_seq")
     alt_stop = row.get("alt_first_stop_pos")
     alt_cds_start = row.get("alt_cds_start_in_transcript")
+    if isinstance(alt_seq, str) and alt_cds_start is not None and row.get("start_loss"):
+        return classify_rescued_orf(row, row.get("transcript_start_codon_pos"), row.get("transcript_first_stop_pos"))[2]
     if not isinstance(alt_seq, str) or alt_cds_start is None:
         alt_cds_len = row.get("alt_cds_len")
         if alt_cds_len is None or alt_stop is None:
@@ -304,10 +330,10 @@ def evaluate_nmd_escape_rules(row):
     A PTC is considered to escape NMD if it satisfies any of the above rules. "Technical Notes.md" has figures of the
     rules.
 
-    :param row: A row of the DataFrame including alt_is_premature (bool), alt_first_stop_pos (int),
-                alt_stop_codon_exons (list[int]), transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]),
-                alt_cds_info and ref_cds_info (same format, CDS part per exon), cds_start_in_transcript (int),
-                and the columns that calculate_ptc_to_start_distance reads
+    :param row: A row of the DataFrame including alt_is_premature (bool), the PTC columns that ptc_position_and_exons
+                reads, transcript_exon_info (list[tuple[exon_number (int), exon_length (int)]]), alt_cds_info and
+                ref_cds_info (same format, CDS part per exon), cds_start_in_transcript (int), and the columns that
+                calculate_ptc_to_start_distance reads
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
 
@@ -336,7 +362,7 @@ def evaluate_nmd_escape_rules(row):
         }
 
     # Extract relevant data
-    stop_pos = row.get("alt_first_stop_pos")
+    stop_pos, _ = ptc_position_and_exons(row)
     tx_exon_nums = sorted(int(e) for e, _ in row.get("transcript_exon_info") or [])
 
     total_exons = row.get("total_exon_count")
@@ -391,9 +417,8 @@ def calculate_ptc_to_downstream_ej(row):
     if not row.get("alt_is_premature"):
         return None
 
-    stop_exons = row.get("alt_stop_codon_exons") or []
+    ptc_pos, stop_exons = ptc_position_and_exons(row)
     tx_exon_nums = [int(e) for e, _ in row.get("transcript_exon_info") or []]
-    ptc_pos = row.get("alt_first_stop_pos")
 
     if not stop_exons or not tx_exon_nums or ptc_pos is None:
         return None

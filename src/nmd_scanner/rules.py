@@ -1047,6 +1047,31 @@ def classify_first_stop(row, first_stop):
     return distance is not None and distance > 0, distance is None or distance < 0
 
 
+def classify_rescued_orf(row, start, first_stop):
+    """
+    Classify the rescued ORF after a start loss. Translation starts at the next ATG and ends at the first in-frame stop
+    codon after it, both positions in the alternative transcript. The stop codon is classified by its position, as after
+    a frameshift (see classify_first_stop), also if it is out of frame with the annotated stop codon.
+    Without an ATG, or with the ATG downstream of the first base of the annotated stop codon, the ORF does not overlap
+    the CDS. It is neither a PTC nor a stop loss, and it has no distance to the annotated stop codon.
+
+    :param row: A pd.Series row or dict with the columns that classify_first_stop and annotated_stop_distance read
+    :param start: Position of the ATG in the alternative transcript, or None if the scan found none
+    :param first_stop: Position of the first in-frame stop codon after the ATG, or None
+    :return: Tuple (alt_is_premature, stop_loss, stop_codon_distance). The distance is None without an annotated stop
+             codon (has_stop_codon False).
+    """
+
+    if start is None:
+        return False, False, None
+    if not row["has_stop_codon"]:
+        return *classify_first_stop(row, first_stop), None
+    stop = annotated_stop_in_alt(row["transcript_seq"], row["alt_transcript_seq"], row["cds_end_in_transcript"] - 3)[0]
+    if start > stop:
+        return False, False, None
+    return *classify_first_stop(row, first_stop), annotated_stop_distance(row, first_stop)
+
+
 def analyze_transcript(results_df):
     """
     Analyze the alternative transcript sequence: classify its first in-frame stop codon, and in cases of start or stop
@@ -1057,6 +1082,9 @@ def analyze_transcript(results_df):
     start_stop_loss, which see only the CDS: after a frameshift, the last codon of the alternative CDS is out of frame.
     The comparison with the annotated stop codon needs a reference transcript that, read the same way, stops there
     (see ends_at_annotated_stop). Rows where it does not, and rows without an alternative transcript, keep those flags.
+    After a start loss, translation starts at the next ATG, in any frame. The flags then come from the first in-frame
+    stop codon after that ATG (see classify_rescued_orf), also on a row whose reference transcript does not stop at the
+    annotated stop codon.
 
     :param results_df: DataFrame containing transcript sequence data and annotations, including start_loss and stop_loss flags,
                        alt_cds_start_in_transcript, has_start_codon, and the columns that classify_first_stop reads
@@ -1091,44 +1119,43 @@ def analyze_transcript(results_df):
 
         # Read codons in frame from the first complete codon of the CDS to the end of the transcript
         scan_start = cds_start + int(row["cds_frame"])
-        stop_codons_in_frame = list(in_frame_codons(seq, scan_start, valid_stop_codons))
-
-        # The comparison needs a reference transcript that reads its first stop codon at the annotated one. Otherwise,
-        # e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the row keeps the flags from the CDS.
-        stop_loss = row["stop_loss"]
-        if not row["has_stop_codon"] or ends_at_annotated_stop(row):
-            first_stop = stop_codons_in_frame[0][0] if stop_codons_in_frame else None
-            is_premature, stop_loss = classify_first_stop(row, first_stop)
-            df.at[idx, "alt_is_premature"] = is_premature
-            df.at[idx, "stop_loss"] = stop_loss
 
         start_pos = None
         start_exon = None  # for exon number
         stop_codons = []
 
-        # only analyze rows flagged with start or stop codon loss: skip the others and fill with None values
-        # Skips only if we have both start_loss = FALSE and stop_loss = FALSE. If one is true, then don't skip.
-        if not (row["start_loss"] or stop_loss):
-            continue
-
-        # START LOSS rescue search
+        # START LOSS rescue search: translation starts at the first ATG from the first complete codon on, in any frame,
+        # and reads on in the frame of that ATG to the end of the transcript (3'UTR). Its first stop codon decides the
+        # flags.
         if row["start_loss"]:
-            # Walk through sequence starting at the first complete codon with +1 positions until start codon is found
-            for i in range(scan_start, len(seq) - 2):
-                codon = seq[i : i + 3]
-                if codon == start_codon:
-                    start_pos = i
+            atg = seq.find(start_codon, scan_start)
+            if atg != -1:
+                start_pos = atg
+                start_exon = get_exon(start_pos, exon_info)  # for exon number
+                stop_codons = list(in_frame_codons(seq, atg, valid_stop_codons))
+            first_stop = stop_codons[0][0] if stop_codons else None
+            is_premature, stop_loss, _ = classify_rescued_orf(row, start_pos, first_stop)
+            df.at[idx, "alt_is_premature"] = is_premature
+            df.at[idx, "stop_loss"] = stop_loss
 
-                    start_exon = get_exon(start_pos, exon_info)  # for exon number
-
-                    # From new start codon, scan codons in frame
-                    stop_codons = list(in_frame_codons(seq, i, valid_stop_codons))
-
-                    break
-
-        # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on. Only without a start
-        # loss: after a start loss, the scan above already reads on to the transcript end (3'UTR).
+        # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on
         else:
+            stop_codons_in_frame = list(in_frame_codons(seq, scan_start, valid_stop_codons))
+
+            # The comparison needs a reference transcript that reads its first stop codon at the annotated one.
+            # Otherwise, e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the row keeps the flags
+            # from the CDS.
+            stop_loss = row["stop_loss"]
+            if not row["has_stop_codon"] or ends_at_annotated_stop(row):
+                first_stop = stop_codons_in_frame[0][0] if stop_codons_in_frame else None
+                is_premature, stop_loss = classify_first_stop(row, first_stop)
+                df.at[idx, "alt_is_premature"] = is_premature
+                df.at[idx, "stop_loss"] = stop_loss
+
+            # only analyze rows flagged with a stop codon loss: skip the others and fill with None values
+            if not stop_loss:
+                continue
+
             # The start codon is the annotated one at the CDS start. Without one (e.g. cds_start_NF), it is unknown.
             if row["has_start_codon"]:
                 start_pos = cds_start
