@@ -410,6 +410,38 @@ def test_ptc_distance_is_measured_from_the_annotated_start_codon(tmp_path, stran
     )
 
 
+def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, strand):
+    """
+    The annotated start codon is TAG (`*`), a stop codon. Translation cannot start on a stop codon, so this start
+    codon is a misannotation. The missense GCC>GAC at t7 (`x`) leaves it unchanged. TAG is the first in-frame stop
+    codon of the alt CDS, so the PTC is the start codon itself. ptc_to_start_codon is null, and the start-proximal
+    rule is False.
+
+    5' [uuu***=x=======sssuuuuu] 3'
+    tx  0  3   7       15 18
+    CDS    0           12
+    """
+    tx = SyntheticTranscript(tmp_path, strand, ["GGG" + "TAGGCCAAGCTG" + "TAA" + "GGGGG"], 3, 15)
+
+    row = tx.run(7, "C", "A")
+
+    _assert_values(
+        row,
+        {
+            "ref_start_codon_pos": 0,
+            "alt_start_codon_pos": 0,
+            "alt_first_stop_pos": 0,
+            "alt_is_premature": True,
+            "start_loss": False,
+            "stop_loss": False,
+            "ptc_to_start_codon": None,
+            "ptc_less_than_150nt_to_start": False,
+            "nmd_start_proximal_rule": False,
+            "likely_misannotated": False,
+        },
+    )
+
+
 @pytest.mark.parametrize(
     ("start_codon", "start_pos", "start_exon"), [(True, 2, 1), (False, None, None)], ids=["start_codon", "cds_start_nf"]
 )

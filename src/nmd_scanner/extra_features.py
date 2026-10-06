@@ -197,6 +197,8 @@ def calculate_ptc_to_start_distance(row):
     After a start loss, translation starts at the ATG that the scan of the alt transcript found. So the distance runs
     from that ATG (transcript_start_codon_pos) to the first in-frame stop codon after it (transcript_first_stop_pos),
     both alt transcript positions. Such a row is a PTC row only if the scan found both (see rules.classify_rescued_orf).
+    The distance is None, too, if the PTC is the annotated start codon itself, i.e. the annotated start codon is a stop
+    codon such as TAG. Translation cannot start on a stop codon, so such a start codon is a misannotation.
     """
 
     if not row.get("alt_is_premature"):
@@ -216,6 +218,8 @@ def calculate_ptc_to_start_distance(row):
     # offset = stop - start
     # return offset // 3 if offset >= 0 else None
 
+    # Without a start loss, the start codon lies at CDS position 0, so only a stop codon as start codon gives a PTC at
+    # the start. After a start loss, the scan reads the stop codons after the ATG.
     if stop <= start:
         return None
 
