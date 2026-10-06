@@ -32,7 +32,9 @@ from nmd_scanner.rules import (
 )
 
 
-def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True, start_codon=True):
+def run_pipeline_on_transcript(
+    tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True, start_codon=True, exon_rows=True
+):
     """
     Run extract_ptc, add_nmd_features and evaluate_nmd_escape_rules on one synthetic transcript with one variant.
 
@@ -44,6 +46,7 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
         transcript has no annotated stop codon, as one tagged cds_end_NF.
     :param start_codon: Whether the first 3 nt of the CDS are an annotated start codon. Without one, the transcript is
         like one tagged cds_start_NF.
+    :param exon_rows: Whether the annotation has the exon rows. Without them, it has only the coding regions.
     :return: The single result row as a dictionary
     """
 
@@ -111,7 +114,8 @@ def run_pipeline_on_transcript(tmp_path, strand, exon_seqs, cds_range, variant, 
     vcf = pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
 
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=start_codon, has_stop_codon=stop_codon)
-    results = extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
+    exons_df = annotation[annotation["Feature"] == "exon"]
+    results = extract_ptc(coding, vcf, fasta, exons_df if exon_rows else exons_df.iloc[:0])
     assert len(results) == 1
     row = results.iloc[0].to_dict()
     row.update(add_nmd_features(row))
@@ -440,6 +444,57 @@ def test_extract_ptc_locates_cds_in_transcript(tmp_path_factory):
         assert row["alt_first_stop_pos"] == 174
         assert row["alt_is_premature"] == True
         assert row["ptc_to_intron"] == 76
+
+
+def _values(row, columns):
+    """The value of each column of a result row; None means null."""
+    return {
+        column: None if pd.api.types.is_scalar(row[column]) and pd.isna(row[column]) else row[column]
+        for column in columns
+    }
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
+def test_extract_ptc_of_a_transcript_without_exon_rows(tmp_path, strand):
+    """
+    The only transcript of the variant has no exon rows, only its coding regions. Its row has null transcript columns,
+    and the flags come from the alt CDS. The missense variant AGC>AGA at `x` changes no stop codon.
+
+           11 nt        10 nt
+    5' [uuuu=======]|[====x===uu] 3'   coding regions only, no exon rows
+    tx 0    4        11   15  19 21
+
+    The drawing is in transcript orientation, also on the minus strand.
+    """
+    row = run_pipeline_on_transcript(
+        tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], (4, 16), (15, "C", "A"), exon_rows=False
+    )
+
+    expected = {
+        "ref_cds_seq": "ATGGATGTAAGCTAA",
+        "alt_cds_seq": "ATGGATGTAAGATAA",
+        "cds_in_transcript": False,
+        "transcript_start": None,
+        "transcript_end": None,
+        "transcript_seq": None,
+        "transcript_length": None,
+        "cds_start_in_transcript": None,
+        "cds_end_in_transcript": None,
+        "transcript_exon_info": None,
+        "alt_transcript_seq": None,
+        "alt_transcript_length": None,
+        "alt_cds_start_in_transcript": None,
+        "alt_is_premature": False,
+        "start_loss": False,
+        "stop_loss": False,
+        "utr5_length": None,
+        "utr3_length": None,
+        "total_exon_count": None,
+        "stop_codon_distance": 0,
+        "likely_misannotated": True,
+        "nmd_escape": False,
+    }
+    assert _values(row, expected) == expected
 
 
 # A transcript of 400 nt: 40 nt of 5'UTR, a CDS of 252 nt with its stop codon, and 108 nt of 3'UTR. The CDS repeats CAA,

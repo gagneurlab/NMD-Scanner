@@ -636,7 +636,8 @@ def get_transcript_sequence(exons_df, fasta):
                      Must include: transcript_id, strand, chromosome, start, end, exon_number
     :param fasta: Fasta file, reference genome object
     :return: DataFrame with one row per transcript with full transcript sequence, start, end, strand, transcript sequence length, and
-             per exon sequence length information for that transcript
+             per exon sequence length information for that transcript. Without exon rows, it has no rows but the same
+             columns.
     """
 
     exon_data = []
@@ -695,7 +696,20 @@ def get_transcript_sequence(exons_df, fasta):
             }
         )
 
-    exon_seqs = pd.DataFrame(exon_data)
+    # Without exon rows, extract_ptc still looks up the transcripts in these columns
+    exon_seqs = pd.DataFrame(
+        exon_data,
+        columns=[
+            "Chromosome",
+            "transcript_id",
+            "start",
+            "end",
+            "strand",
+            "transcript_sequence",
+            "transcript_length",
+            "transcript_exon_info",
+        ],
+    )
     return exon_seqs
 
 
