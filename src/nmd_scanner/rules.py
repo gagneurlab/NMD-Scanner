@@ -35,8 +35,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
              It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has one row per
-             variant and transcript where the variant touches the coding region or the splice dinucleotide at one
-             of its exon edges, also through an equivalent placement of an indel (see
+             VCF record and transcript where the variant of the record touches the coding region or the splice
+             dinucleotide at one of its exon edges, also through an equivalent placement of an indel (see
              ``variant_placement.place_in_transcript``). If the alt transcript is unknown, unknown_reason names why,
              and the alt columns are null. It has zero rows if no variant touches a coding region, or every variant
              is skipped or has a reference mismatch.
@@ -462,11 +462,13 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     and alternative form.
     :param intersection_cds_vcf: DataFrame containing variant-CDS intersection and corresponding alternative CDS sequences
                                  includes: transcript_id, exon_number, Exon_Alt_CDS_seq, and optionally
-                                 the UTR change columns and unknown_reason (see apply_variants)
+                                 the UTR change columns and unknown_reason (see apply_variants), and variant_row (one
+                                 value per VCF record, see place_variants)
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
                         includes: transcript_id, exon_number, Start, End, Strand, Frame, Exon_CDS_seq, has_start_codon,
                         has_stop_codon
-    :return: DataFrame with one row per variant-transcript pair, containing full reference and alternative CDS + lengths,
+    :return: DataFrame with one row per VCF record and transcript (without variant_row: per variant and transcript),
+             containing full reference and alternative CDS + lengths,
              exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_start_codon, has_stop_codon,
              cds_frame (the Frame of the 5'-most CDS row: the number of bases before the first complete codon),
              utr5_change and utr3_change (tuples (ref, alt), see TranscriptEffect) and unknown_reason. A pair with
@@ -505,12 +507,14 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         # (e.g. cds_start_NF). That row has the smallest Start on the plus strand and the largest on the minus strand.
         cds_frame = int(ref_exons["Frame"].iloc[0 if strand == "+" else -1])
 
-        for variant, cds_df in var_df.groupby(
-            ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"], observed=True
-        ):
+        # One group per VCF record: variant_row tells apart two records with the same CHROM, POS, REF and ALT
+        variant_key = ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]
+        if "variant_row" in var_df:
+            variant_key.append("variant_row")
+        for variant, cds_df in var_df.groupby(variant_key, observed=True):
             # Variant-identifying fields come straight from the group key;
             # ID and gene_id are constant within the group, so read them once.
-            chromosome, start_variant, end_variant, ref_allele, alt_allele = variant
+            chromosome, start_variant, end_variant, ref_allele, alt_allele = variant[:5]
             variant_id = cds_df["ID"].iloc[0]
             gene_id = cds_df["gene_id"].iloc[0]
 

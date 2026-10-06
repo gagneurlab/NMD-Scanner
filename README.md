@@ -115,7 +115,7 @@ exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 ```
 
-`results` has one row per variant and transcript where the variant touches the coding region (CDS plus stop codon) or the splice dinucleotide next to one of its exon edges. An indel in a repeat counts with every equivalent placement, not only the one in the VCF. If the variant destroys a splice site or leaves an exon boundary ambiguous, the alt transcript is unknown. Then `unknown_reason` says why, and the alt columns and the predictions are empty. [Variants at exon boundaries](Technical%20Notes.md#variants-at-exon-boundaries) in the Technical Notes gives the rules.
+`results` has one row per VCF record and transcript where the variant of the record touches the coding region (CDS plus stop codon) or the splice dinucleotide next to one of its exon edges. An indel in a repeat counts with every equivalent placement, not only the one in the VCF. If the variant destroys a splice site or leaves an exon boundary ambiguous, the alt transcript is unknown. Then `unknown_reason` says why, and the alt columns and the predictions are empty. [Variants at exon boundaries](Technical%20Notes.md#variants-at-exon-boundaries) in the Technical Notes gives the rules.
 
 Add the extra NMD-related features (utr lengths, exon counts, ptc-related features) and the NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results. The columns, column order and dtypes are the same for every input, also for a result without rows (see `nmd_scanner.schema`):
 ```python

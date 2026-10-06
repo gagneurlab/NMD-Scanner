@@ -1567,6 +1567,27 @@ def test_extract_ptc_stop_codon_change(tmp_path, strand):
 
 
 @pytest.mark.parametrize("strand", ["+", "-"])
+def test_extract_ptc_gives_a_row_per_vcf_record(tmp_path, strand):
+    """
+    Two VCF records, var1 and var2, have the same CHROM, POS, REF and ALT: TGG>TAG at `x`, CDS position 46. The PTC
+    TAG at 45 lies upstream of the stop codon `s` at 48. Each record gets its own row, with its ID as variant_id.
+
+            39 nt            36 nt
+    5' [uuu==========]|[======x=sssuuuu] 3'
+       -9  0           30       48
+
+    The drawing is in transcript orientation, also on the minus strand.
+    """
+    result = _extract_ptc_synthetic(tmp_path, strand, True, {"var1": (46, "A"), "var2": (46, "A")})
+
+    assert list(result.index) == ["var1", "var2"]
+    assert result["alt_is_premature"].tolist() == [True, True]
+    assert result["alt_first_stop_pos"].tolist() == [45, 45]
+    # Apart from variant_id, the two rows are the same
+    assert _values(result.loc["var1"], result.columns) == _values(result.loc["var2"], result.columns)
+
+
+@pytest.mark.parametrize("strand", ["+", "-"])
 def test_extract_ptc_split_stop_codon(tmp_path, strand):
     # the stop codon TAA is split across an intron; its last base is the only coding base of exon 3
     variants = {"TAA>TAG": (50, "G"), "TAA>CAA": (48, "C")}
