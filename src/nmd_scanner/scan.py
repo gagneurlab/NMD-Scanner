@@ -191,7 +191,7 @@ def read_gff3(gff3_path, fasta):
         Ensembl GFF3, and for a GENCODE GFF3 that has the attribute.
     :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, if its
         flavor is neither GENCODE nor Ensembl, or if an exon or CDS row breaks a rule of
-        ``_check_strand_and_phase``
+        ``_check_strand_and_phase`` or ``_check_cds_in_exons``
     """
     if not os.path.exists(gff3_path):
         raise FileNotFoundError(f"GFF3 file not found: {gff3_path}")
@@ -211,6 +211,7 @@ def read_gff3(gff3_path, fasta):
     if {"gene_type", "transcript_type"} <= columns:
         df = _normalize_gencode_gff3(df)
         _check_strand_and_phase(df, gff3_path)
+        _check_cds_in_exons(df, gff3_path)
         df = _trim_cds_end_nf_stop_codons(df, fasta)
         # the CDS includes the stop codon; the stop_codon rows only say whether there is one
         is_stop = df["Feature"] == "stop_codon"
@@ -234,6 +235,7 @@ def read_gff3(gff3_path, fasta):
     elif "biotype" in columns:
         df = _normalize_ensembl_gff3(df)
         _check_strand_and_phase(df, gff3_path)
+        _check_cds_in_exons(df, gff3_path)
         df = _has_stop_codon_from_sequence(df, fasta)
         df = _has_start_codon_from_sequence(df, fasta)
     else:
@@ -263,20 +265,13 @@ def _check_strand_and_phase(df, gff3_path):
     :raises ValueError: for such a row
     """
     path = os.fspath(gff3_path)
-
-    def where(row):
-        return (
-            f"the {row['Feature']} row of transcript {row['transcript_id']} at "
-            f"{row['Chromosome']}:{row['Start'] + 1}-{row['End']}"
-        )
-
     rows = df[df["Feature"].isin(["exon", "CDS"])]
     unstranded = rows[~rows["Strand"].isin(["+", "-"])]
     if not unstranded.empty:
         first = unstranded.iloc[0]
         raise ValueError(
             f"Cannot use {path!r}: {len(unstranded)} exon or CDS row(s) have a strand other than + or -. The first "
-            f"is {where(first)}, with strand {first['Strand']!r}. NMD-Scanner needs strand + or - on each exon and "
+            f"is {_where(first)}, with strand {first['Strand']!r}. NMD-Scanner needs strand + or - on each exon and "
             "CDS row."
         )
     cds = rows[rows["Feature"] == "CDS"]
@@ -285,8 +280,52 @@ def _check_strand_and_phase(df, gff3_path):
         first = unphased.iloc[0]
         raise ValueError(
             f"Cannot use {path!r}: {len(unphased)} CDS row(s) have a phase other than 0, 1 or 2. The first is "
-            f"{where(first)}, with phase {first['Frame']!r}. GFF3 requires a phase on each CDS row."
+            f"{_where(first)}, with phase {first['Frame']!r}. GFF3 requires a phase on each CDS row."
         )
+
+
+def _check_cds_in_exons(df, gff3_path):
+    """
+    Raises a ValueError if a CDS row does not lie inside an exon row of its transcript, i.e. if no exon row of the
+    transcript, on the same chromosome, starts at or before the CDS row and ends at or after it. The analysis reads
+    the CDS bases from the exons of the transcript. CDS rows that share bases are allowed, e.g. the two CDS rows at a
+    ribosomal slippage site. The check skips a transcript without exon rows: the output columns have a null case for it.
+    The error gives the count of such rows and names the first one, in file order.
+
+    :param df: Rows of the GFF3 (DataFrame) with Chromosome, Feature, Start, End and transcript_id, as the
+        normalization of its flavor gives them
+    :param gff3_path: Path to the GFF3 file, for the error message
+    :raises ValueError: for such a row
+    """
+    key = ["Chromosome", "transcript_id"]
+    exons = df.loc[df["Feature"] == "exon", [*key, "Start", "End"]].sort_values([*key, "Start"])
+    # The largest End of the exon rows of the transcript that start at or before each exon row
+    exons["reach"] = exons.groupby(key, sort=False)["End"].cummax()
+    cds = df.loc[df["Feature"] == "CDS", [*key, "Start", "End"]]
+    cds = cds[cds["transcript_id"].isin(exons["transcript_id"])]
+    # Each CDS row takes the reach of the last exon row of its transcript that starts at or before it
+    reach = pd.merge_asof(
+        cds.assign(row=cds.index).sort_values("Start"),
+        exons[[*key, "Start", "reach"]].sort_values("Start", kind="stable"),
+        on="Start",
+        by=key,
+    ).set_index("row")["reach"]
+    outside = cds.index[~(reach.reindex(cds.index) >= cds["End"])]
+    if len(outside):
+        first = df.loc[outside[0]]
+        raise ValueError(
+            f"Cannot use {os.fspath(gff3_path)!r}: {len(outside)} CDS row(s) do not lie inside an exon row of their "
+            f"transcript. The first is {_where(first)}. NMD-Scanner needs each CDS row inside an exon row of its "
+            "transcript."
+        )
+
+
+def _where(row):
+    """The feature, transcript and location (1-based, as in the GFF3) of a row, for an error message."""
+    return (
+        f"the {row['Feature']} row of transcript {row['transcript_id']} at "
+        f"{row['Chromosome']}:{row['Start'] + 1}-{row['End']}"
+    )
 
 
 # The GFF3 attributes that read_gff3 and its helpers use. polars-bio reads no other attribute.
