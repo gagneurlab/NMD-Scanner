@@ -3,9 +3,9 @@ Summary of the NMD-Scanner Script:
 1. Command Line argument Parser
 2. Check that Output Path is valid
 3. Reads genomic data files (VCF for variants, GFF3 for annotations, FASTA for sequences)
-4. Extracts coding regions and exons + exon length -> scan.read_annotation(). The coding regions are CDS rows that include the stop codon, as a GFF3 CDS does. Their columns has_start_codon and has_stop_codon say whether the transcript has an annotated start and stop codon -> scan.read_gff3()
+4. Extracts coding regions and exons + exon length -> scan.read_annotation(). The coding regions are CDS rows that include the stop codon, as a GFF3 CDS does. Their columns has_start_codon and has_stop_codon say whether the transcript has an annotated start and stop codon -> scan.read_gff3(). scan.read_gff3() raises a ValueError for an exon or CDS row whose strand is not + or -, and for a CDS row whose phase is not 0, 1 or 2. The error names the transcript of the first such row.
 5. Identifies premature termination codons (PTCs) —> extract_ptc()
-    1. Check that the CDS rows are coding regions (columns has_start_codon and has_stop_codon)
+    1. Check that the CDS rows are coding regions (columns has_start_codon and has_stop_codon), and that the FASTA has a sequence for each chromosome with variants and CDS rows. Otherwise raise a ValueError that names the chromosomes.
     2. Find the equivalent placements of each variant and check its whole REF against the reference genome -> place_variants(). Join the placements with the CDS regions and the splice dinucleotides at their exon edges -> join_variant_windows(). The section "Variants at exon boundaries" below explains the placements.
     3. (in TCGA & MMRF only: adjust minus strand variants)
     4. Filter out variants with a reference mismatch and print those

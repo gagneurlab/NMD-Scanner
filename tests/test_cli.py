@@ -769,6 +769,31 @@ def test_annotate_without_symbolic_alleles_does_not_warn_about_them(caplog):
     assert "symbolic ALT" not in caplog.text
 
 
+def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_rows(tmp_path):
+    fasta = tmp_path / "chr1.fa"
+    fasta.write_text(">chr1\nACGT\n")
+
+    with pytest.raises(ValueError) as error:
+        annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", str(fasta))
+
+    assert str(error.value) == (
+        "The FASTA has no sequence for 1 chromosome(s) with variants and CDS rows: chr18. Each chromosome with "
+        "variants and CDS rows needs a sequence of the same name in the FASTA."
+    )
+
+
+def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp_path):
+    vcf = tmp_path / "chrZ.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrZ\t1000\tz1\tA\tT\t.\t.\t.\n"
+    )
+
+    results = annotate(str(vcf), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    assert results.empty
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+
+
 def test_annotate_reassign_exons_matches_main(tmp_path):
     args = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
     expected = main(*args, str(tmp_path / "main.csv"), reassign_exons=True)

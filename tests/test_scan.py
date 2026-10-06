@@ -901,6 +901,54 @@ def test_read_gff3_raises_for_a_start_after_the_end(tmp_path, start, end, shown)
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
 
 
+# One CDS row of each strand in the GENCODE fixture, and one of the Ensembl fixture, with the transcript and the
+# location that an error names
+_CDS_ROWS_TO_BREAK = pytest.mark.parametrize(
+    ("gff3", "line", "transcript", "location"),
+    [
+        (_GENCODE_GFF3, _CDS_LINE, "ENST001.1", "chr1:1051-1200"),
+        (_GENCODE_GFF3, "chr1\tHAVANA\tCDS\t5100\t5299\t.\t-\t0\tID=CDS:ENST002.1;", "ENST002.1", "chr1:5100-5299"),
+        (_ENSEMBL_GFF3, "chr1\tensembl\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENSPE001;", "ENSTE001", "chr1:1051-1200"),
+    ],
+    ids=["gencode_plus", "gencode_minus", "ensembl_plus"],
+)
+
+
+def _with_column(gff3, line, column, value):
+    """The GFF3 with ``value`` in the column (0-based) of the one row that starts with ``line``."""
+    assert gff3.count(line) == 1
+    fields = line.split("\t")
+    fields[column] = value
+    return gff3.replace(line, "\t".join(fields))
+
+
+@_CDS_ROWS_TO_BREAK
+def test_read_gff3_raises_for_a_cds_row_with_strand_dot(tmp_path, gff3, line, transcript, location):
+    gff3_path = _write(tmp_path, "unstranded.gff3", _with_column(gff3, line, 6, "."))
+
+    with pytest.raises(ValueError) as error:
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    assert str(error.value) == (
+        f"Cannot use {gff3_path!r}: 1 exon or CDS row(s) have a strand other than + or -. The first is the CDS row "
+        f"of transcript {transcript} at {location}, with strand '.'. NMD-Scanner needs strand + or - on each exon "
+        "and CDS row."
+    )
+
+
+@_CDS_ROWS_TO_BREAK
+def test_read_gff3_raises_for_a_cds_row_with_phase_dot(tmp_path, gff3, line, transcript, location):
+    gff3_path = _write(tmp_path, "unphased.gff3", _with_column(gff3, line, 7, "."))
+
+    with pytest.raises(ValueError) as error:
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    assert str(error.value) == (
+        f"Cannot use {gff3_path!r}: 1 CDS row(s) have a phase other than 0, 1 or 2. The first is the CDS row of "
+        f"transcript {transcript} at {location}, with phase '.'. GFF3 requires a phase on each CDS row."
+    )
+
+
 def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_rows(tmp_path, caplog):
     without_stop_codons = "".join(line for line in _GENCODE_GFF3.splitlines(True) if "\tstop_codon\t" not in line)
     fasta = _fasta(tmp_path)

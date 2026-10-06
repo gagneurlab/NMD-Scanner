@@ -189,8 +189,9 @@ def read_gff3(gff3_path, fasta):
         has_stop_codon, gene_id and transcript_id, and the other attributes of ``GFF3_ATTRIBUTES``
         that the file has, except ID and Parent. exon_number (nullable integer) is there for an
         Ensembl GFF3, and for a GENCODE GFF3 that has the attribute.
-    :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, or if its
-        flavor is neither GENCODE nor Ensembl
+    :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, if its
+        flavor is neither GENCODE nor Ensembl, or if an exon or CDS row breaks a rule of
+        ``_check_strand_and_phase``
     """
     if not os.path.exists(gff3_path):
         raise FileNotFoundError(f"GFF3 file not found: {gff3_path}")
@@ -208,7 +209,9 @@ def read_gff3(gff3_path, fasta):
         )
 
     if {"gene_type", "transcript_type"} <= columns:
-        df = _trim_cds_end_nf_stop_codons(_normalize_gencode_gff3(df), fasta)
+        df = _normalize_gencode_gff3(df)
+        _check_strand_and_phase(df, gff3_path)
+        df = _trim_cds_end_nf_stop_codons(df, fasta)
         # the CDS includes the stop codon; the stop_codon rows only say whether there is one
         is_stop = df["Feature"] == "stop_codon"
         if not is_stop.any() and (df["Feature"] == "CDS").any():
@@ -229,7 +232,9 @@ def read_gff3(gff3_path, fasta):
         df = _set_cds_flag(df[~(is_stop | is_start)], "has_stop_codon", stop_transcripts)
         df = _set_cds_flag(df, "has_start_codon", start_transcripts)
     elif "biotype" in columns:
-        df = _has_stop_codon_from_sequence(_normalize_ensembl_gff3(df), fasta)
+        df = _normalize_ensembl_gff3(df)
+        _check_strand_and_phase(df, gff3_path)
+        df = _has_stop_codon_from_sequence(df, fasta)
         df = _has_start_codon_from_sequence(df, fasta)
     else:
         raise ValueError(
@@ -243,6 +248,45 @@ def read_gff3(gff3_path, fasta):
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
     return df.reset_index(drop=True)
+
+
+def _check_strand_and_phase(df, gff3_path):
+    """
+    Raises a ValueError if an exon or CDS row has a strand other than + or -, or if a CDS row has a
+    phase (Frame) other than 0, 1 or 2. The analysis reads the strand of each transcript and the
+    phase of its 5'-most CDS row, and GFF3 requires a phase on each CDS row. The error gives the
+    count of such rows and names the transcript of the first one, in file order.
+
+    :param df: Rows of the GFF3 (DataFrame) with Chromosome, Feature, Start, End, Strand, Frame and
+        transcript_id, as the normalization of its flavor gives them
+    :param gff3_path: Path to the GFF3 file, for the error message
+    :raises ValueError: for such a row
+    """
+    path = os.fspath(gff3_path)
+
+    def where(row):
+        return (
+            f"the {row['Feature']} row of transcript {row['transcript_id']} at "
+            f"{row['Chromosome']}:{row['Start'] + 1}-{row['End']}"
+        )
+
+    rows = df[df["Feature"].isin(["exon", "CDS"])]
+    unstranded = rows[~rows["Strand"].isin(["+", "-"])]
+    if not unstranded.empty:
+        first = unstranded.iloc[0]
+        raise ValueError(
+            f"Cannot use {path!r}: {len(unstranded)} exon or CDS row(s) have a strand other than + or -. The first "
+            f"is {where(first)}, with strand {first['Strand']!r}. NMD-Scanner needs strand + or - on each exon and "
+            "CDS row."
+        )
+    cds = rows[rows["Feature"] == "CDS"]
+    unphased = cds[~cds["Frame"].isin(["0", "1", "2"])]
+    if not unphased.empty:
+        first = unphased.iloc[0]
+        raise ValueError(
+            f"Cannot use {path!r}: {len(unphased)} CDS row(s) have a phase other than 0, 1 or 2. The first is "
+            f"{where(first)}, with phase {first['Frame']!r}. GFF3 requires a phase on each CDS row."
+        )
 
 
 # The GFF3 attributes that read_gff3 and its helpers use. polars-bio reads no other attribute.

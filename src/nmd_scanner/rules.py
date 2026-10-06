@@ -45,7 +45,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
              and the alt columns are null. It has zero rows if no variant touches a coding region, or every variant
              is skipped or has a reference mismatch.
     :raises ValueError: if cds_df has no has_start_codon or has_stop_codon column, i.e. it does not hold the coding
-                        regions.
+                        regions, or if the FASTA has no sequence for a chromosome with variants and coding regions.
     """
 
     missing = [column for column in ("has_start_codon", "has_stop_codon") if column not in cds_df.columns]
@@ -61,6 +61,15 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     # The variant application below cannot apply a structural variant, and "." or "*" changes no base
     vcf = drop_missing_alleles(drop_symbolic_alleles(vcf))
+
+    # The variants on a chromosome with coding regions are placed on its FASTA sequence
+    unsequenced = sorted((set(vcf["Chromosome"]) & set(cds_df_adj["Chromosome"])) - set(fasta.keys()))
+    if unsequenced:
+        raise ValueError(
+            f"The FASTA has no sequence for {len(unsequenced)} chromosome(s) with variants and CDS rows: "
+            f"{', '.join(unsequenced)}. Each chromosome with variants and CDS rows needs a sequence of the same name "
+            "in the FASTA."
+        )
 
     # Join the variants with the coding regions and the splice dinucleotides at their exon edges
     references = {}
