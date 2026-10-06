@@ -277,9 +277,13 @@ def test_calculate_ptc_exon_length():
     assert calculate_ptc_exon_length(ptc_row(100)) == 97
 
     # The alt exons locate the PTC: after a 3 nt deletion in exon 1, transcript position 152 + 95 = 247 is the first
-    # base of exon 2. The length is the one of the ref transcript.
+    # base of exon 2
     alt_exons = [(1, 247), *TXNL1_EXONS[1:]]
     assert calculate_ptc_exon_length(ptc_row(95, alt_exons=alt_exons)) == 97
+
+    # The length is the one in the alt transcript: a 3 nt deletion in exon 2 shortens it to 94 nt
+    alt_exons = [(1, 250), (2, 94), *TXNL1_EXONS[2:]]
+    assert calculate_ptc_exon_length(ptc_row(100, alt_exons=alt_exons)) == 94
 
     # Not a PTC row, no PTC position
     assert calculate_ptc_exon_length({**ptc_row(100), "alt_is_premature": False}) is None

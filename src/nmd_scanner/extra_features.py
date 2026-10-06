@@ -224,16 +224,16 @@ def calculate_ptc_to_start_distance(row):
 
 def calculate_ptc_exon_length(row):
     """
-    Return the length of the PTC exon in the ref transcript (transcript_exon_info), UTR included. The PTC exon is the
-    exon of the alt transcript that holds the PTC (see ptc_in_alt_transcript). None if there is none.
+    Return the length of the PTC exon in the alt transcript, as in the mRNA, UTR included (see ptc_in_alt_transcript).
+    An indel in the PTC exon changes it. None if there is no PTC exon.
     """
 
     ptc = ptc_in_alt_transcript(row)
     if ptc is None:
         return None
     _, exons, index = ptc
-    ref_lengths = {int(exon_number): int(length) for exon_number, length in row.get("transcript_exon_info") or []}
-    return ref_lengths.get(exons[index][0])
+    _, start, end = exons[index]
+    return end - start
 
 
 def calculate_stop_codon_dist(row):

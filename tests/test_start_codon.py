@@ -755,7 +755,7 @@ def test_ptc_features_take_the_3utr_length_change_in_the_ptc_exon(tmp_path, stra
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": 156,
-            "ptc_exon_length": 53,
+            "ptc_exon_length": 55,
             "ptc_to_intron": 52,
             "stop_codon_distance": 12,
             "nmd_last_exon_rule": False,
@@ -815,5 +815,49 @@ def test_a_deleted_exon_is_no_upstream_exon_of_the_ptc(tmp_path, strand):
             "nmd_start_proximal_rule": True,
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
+        },
+    )
+
+
+def test_long_exon_rule_takes_the_length_of_the_ptc_exon_in_the_alt_transcript(tmp_path, strand):
+    """
+    The deletion of the G at t157 (`x`), in exon 2 of 408 nt, gives the PTC TAA at t157 (`*`), 153 nt downstream of
+    the start codon. In the alt transcript, exon 2 has 407 nt: no long exon rule, and the PTC escapes NMD by no rule.
+    With the length of exon 2 in the ref transcript, the long exon rule would fire.
+
+    ref 5' [uuuu===...===]|[===x=====...=====]|[======uuuuu] 3'
+        tx 0    4         154 157               562         573
+    alt 5' [uuuu===...===]|[===*====...=====]|[======uuuuu] 3'
+        tx 0    4         154 157              561         572
+                              <----------------->  ptc_exon_length = 407
+                              *---------------->|  ptc_to_intron = 404
+    """
+    exons = ["GACC" + "ATG" + "GCA" * 49, "GCAGTAAGC" + "GCA" * 133, "GCATAACCACC"]
+    tx = SyntheticTranscript(tmp_path, strand, exons, 4, 565)
+
+    row = tx.run(157, "G", "")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": False,
+            "stop_loss": False,
+            "alt_is_premature": True,
+            "alt_first_stop_pos": 153,
+            "transcript_exon_info": [(1, 154), (2, 408), (3, 11)],
+            "alt_transcript_exon_info": [(1, 154), (2, 407), (3, 11)],
+            "total_exon_count": 3,
+            "upstream_exon_count": 1,
+            "downstream_exon_count": 1,
+            "ptc_to_start_codon": 153,
+            "ptc_exon_length": 407,
+            "ptc_to_intron": 404,
+            "stop_codon_distance": 407,
+            "nmd_last_exon_rule": False,
+            "nmd_50nt_penultimate_rule": False,
+            "nmd_long_exon_rule": False,
+            "nmd_start_proximal_rule": False,
+            "nmd_single_exon_rule": False,
+            "nmd_escape": False,
         },
     )
