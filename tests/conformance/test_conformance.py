@@ -361,7 +361,7 @@ NULL_CASES = [
         "the row keeps the flags from the CDS, and the alt CDS has fewer than 3 nt",
         lambda row: _keeps_the_flags_from_the_cds(row) and row["alt_cds_length"] < 3,
     ),
-    # A transcript without exon rows gives a row with null transcript columns (NU-08)
+    # A transcript without exon rows gives a row with null transcript columns
     *[
         (column, NO_EXON_ROWS, _no_exon_rows)
         for column in (

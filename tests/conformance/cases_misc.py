@@ -185,7 +185,7 @@ def exon_1_ends_2_nt_before_its_cds_row(rows, strand):
     return [_move_3prime_end(row, strand, 2) if _is_exon(row, 1) else row for row in rows]
 
 
-# MI-13: the 5' UTR holds the CDS sequence ATG GCC TAA too
+# The 5' UTR holds the CDS sequence ATG GCC TAA too
 #   5' [g atggcctaa cc ATG GCC TAA gc] 3'
 #        <-copy--->    <--CDS--->
 #   tx 0             tx 12      tx 21
@@ -227,7 +227,7 @@ REPEATED_CDS = Layout(
 )
 
 
-# MI-19: Ensembl GFF3. The CDS rows of exon 2 and exon 3 have phase 2, because exon 1 holds 7 CDS nt and exon 2 9.
+# Ensembl GFF3. The CDS rows of exon 2 and exon 3 have phase 2, because exon 1 holds 7 CDS nt and exon 2 9.
 # has_start_codon and has_stop_codon come from the FASTA: ATG at CDS 0 with phase 0, and TAA as the last 3 CDS nt.
 #   5' [gtcagacc ATG GCC A]|[GG CTG GGC T]|[CC TAA gcagccaggc] 3'
 ENSEMBL = Layout(
@@ -248,7 +248,7 @@ ENSEMBL = Layout(
 )
 
 CASES = [
-    # MI-02, MI-18: a VCF whose only record has a REF that the genome does not have
+    # A VCF whose only record has a REF that the genome does not have
     Case(
         "only_variant_with_a_ref_mismatch_gives_no_row",
         """
@@ -261,7 +261,7 @@ CASES = [
         Change("CCATGG[C>T]CGTAAG", vcf_ref="A"),
         NoRow("REF mismatch"),
     ),
-    # MI-01: the variant with the REF mismatch gives no row, the other variant keeps its row
+    # The variant with the REF mismatch gives no row, the other variant keeps its row
     Case(
         "variant_with_a_ref_mismatch_gives_no_row_and_the_other_variant_keeps_its_row",
         """
@@ -284,7 +284,6 @@ CASES = [
         },
         more_changes=(Change("CCATGG[C>T]CGTAAG", vcf_ref="A", vcf_id="var2"),),
     ),
-    # MI-03, MI-18
     Case(
         "intergenic_snv_gives_no_row",
         """
@@ -297,7 +296,6 @@ CASES = [
         Change("CAGGCCCCC[C>A]CCCCC"),
         NoRow("touches no coding region"),
     ),
-    # MI-04
     Case(
         "snv_in_the_5utr_away_from_the_start_codon_gives_no_row",
         """
@@ -312,7 +310,6 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((1, 8)),
     ),
-    # MI-04
     Case(
         "snv_in_the_3utr_away_from_the_stop_codon_gives_no_row",
         """
@@ -327,7 +324,7 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((29, 35)),
     ),
-    # MI-09: the variant lies next to the coding region but changes only the UTR
+    # The variant lies next to the coding region but changes only the UTR
     Case(
         "snv_right_before_the_start_codon_gives_no_row",
         """
@@ -342,7 +339,6 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((7,)),
     ),
-    # MI-09
     Case(
         "snv_right_after_the_stop_codon_gives_no_row",
         """
@@ -357,7 +353,6 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((29,)),
     ),
-    # MI-05
     Case(
         "snv_on_a_chromosome_without_a_coding_region_gives_no_row",
         """
@@ -371,7 +366,6 @@ CASES = [
         MISSENSE,
         NoRow("touches no coding region"),
     ),
-    # MI-08, MI-18
     Case(
         "vcf_without_a_record_gives_no_row",
         """
@@ -382,7 +376,7 @@ CASES = [
         None,
         NoRow("no record"),
     ),
-    # MI-06: one row per transcript; each row has the transcript columns of its own transcript
+    # One row per transcript; each row has the transcript columns of its own transcript
     Case(
         "variant_in_the_cds_of_two_transcripts_gives_a_row_for_each",
         """
@@ -430,7 +424,8 @@ CASES = [
     ),
     # Pins the row rule of "Output columns" in a run with a touched and an untouched transcript: a row is a variant
     # in a transcript whose coding region it touches. So tx1 gives its row and tx2 gives none. In the closest cases,
-    # every transcript is touched (MI-06) or none is (MI-05). The FASTA lacks chr2. That is no error, because chr2
+    # every transcript is touched (variant_in_the_cds_of_two_transcripts_gives_a_row_for_each) or none is
+    # (snv_on_a_chromosome_without_a_coding_region_gives_no_row). The FASTA lacks chr2. That is no error, because chr2
     # has no variant.
     Case(
         "variant_in_tx1_with_an_untouched_copy_of_the_gene_on_chr2_gives_one_row",
@@ -453,7 +448,7 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # MI-07: one row per variant; each row applies only its own variant
+    # One row per variant; each row applies only its own variant
     Case(
         "two_variants_in_one_transcript_give_a_row_each_with_only_their_own_change",
         """
@@ -490,7 +485,7 @@ CASES = [
             },
         ),
     ),
-    # MI-10, UR-01: a record without ID gives a null variant_id, as every other missing value
+    # A record without ID gives a null variant_id, as every other missing value
     Case(
         "variant_without_an_id_has_a_null_variant_id",
         MISSENSE_DRAWING + "The VCF record has no ID: its ID is '.'.\n",
@@ -506,7 +501,6 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # MI-10
     Case(
         "numeric_variant_id_keeps_its_leading_zeros",
         MISSENSE_DRAWING + "The VCF record has the ID 007.\n",
@@ -522,7 +516,6 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # MI-10
     Case(
         "variant_id_na_stays_text",
         MISSENSE_DRAWING + "The VCF record has the ID NA.\n",
@@ -538,7 +531,7 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # MI-13: the CDS is located by its coordinates, at tx 12, not at the copy at tx 1
+    # The CDS is located by its coordinates, at tx 12, not at the copy at tx 1
     Case(
         "cds_sequence_repeated_in_the_5utr_is_located_by_its_coordinates",
         """
@@ -587,7 +580,7 @@ CASES = [
         marks=(Mark("ref", 1, 10, "~", "copy of the CDS"),),
         ruler=Ruler((1, 12)),
     ),
-    # MI-15: reassign_exons numbers the exons by their position, 5' to 3'. The row is that of the correct numbers.
+    # reassign_exons numbers the exons by their position, 5' to 3'. The row is that of the correct numbers.
     Case(
         "reassign_exons_numbers_the_exons_by_their_position",
         MISSENSE_DRAWING
@@ -604,7 +597,7 @@ CASES = [
         },
         reassign_exons=True,
     ),
-    # MI-16: README.md, section Arguments: the chromosome names must match in the VCF, the GFF3 and the FASTA
+    # README.md, section Arguments: the chromosome names must match in the VCF, the GFF3 and the FASTA
     Case(
         "variant_on_a_chromosome_that_the_fasta_lacks_is_an_error_that_names_the_chromosome",
         MISSENSE_DRAWING
@@ -614,7 +607,6 @@ CASES = [
         MISSENSE,
         Raises(ValueError, match=r"\bchromosome\(s\) with variants and CDS rows: chr1\b"),
     ),
-    # MI-17, PF-25 (CDS rows partly outside the exons), SC-18
     Case(
         "cds_row_that_reaches_past_its_exon_end_is_an_error_that_names_the_transcript_and_the_cds_row",
         """
@@ -638,7 +630,7 @@ CASES = [
         ),
         marks=(Mark("ref", 12, 14, "x", "past the end of the exon 1 row"),),
     ),
-    # MI-19: an Ensembl GFF3 with phase 2 CDS rows
+    # An Ensembl GFF3 with phase 2 CDS rows
     Case(
         "ensembl_gff3_with_phase_2_cds_rows",
         """
@@ -664,7 +656,7 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # UR-02: no placement keeps the donor GT after exon 1
+    # No placement keeps the donor GT after exon 1
     Case(
         "snv_in_the_donor_gt_gives_splice_site_destroyed",
         """
@@ -688,7 +680,7 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # UR-04: AG inserted at CAG|AG. One placement keeps the exon start at the old AG, another puts the inserted AG
+    # AG inserted at CAG|AG. One placement keeps the exon start at the old AG, another puts the inserted AG
     # into the exon.
     Case(
         "ag_inserted_at_cag_ag_gives_exon_boundary_ambiguous",
@@ -716,7 +708,7 @@ CASES = [
         },
         equivalent=(Change("TTTC[>AG]AGAGGC"), Change("CAGAG[>AG]GCTG")),
     ),
-    # UR-06: an MNV has one placement, so it is never exon_boundary_ambiguous, also where its ALT forms an AG one
+    # An MNV has one placement, so it is never exon_boundary_ambiguous, also where its ALT forms an AG one
     # base into the exon
     Case(
         "mnv_at_cag_ag_whose_alt_forms_another_ag_is_not_ambiguous",

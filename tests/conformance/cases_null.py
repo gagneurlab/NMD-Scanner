@@ -593,7 +593,6 @@ TAG_START_CODON = Layout(
 )
 
 CASES = [
-    # NU-12, NU-17, NU-20
     Case(
         "missense_without_start_or_stop_loss_is_not_scanned_and_has_no_ptc_features",
         """
@@ -633,7 +632,6 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # NU-01, NU-24
     Case(
         "snv_in_the_acceptor_of_the_last_exon_makes_the_alt_columns_features_and_rules_null",
         """
@@ -657,7 +655,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # NU-02
     Case(
         "without_start_codon_rows_start_codon_exon_is_null",
         """
@@ -697,7 +694,6 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # NU-22
     Case(
         "ptc_without_an_annotated_start_codon_has_no_ptc_to_start_codon",
         """
@@ -755,8 +751,9 @@ CASES = [
     # ptc_less_than_150nt_to_start and nmd_start_proximal_rule are null ("`ptc_to_start_codon` is null"). The row keeps
     # the flags from the CDS: the ref transcript, read in frame, stops at the TAG and not at the annotated stop codon.
     # likely_misannotated is False ("Input Defects.md": "`likely_misannotated` does not flag it, because its start codon
-    # check only asks for an annotated start codon at CDS position 0"). NU-22 pins the other clause, a PTC row without
-    # an annotated start codon.
+    # check only asks for an annotated start codon at CDS position 0").
+    # `ptc_without_an_annotated_start_codon_has_no_ptc_to_start_codon` pins the other clause, a PTC row without an
+    # annotated start codon.
     Case(
         "missense_in_a_cds_whose_annotated_start_codon_is_tag_is_a_ptc_row_without_ptc_to_start_codon",
         """
@@ -820,7 +817,6 @@ CASES = [
         marks=(Mark("alt", 3, 6, "*", "PTC"), Span("alt", 3, 21, "ptc_to_exon_end = 18")),
         ruler=Ruler((0, 3, 15)),
     ),
-    # NU-03
     Case(
         "cds_of_two_nt_makes_every_codon_column_null",
         """
@@ -865,7 +861,6 @@ CASES = [
             "stop_classification": "alt_cds",
         },
     ),
-    # NU-04
     Case(
         "deletion_that_leaves_two_nt_of_the_cds_makes_the_alt_codon_columns_null",
         """
@@ -919,7 +914,8 @@ CASES = [
     ),
     # Pins the threshold of the null clause "the CDS has fewer than 3 nt" of the alt codon columns, alt_last_codon to
     # alt_stop_codon_exons ("as ref_last_codon", "as ref_valid_stop" and so on). The alt CDS has exactly 3 nt, so these
-    # columns have values. The closest case, NU-04, deletes one base more and leaves 2 nt, which makes them null.
+    # columns have values. The closest case, `deletion_that_leaves_two_nt_of_the_cds_makes_the_alt_codon_columns_null`,
+    # deletes one base more and leaves 2 nt, which makes them null.
     Case(
         "deletion_that_leaves_three_nt_of_the_cds_gives_the_alt_codon_columns",
         """
@@ -1087,7 +1083,6 @@ CASES = [
         equivalent=(Change("[gaccATGGCCTAAt>g]cc"),),
         ruler=Ruler((0, 4, 13)),
     ),
-    # NU-05, NU-18, NU-25
     Case(
         "cds_without_stop_codon_rows_and_without_in_frame_stop_has_no_utr3_length_and_no_annotated_stop_distance",
         """
@@ -1127,7 +1122,6 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # NU-06
     Case(
         "frameshift_without_stop_in_the_alt_cds_has_no_alt_first_stop_codon",
         """
@@ -1190,7 +1184,6 @@ CASES = [
         equivalent=(Change("AAGTGG[G>]GC"), Change("AAGTGGG[G>]C")),
         marks=(Mark("alt", 25, 28, "*", "alt_scan_first_stop_pos = 25"),),
     ),
-    # NU-07
     Case(
         "snv_in_the_start_codon_makes_the_alt_start_codon_columns_null",
         """
@@ -1242,7 +1235,6 @@ CASES = [
         },
         ruler=Ruler((0, 4, 10, 22, 31)),
     ),
-    # NU-14, NU-27 (no ATG)
     Case(
         "start_loss_without_atg_in_the_alt_transcript_has_no_scan_start_codon",
         """
@@ -1288,7 +1280,6 @@ CASES = [
             "stop_classification": "start_loss_scan",
         },
     ),
-    # NU-27 (ATG downstream of the first base of the annotated stop codon)
     Case(
         "start_loss_with_the_next_atg_on_the_last_base_of_the_stop_codon_has_no_annotated_stop_distance",
         """
@@ -1341,7 +1332,6 @@ CASES = [
         marks=(Mark("alt", 24, 27, "a", "ATG at tx 24"),),
         ruler=Ruler((0, 4, 22, 32)),
     ),
-    # NU-09, NU-13, NU-19, NU-23, PF-25 (5' CDS base outside the exons), ST-21
     Case(
         "cds_row_that_starts_before_exon_1_is_an_error_that_names_the_transcript_and_the_cds_row",
         """
@@ -1366,7 +1356,6 @@ CASES = [
         ),
         marks=(Span("ref", 4, 10, "the CDS row of exon 1"), Span("ref", 5, 10, "the exon row of exon 1 in the GFF3")),
     ),
-    # NU-10
     Case(
         "cds_row_that_starts_in_the_acceptor_is_an_error_that_names_the_transcript_and_the_cds_row",
         """
@@ -1389,7 +1378,6 @@ CASES = [
             ),
         ),
     ),
-    # NU-11
     Case(
         "deleted_5utr_bases_that_the_transcript_does_not_hold_leave_the_alt_transcript_null",
         """
@@ -1438,7 +1426,6 @@ CASES = [
         },
         equivalent=(Change("gg[aC>]ATGG"),),
     ),
-    # NU-15
     Case(
         "stop_loss_without_an_annotated_start_codon_has_no_scan_start_codon",
         """
@@ -1489,7 +1476,6 @@ CASES = [
         },
         ruler=Ruler((0, 4, 22, 28, 33)),
     ),
-    # NU-16, NU-26
     Case(
         "nonstop_stop_loss_has_no_first_stop_codon_and_no_annotated_stop_distance",
         """
@@ -1535,7 +1521,6 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # NU-21
     Case(
         "ptc_in_an_exon_whose_cds_row_has_another_exon_number_takes_the_exon_features_from_the_alt_transcript",
         """
@@ -1599,7 +1584,6 @@ CASES = [
         },
         marks=(Mark("alt", 19, 22, "*", "PTC"), Span("alt", 19, 31, "ptc_to_exon_end = 12")),
     ),
-    # NU-28
     Case(
         "missense_on_a_cds_whose_stop_codon_is_out_of_frame_has_no_annotated_stop_distance",
         """
@@ -1647,7 +1631,6 @@ CASES = [
         },
         ruler=Ruler((0, 10), "CDS"),
     ),
-    # NU-29
     Case(
         "deletion_that_leaves_two_nt_of_a_cds_with_an_out_of_frame_stop_codon_has_a_null_alt_has_ptc",
         """
@@ -1700,8 +1683,8 @@ CASES = [
         },
         equivalent=(Change("gacc[GCCCGGGAAAT>]GAgcc"),),
     ),
-    # NU-08, MI-17. The only transcript has no exon rows. The column table gives null transcript columns,
-    # cds_in_transcript False, likely_misannotated True, and the flags from the CDS (alt_transcript_seq is null).
+    # The only transcript has no exon rows. "Input Defects.md" gives null transcript columns, cds_in_transcript False,
+    # likely_misannotated True, and the flags from the CDS (alt_transcript_seq is null).
     Case(
         "missense_in_a_transcript_without_exon_rows_gives_null_transcript_columns",
         """

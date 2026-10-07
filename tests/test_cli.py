@@ -270,7 +270,7 @@ def _results_schema(tmp_path, vcf_path, name):
 
 def test_parquet_schema_is_the_same_for_every_run(tmp_path):
     """
-    Without an explicit schema, columns that are only None in a run (e.g. the transcript_*
+    Without an explicit schema, columns that are only None in a run (e.g. the alt_scan_*
     stop-codon columns when no variant has a start or stop loss) are written as ``null``.
     A run without start or stop loss, a run with them and an empty table must agree.
     """
@@ -750,8 +750,7 @@ def test_annotate_does_not_write_files_or_configure_logging(tmp_path):
     assert completed.stdout.split() == ["0", str(logging.INFO)]
 
 
-# Each symbolic allele and breakend sits at the position of v1, inside the GREB1L CDS. Before they were skipped, a
-# symbolic allele with a padding base went into the alt CDS as text, e.g. "<DEL>".
+# Each symbolic allele and breakend sits at the position of v1, inside the GREB1L CDS.
 SYMBOLIC_ALTS = ["<DEL>", "<DUP>", "<INS>", "<INV>", "<CNV>", "<DUP:TANDEM>", "G]chr2:100]", "[chr2:100[G", "G.", ".G"]
 
 

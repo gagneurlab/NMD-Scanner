@@ -258,7 +258,6 @@ def record(ref, alt, start, end):
 
 
 CASES = [
-    # EB-01
     Case(
         "missense_snv_inside_an_internal_coding_exon_changes_one_cds_base",
         """
@@ -283,7 +282,6 @@ CASES = [
         },
         equivalent=(Change("AAC[GT>GC]TGGA"),),
     ),
-    # EB-02
     Case(
         "snv_at_donor_plus_1_destroys_the_splice_site",
         """
@@ -303,7 +301,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-03
     Case(
         "snv_at_donor_plus_2_destroys_the_splice_site",
         """
@@ -322,7 +319,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-04
     Case(
         "snv_at_acceptor_minus_1_destroys_the_splice_site",
         """
@@ -341,7 +337,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-05
     Case(
         "snv_at_acceptor_minus_2_destroys_the_splice_site",
         """
@@ -360,7 +355,7 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-06 (the +2 side is EB-03)
+    # The +2 side is snv_at_donor_plus_2_destroys_the_splice_site.
     Case(
         "snv_at_donor_plus_3_touches_no_coding_region",
         """
@@ -373,7 +368,7 @@ CASES = [
         Change("GAAGCGT[A>C]AGTCC"),
         NoRow("touches no coding region"),
     ),
-    # EB-07: an insertion inside the donor dinucleotide reaches the coding row
+    # An insertion inside the donor dinucleotide reaches the coding row
     Case(
         "insertion_between_donor_plus_1_and_plus_2_destroys_the_splice_site",
         """
@@ -393,7 +388,7 @@ CASES = [
         },
         equivalent=(Change("GGAAGCG[T>AT]AAGTCC"),),
     ),
-    # EB-07: an insertion right after the donor dinucleotide changes neither it nor the coding row
+    # An insertion right after the donor dinucleotide changes neither it nor the coding row
     Case(
         "insertion_between_donor_plus_2_and_plus_3_touches_no_coding_region",
         """
@@ -406,7 +401,6 @@ CASES = [
         Change("GGAAGCGT[>C]AAGTCC"),
         NoRow("touches no coding region"),
     ),
-    # EB-08
     Case(
         "deletion_from_the_last_exon_base_to_donor_plus_5_destroys_the_splice_site",
         """
@@ -427,7 +421,6 @@ CASES = [
         },
         equivalent=(Change("GGCTC[TGTGTAA>A]GCCCC"),),
     ),
-    # EB-09
     Case(
         "deletion_of_tg_over_a_donor_with_an_intronic_placement_keeps_the_exon",
         """
@@ -453,7 +446,6 @@ CASES = [
         },
         equivalent=(Change("GGCTCT[GT>]GTAAGC"), Change("GGCTCTGT[GT>]AAGC")),
     ),
-    # EB-10
     Case(
         "deletion_of_ag_at_a_cag_ag_acceptor_keeps_the_acceptor_only_if_the_exon_loses_ag",
         """
@@ -490,7 +482,6 @@ CASES = [
         },
         equivalent=(Change("CCTTTTCA[GA>]GTGAAC"), Change("CCTTTTCAG[AG>]TGAAC")),
     ),
-    # EB-11
     Case(
         "insertion_between_an_acceptor_and_a_coding_exon_goes_into_the_exon",
         """
@@ -526,7 +517,6 @@ CASES = [
         },
         equivalent=(Change("CCTTTTCAG[A>TA]GTGAAC"),),
     ),
-    # EB-12
     Case(
         "insertion_between_a_coding_exon_and_a_donor_goes_into_the_exon",
         """
@@ -562,7 +552,6 @@ CASES = [
         },
         equivalent=(Change("GGCTCT[G>AG]TGTAAG"),),
     ),
-    # EB-13
     Case(
         "insertion_of_ag_at_a_cag_ag_acceptor_is_exon_boundary_ambiguous",
         """
@@ -583,7 +572,6 @@ CASES = [
         },
         equivalent=(Change("CCTTTTC[>AG]AGAGTGAAC"), Change("CCTTTTCAGAG[>AG]TGAAC")),
     ),
-    # EB-14
     Case(
         "insertion_of_gt_at_a_ct_gtgt_donor_is_exon_boundary_ambiguous",
         """
@@ -604,7 +592,6 @@ CASES = [
         },
         equivalent=(Change("GGCTC[>TG]TGTGTAAG"), Change("GGCTCTGTGT[>GT]AAGCC")),
     ),
-    # EB-15
     Case(
         "deletion_over_the_transcript_start_shortens_exon_1_and_loses_the_start_codon",
         """
@@ -665,7 +652,6 @@ CASES = [
         equivalent=(Change("CC[CCA>C]TGGCTCT"),),
         ruler=Ruler((0,)),
     ),
-    # EB-16
     Case(
         "deletion_in_an_a_run_across_the_transcript_start_is_exon_boundary_ambiguous",
         """
@@ -694,8 +680,8 @@ CASES = [
     # make it ambiguous too." The A run is the last 2 bases of the stop codon and the flank A, the last chromosome
     # base. The placement after that base leaves the inserted A outside the transcript, and the placements inside the
     # stop codon put it into the transcript. On the minus strand, the placement before the first chromosome base takes
-    # that part. VD-13 in cases_vcf has its run 10 nt past the transcript end, so its ambiguity does not need the
-    # chromosome edge.
+    # that part. The case deletion_in_a_run_to_the_chromosome_end_makes_the_transcript_end_ambiguous in cases_vcf has
+    # its run 10 nt past the transcript end, so its ambiguity does not need the chromosome edge.
     Case(
         "insertion_in_an_a_run_that_ends_at_the_chromosome_edge_1_nt_past_the_transcript_end_is_exon_boundary_ambiguous",
         """
@@ -756,8 +742,9 @@ CASES = [
     # chromosome base leaves the inserted A outside the transcript, and the placement inside the start codon puts it
     # into the transcript. So the two put the transcript start at different positions: "A transcript end has no splice
     # dinucleotide, so placements that put it at different positions make it ambiguous too." On the minus strand, the
-    # placement after the last chromosome base takes that part. EB-16 deletes an A in a run across the transcript
-    # start, 10 nt from the chromosome start.
+    # placement after the last chromosome base takes that part. The case
+    # deletion_in_an_a_run_across_the_transcript_start_is_exon_boundary_ambiguous deletes an A in a run across the
+    # transcript start, 10 nt from the chromosome start.
     Case(
         "insertion_in_an_a_run_that_starts_at_the_chromosome_edge_1_nt_before_the_transcript_start_is_exon_boundary_ambiguous",
         """
@@ -783,7 +770,6 @@ CASES = [
         equivalent=(Change("A[>A]TGGTAAG"), Change("[A>AA]ATGGTAAG")),
         ruler=Ruler((0, 3)),
     ),
-    # EB-17
     Case(
         "mnv_over_a_donor_that_changes_only_the_exon_base_keeps_the_donor",
         """
@@ -807,7 +793,7 @@ CASES = [
         },
         equivalent=(Change("GGCTC[T>C]GTGTAAG"),),
     ),
-    # EB-18: an equal-length delins maps base for base and keeps GT
+    # An equal-length delins maps base for base and keeps GT
     Case(
         "equal_length_delins_over_a_donor_that_keeps_gt_base_for_base",
         """
@@ -831,7 +817,7 @@ CASES = [
         },
         equivalent=(Change("GGCT[CTGTG>CAGTC]TAAGCC"),),
     ),
-    # EB-18: an MNV that changes the GT
+    # An MNV that changes the GT
     Case(
         "mnv_over_a_donor_that_changes_gt_destroys_the_splice_site",
         """
@@ -850,7 +836,7 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-18: a GT that the ALT forms elsewhere does not count
+    # A GT that the ALT forms elsewhere does not count
     Case(
         "mnv_over_a_donor_whose_alt_forms_gt_one_base_upstream_destroys_the_splice_site",
         """
@@ -869,7 +855,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-19
     Case(
         "delins_over_a_donor_that_neither_matching_keeps_destroys_the_splice_site",
         """
@@ -890,7 +875,6 @@ CASES = [
         },
         equivalent=(Change("GGCT[CTGTG>CGTCCC]TAAGCC"),),
     ),
-    # EB-20
     Case(
         "delins_over_a_donor_that_only_the_right_matching_keeps",
         """
@@ -926,7 +910,6 @@ CASES = [
         },
         equivalent=(Change("GGCT[CTGTG>CCCGTA]TAAGCC"),),
     ),
-    # EB-21
     Case(
         "delins_over_a_donor_that_only_the_left_matching_keeps",
         """
@@ -951,7 +934,6 @@ CASES = [
         },
         equivalent=(Change("GGCT[CTGTG>CAGTCC]TAAGCC"),),
     ),
-    # EB-22
     Case(
         "delins_over_a_donor_that_both_matchings_keep_at_different_positions_is_exon_boundary_ambiguous",
         """
@@ -973,7 +955,7 @@ CASES = [
         },
         equivalent=(Change("GGCT[CTGTG>CAGTGTC]TAAGCC"),),
     ),
-    # EB-23: mixing the two matchings would give exon 2 a negative length
+    # Mixing the two matchings would give exon 2 a negative length
     Case(
         "delins_over_an_exon_whose_matchings_keep_one_splice_site_each_destroys_the_splice_site",
         """
@@ -1001,7 +983,7 @@ CASES = [
         },
         equivalent=(Change("TT[TTCAG" + EXON_2 + "GTA>TCCAGTC]AGTCC"),),
     ),
-    # EB-23: mixing the two matchings would make exon 1 and exon 2 overlap
+    # Mixing the two matchings would make exon 1 and exon 2 overlap
     Case(
         "delins_over_an_intron_whose_matchings_keep_one_splice_site_each_destroys_the_splice_site",
         """
@@ -1030,7 +1012,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-24
     Case(
         "delins_over_a_whole_short_coding_region_whose_edge_rules_take_different_matchings",
         """
@@ -1059,8 +1040,10 @@ CASES = [
     # dinucleotide that the ALT bases form elsewhere does not count." for a delins with a longer ALT whose REF is the
     # first base of an exon. Matched from the right, the ALT bases GAG put an AG right before the exon base. The exon
     # start still maps to the REF start in both matchings, after the acceptor AG of the reference, so the delins goes
-    # into the exon. The closest cases change bases at an exon edge with one placement (EB-18 and UR-06 in
-    # cases_misc), or have the exon edge strictly inside REF (EB-19 to EB-22).
+    # into the exon. The closest cases change bases at an exon edge with one placement (the MNV and delins cases over
+    # a donor in this file, and in cases_misc
+    # mnv_at_cag_ag_whose_alt_forms_another_ag_is_not_ambiguous), or have the exon edge strictly inside REF (the delins
+    # cases over a donor in this file).
     Case(
         "delins_at_the_first_exon_base_whose_longer_alt_forms_an_ag_keeps_the_exon_start",
         """
@@ -1118,8 +1101,10 @@ CASES = [
     # valid placements agree, the exon edges lie there." for a deletion from coding exon 2 across intron 2 into
     # coding exon 3. Both exon edges map to its start. The AG of exon 2 stays before that position and the GT of
     # exon 3 after it, so the alt transcript is known, and the alt bases come from two coding rows. The closest
-    # cases delete a whole intron and lose both splice sites (EB-27 in cases_coding_region_edges), or delete a whole
-    # exon, which joins no two coding rows (EB-25 there).
+    # cases delete a whole intron and lose both splice sites
+    # (deletion_of_a_whole_intron_between_two_coding_exons_destroys_the_splice_site in cases_coding_region_edges),
+    # or delete a whole exon, which joins no two coding rows
+    # (deletion_of_a_whole_short_coding_exon_that_keeps_both_splice_sites_empties_the_exon there).
     Case(
         "deletion_across_an_intron_that_keeps_ag_and_gt_joins_two_coding_exons",
         """

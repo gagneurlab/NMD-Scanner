@@ -611,7 +611,6 @@ MITOCHONDRIAL_AGA = Layout(
 
 
 CASES = [
-    # PF-07, PF-09, PF-10, PF-15 (positive), PF-16, PF-27 (internal exon)
     Case(
         "ptc_in_exon_2_of_3_has_the_features_of_the_figure",
         """
@@ -687,7 +686,6 @@ CASES = [
         ),
         ruler=Ruler((-50, 0, 100, 180, 300, 357, 550), "CDS"),
     ),
-    # PF-01, PF-02, PF-03, PF-14, PF-17, PF-27 (last CDS exon before a UTR-only exon)
     Case(
         "ptc_in_a_cds_inside_exon_2_of_3_measures_to_the_junction_in_the_3utr",
         """
@@ -768,7 +766,6 @@ CASES = [
         ),
         ruler=Ruler((0, 20, 35, 50, 65, 90, 120)),
     ),
-    # PF-18, PF-27 (last exon)
     Case(
         "ptc_in_the_last_exon_measures_to_the_transcript_end",
         """
@@ -852,7 +849,6 @@ CASES = [
         ),
         ruler=Ruler((0, 8, 20, 35, 38, 65, 90)),
     ),
-    # PF-20 (deletion)
     Case(
         "deletion_upstream_of_a_ptc_in_the_last_exon_moves_the_exon_end_in_alt_cds_coordinates",
         """
@@ -937,7 +933,6 @@ CASES = [
         ),
         ruler=Ruler((-8, 0, 12, 27, 57, 82), "CDS"),
     ),
-    # PF-20 (insertion)
     Case(
         "insertion_upstream_of_a_ptc_in_the_last_exon_moves_the_exon_end_in_alt_cds_coordinates",
         """
@@ -1178,7 +1173,6 @@ CASES = [
         ),
         ruler=Ruler((0, 1, 4, 10, 16, 22)),
     ),
-    # PF-15 (negative)
     Case(
         "stop_loss_has_a_negative_annotated_stop_distance",
         """
@@ -1247,7 +1241,6 @@ CASES = [
         marks=(Ruler((-8, 0, 12, 27, 54, 57, 63, 82), "CDS"), Span("alt", 62, 71, "annotated_stop_distance = -9")),
         ruler=Ruler((0, 8, 20, 35, 62, 65, 71, 90)),
     ),
-    # PF-06, PF-26
     Case(
         "splice_site_snv_keeps_the_exon_count_and_the_utr_lengths_of_the_ref",
         """
@@ -1277,7 +1270,6 @@ CASES = [
         },
         ruler=Ruler((0, 8, 20, 35, 65, 90)),
     ),
-    # PF-19, PF-27 (single exon)
     Case(
         "ptc_in_a_single_exon_transcript_measures_to_the_transcript_end",
         """
@@ -1354,7 +1346,6 @@ CASES = [
         ),
         ruler=Ruler((0, 8, 38, 65, 90)),
     ),
-    # PF-04, PF-15 (zero), PF-13 (no PTC row)
     Case(
         "missense_in_a_cds_at_the_transcript_start_has_no_5utr",
         """
@@ -1404,7 +1395,6 @@ CASES = [
         },
         ruler=Ruler((0, 12, 21, 27)),
     ),
-    # PF-05, PF-15 (zero)
     Case(
         "missense_in_a_cds_at_the_transcript_end_has_no_3utr",
         """
@@ -1454,7 +1444,6 @@ CASES = [
         },
         ruler=Ruler((0, 4, 16, 25)),
     ),
-    # PF-12 (150 nt)
     Case(
         "ptc_150_nt_after_the_start_codon_is_not_less_than_150_nt_to_start",
         """
@@ -1522,7 +1511,6 @@ CASES = [
         ),
         ruler=Ruler((0, 4, 154, 214, 220, 226)),
     ),
-    # PF-10, PF-22 (CTG start)
     Case(
         "ptc_after_a_ctg_start_codon_is_measured_from_the_ctg_not_from_an_internal_atg",
         """
@@ -1597,7 +1585,7 @@ CASES = [
         ),
         ruler=Ruler((0, 3, 33, 103, 162, 168, 176)),
     ),
-    # PF-13 (no annotated start codon), PF-23; the same instance as NU-22
+    # The same instance as ptc_without_an_annotated_start_codon_has_no_ptc_to_start_codon in cases_null.
     Case(
         "ptc_in_a_cds_start_nf_transcript_has_no_distance_to_the_start_codon",
         """
@@ -1667,7 +1655,6 @@ CASES = [
         ),
         ruler=Ruler((0, 3, 103, 162, 168, 176)),
     ),
-    # PF-24 (no stop_codon rows)
     Case(
         "missense_without_stop_codon_rows_is_likely_misannotated",
         """
@@ -1718,7 +1705,6 @@ CASES = [
         },
         ruler=Ruler((0, 4, 16, 22)),
     ),
-    # PF-24 (stop_codon rows on a sense codon)
     Case(
         "missense_with_stop_codon_rows_on_a_sense_codon_is_likely_misannotated",
         """
@@ -1769,7 +1755,6 @@ CASES = [
         },
         ruler=Ruler((0, 4, 16, 22, 28)),
     ),
-    # PF-24 (Ensembl, chrM, AGA)
     Case(
         "missense_in_a_mitochondrial_cds_ending_in_aga_is_likely_misannotated",
         """

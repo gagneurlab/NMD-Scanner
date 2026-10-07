@@ -404,7 +404,6 @@ CTG_START_AFTER_A = Layout(
 TOUCHES_NO_CODING_REGION = NoRow("touches no coding region")
 
 CASES = [
-    # EB-25
     Case(
         "deletion_of_a_whole_short_coding_exon_that_keeps_both_splice_sites_empties_the_exon",
         """
@@ -464,7 +463,6 @@ CASES = [
         equivalent=(Change("TTTCA[GCAGCAGCTGCT>]GGTAAGT"),),
         marks=(Span("ref", 0, 20, "20 nt"), Span("ref", 20, 32, "12 nt"), Span("ref", 32, 50, "18 nt")),
     ),
-    # EB-26
     Case(
         "delins_over_a_short_exon_that_only_the_left_matching_keeps_both_splice_sites",
         """
@@ -522,7 +520,6 @@ CASES = [
         },
         equivalent=(Change("CCTTT[CAGCAGCAGCTGCTGGT>TAGAGCAGCTGCTGCGTCT]AAGTC"),),
     ),
-    # EB-27
     Case(
         "deletion_of_a_whole_intron_between_two_coding_exons_destroys_the_splice_site",
         """
@@ -548,7 +545,6 @@ CASES = [
         },
         equivalent=(Change("GCTGCT[GGTAAGTCCCCCCCCTTTCA>]GCAGCAG"),),
     ),
-    # EB-28
     Case(
         "snv_in_the_donor_of_a_utr_only_exon_touches_no_coding_region",
         """
@@ -563,7 +559,6 @@ CASES = [
         Change("GCAGG[T>C]AGATGG"),
         TOUCHES_NO_CODING_REGION,
     ),
-    # EB-29
     Case(
         "snv_in_the_acceptor_before_an_exon_that_begins_with_the_start_codon_destroys_it",
         """
@@ -588,7 +583,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-29
     Case(
         "snv_in_the_donor_after_an_exon_that_ends_with_the_stop_codon_destroys_it",
         """
@@ -613,7 +607,6 @@ CASES = [
             "stop_classification": None,
         },
     ),
-    # EB-30
     Case(
         "snv_at_intron_plus_5_touches_no_coding_region",
         """
@@ -626,7 +619,6 @@ CASES = [
         Change("AAGCTGCTGGTAA[G>A]TCCCC"),
         TOUCHES_NO_CODING_REGION,
     ),
-    # EB-30
     Case(
         "deletion_of_an_a_at_intron_plus_3_that_cannot_shift_into_the_donor_touches_no_coding_region",
         """
@@ -642,7 +634,6 @@ CASES = [
         TOUCHES_NO_CODING_REGION,
         equivalent=(Change("AAGCTGCTGGTA[A>]GTCC"),),
     ),
-    # EB-31
     Case(
         "insertion_right_after_the_stop_codon_inside_an_exon_touches_no_coding_region",
         """
@@ -656,7 +647,6 @@ CASES = [
         TOUCHES_NO_CODING_REGION,
         equivalent=(Change("TCCTAA[G>CG]CCGCC"),),
     ),
-    # EB-32
     Case(
         "stop_codon_inserted_right_before_the_stop_codon_goes_into_the_3utr",
         """
@@ -715,7 +705,6 @@ CASES = [
         equivalent=(Change("TCCTAA[>TAA]GCCGCC"),),
         marks=(Ruler((22, 25), "tx", "alt"),),
     ),
-    # EB-33
     Case(
         "deletion_of_one_a_in_the_run_at_the_stop_codon_shortens_the_3utr",
         """
@@ -770,7 +759,6 @@ CASES = [
         },
         equivalent=(Change("TCCTAA[A>]AACCTAG"), Change("TCCTAAAA[A>]CCTAG")),
     ),
-    # EB-34
     Case(
         "insertion_right_after_a_stop_codon_that_ends_an_exon_touches_no_coding_region",
         """
@@ -784,7 +772,6 @@ CASES = [
         TOUCHES_NO_CODING_REGION,
         equivalent=(Change("CTGTAA[G>CCG]TAAGT"),),
     ),
-    # EB-35
     Case(
         "insertion_in_the_a_run_of_a_stop_codon_that_ends_an_exon_goes_into_the_3utr",
         """
@@ -839,7 +826,6 @@ CASES = [
         equivalent=(Change("AAGCTGT[>AA]AAGTAAGTCC"), Change("AAGCTGTAA[>AA]GTAAGTCC")),
         marks=(Ruler((0, 10, 31, 34), "tx", "alt"),),
     ),
-    # EB-36
     Case(
         "insertion_right_before_the_start_codon_whose_bases_do_not_start_with_atg_touches_no_coding_region",
         """
@@ -854,7 +840,6 @@ CASES = [
         TOUCHES_NO_CODING_REGION,
         equivalent=(Change("GA[>C]CCATGGCC"),),
     ),
-    # EB-37
     Case(
         "insertion_right_before_a_start_codon_that_begins_an_exon_touches_no_coding_region",
         """
@@ -868,7 +853,6 @@ CASES = [
         TOUCHES_NO_CODING_REGION,
         equivalent=(Change("TTTCAG[A>CCA]TGGCC"),),
     ),
-    # EB-38
     Case(
         "atg_inserted_at_the_start_codon_starts_the_cds_at_the_5_most_atg",
         """
@@ -923,7 +907,6 @@ CASES = [
         },
         equivalent=(Change("GACCATG[>ATG]GCCGTAAG"),),
     ),
-    # EB-39
     Case(
         "atg_inserted_at_a_start_codon_that_begins_an_exon_starts_the_cds_at_the_5_most_atg",
         """
@@ -974,7 +957,6 @@ CASES = [
         },
         equivalent=(Change("TTTCA[>GAT]GATGGCC"), Change("CAGATG[>ATG]GCCAAG")),
     ),
-    # EB-40
     Case(
         "deletion_of_the_a_before_the_start_codon_shortens_the_5utr",
         """
@@ -1026,7 +1008,6 @@ CASES = [
         marks=(Ruler((0, 5), "tx", "alt"),),
         ruler=Ruler((0, 6, 18)),
     ),
-    # EB-41
     Case(
         "deletion_of_ta_over_the_start_codon_edge_without_atg_takes_the_placement_farthest_into_the_5utr",
         """
@@ -1086,9 +1067,11 @@ CASES = [
     # boundaries"): "Without such a position, it takes the placement shifted farthest into the 5' UTR. So an
     # insertion right before the start codon changes the CDS only if its bases start with ATG." The start codon is
     # the non-ATG codon CTG ("It can be a non-ATG codon such as CTG"). With an ATG start codon, the placement of
-    # such an insertion in the 5'UTR keeps the ATG at the edge, so the fallback is never reached. In EB-36, no
-    # placement of the insertion reaches into the CDS, so it gives no row. EB-41 reaches the fallback with a
-    # deletion.
+    # such an insertion in the 5'UTR keeps the ATG at the edge, so the fallback is never reached. In
+    # insertion_right_before_the_start_codon_whose_bases_do_not_start_with_atg_touches_no_coding_region, no placement
+    # of the insertion reaches into the CDS, so it gives no row.
+    # deletion_of_ta_over_the_start_codon_edge_without_atg_takes_the_placement_farthest_into_the_5utr reaches the
+    # fallback with a deletion.
     Case(
         "insertion_of_c_before_a_ctg_start_codon_that_can_shift_into_the_cds_goes_into_the_5utr",
         """
@@ -1143,7 +1126,6 @@ CASES = [
         marks=(Ruler((0, 5), "tx", "alt"),),
         ruler=Ruler((0, 4, 19, 22)),
     ),
-    # EB-42
     Case(
         "delins_ca_to_gatg_at_the_start_codon_edge_starts_the_cds_at_the_atg_of_the_left_matching",
         """
@@ -1212,8 +1194,9 @@ CASES = [
     # Pins the coding edge at the start of REF ("Variants at exon boundaries"): "An edge at an end of REF maps to the
     # same end of ALT, also for a delins whose REF and ALT differ in length." and "A>GGC at the first base of the start
     # codon ATG gives one that starts with GGCTG, and `start_loss` is True." Neither placement puts an ATG at the
-    # edge, and the alt transcript has no ATG: "Both flags are then False, and `annotated_stop_distance` is null." EB-42
-    # has the start codon edge strictly inside REF, where the matchings map it base for base.
+    # edge, and the alt transcript has no ATG: "Both flags are then False, and `annotated_stop_distance` is null." In
+    # delins_ca_to_gatg_at_the_start_codon_edge_starts_the_cds_at_the_atg_of_the_left_matching, the start codon edge
+    # is strictly inside REF, where the matchings map it base for base.
     Case(
         "delins_a_to_ggc_at_the_first_base_of_the_start_codon_keeps_all_alt_bases_in_the_cds",
         """
@@ -1279,7 +1262,6 @@ CASES = [
         equivalent=(Change("GACC[AT>GGCT]GGCC"),),
         ruler=Ruler((0, 4)),
     ),
-    # EB-43
     Case(
         "delins_aa_to_ccc_over_the_stop_codon_end_puts_the_length_change_into_the_3utr",
         """
@@ -1349,8 +1331,9 @@ CASES = [
     # Pins the coding edge at the end of REF ("Variants at exon boundaries"): "An edge at an end of REF maps to the
     # same end of ALT, also for a delins whose REF and ALT differ in length." and "Both placements map it to the same
     # end of ALT, so the extra ALT bases stay coding. E.g. A>CG at the last base of the stop codon TAA gives an alt CDS
-    # that ends with TACG." The stop codon is lost, and the alt transcript has no in-frame stop codon: a nonstop. EB-43
-    # has the stop codon edge strictly inside REF, where the matchings map it base for base.
+    # that ends with TACG." The stop codon is lost, and the alt transcript has no in-frame stop codon: a nonstop. In
+    # delins_aa_to_ccc_over_the_stop_codon_end_puts_the_length_change_into_the_3utr, the stop codon edge is strictly
+    # inside REF, where the matchings map it base for base.
     Case(
         "delins_a_to_cg_at_the_last_base_of_the_stop_codon_keeps_all_alt_bases_in_the_cds",
         """
@@ -1416,7 +1399,6 @@ CASES = [
         equivalent=(Change("TCCT[AA>ACG]GCCGCC"),),
         ruler=Ruler((0, 4, 22)),
     ),
-    # EB-44
     Case(
         "delins_over_the_5utr_the_start_codon_and_a_donor_takes_the_start_codon_edge_from_the_matching_that_keeps_the_donor",
         """
@@ -1477,7 +1459,6 @@ CASES = [
         },
         equivalent=(Change("CCCC[CGACCATGGCCGTAAGT>" + "C" * 11 + "GT" + "C" * 20 + "]CCCCCCCCTTTCAGAAG"),),
     ),
-    # EB-45
     Case(
         "delins_over_the_stop_codon_and_the_donor_keeps_the_donor_only_in_the_right_matching",
         """
@@ -1535,7 +1516,6 @@ CASES = [
         },
         equivalent=(Change("AAGCTG[TAAGTA>TGTAAGTT]AGTCC"),),
     ),
-    # EB-46
     Case(
         "deletion_from_the_stop_codon_into_the_3utr_reads_on_into_the_3utr",
         """
@@ -1600,7 +1580,6 @@ CASES = [
         marks=(Ruler((22, 25, 28), "tx", "alt"),),
         ruler=Ruler((0, 4, 22, 25)),
     ),
-    # EB-47
     Case(
         "deletion_across_the_stop_codon_lands_a_tag_of_the_3utr_at_the_stop_codon_position",
         """
@@ -1661,7 +1640,6 @@ CASES = [
         marks=(Ruler((22,), "tx", "alt"),),
         ruler=Ruler((0, 4, 22, 25)),
     ),
-    # EB-48
     Case(
         "delins_from_the_stop_codon_into_an_a_run_of_the_3utr_puts_tga_right_after_the_cds",
         """
@@ -1728,7 +1706,6 @@ CASES = [
         marks=(Ruler((22, 25), "tx", "alt"),),
         ruler=Ruler((0, 4, 22, 25)),
     ),
-    # EB-48
     Case(
         "delins_from_the_stop_codon_into_the_3utr_puts_tga_right_after_the_cds",
         """
@@ -1795,7 +1772,6 @@ CASES = [
         marks=(Ruler((22, 25), "tx", "alt"),),
         ruler=Ruler((0, 4, 22, 25)),
     ),
-    # EB-49
     Case(
         "deletion_from_the_stop_codon_past_the_transcript_end_shortens_the_last_exon",
         """

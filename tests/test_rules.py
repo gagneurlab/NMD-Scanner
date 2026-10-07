@@ -130,10 +130,8 @@ def run_pipeline_on_transcript(
 
 
 def test_create_reference_cds_using_file():
-    # Load expected output. The fixture has the column names before 0.4.0.
-    expected = pd.read_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t").rename(
-        columns={"ref_cds_len": "ref_cds_length", "alt_cds_len": "alt_cds_length"}
-    )
+    # Load expected output
+    expected = pd.read_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t")
 
     df3 = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
     cds_df_test = pd.read_csv("resources/test_output_files/cds_df_adj.tsv", sep="\t")

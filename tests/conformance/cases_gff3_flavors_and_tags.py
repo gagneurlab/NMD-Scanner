@@ -789,7 +789,6 @@ AGA_MISSENSE = {
 }
 
 CASES = [
-    # NA-01, NF-02, NA-10
     Case(
         "atg_to_acg_at_the_start_of_a_cds_start_nf_cds_is_no_start_loss",
         """
@@ -835,7 +834,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 8, 18, 23)),
     ),
-    # NF-03, NA-10
     Case(
         "lost_internal_atg_of_a_cds_start_nf_cds_is_no_start_loss",
         """
@@ -881,7 +879,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 63, 69), "CDS"),
     ),
-    # NF-04, NA-10
     Case(
         "ptc_of_a_cds_start_nf_cds_has_no_distance_to_the_start_codon",
         """
@@ -938,7 +935,6 @@ CASES = [
         marks=(Mark("alt", 12, 15, "*", "PTC"), Span("alt", 12, 66, "ptc_to_exon_end = 54")),
         ruler=Ruler((0, 3, 9), "CDS"),
     ),
-    # NF-05, NA-10, STR-08
     Case(
         "stop_loss_in_a_cds_start_nf_cds_reads_through_in_the_cds_frame_without_a_start_codon",
         """
@@ -995,7 +991,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 6, 66, 72, 78, 83)),
     ),
-    # NA-03, NA-09, NF-13
     Case(
         "stop_gained_in_the_last_codon_of_a_cds_end_nf_cds_is_a_ptc",
         """
@@ -1055,7 +1050,9 @@ CASES = [
     # and one past its end is neither" for a stop codon across the CDS end (alt_has_ptc: "Without an annotated
     # stop codon: whether it lies inside the alt CDS"). Its first 2 nt lie in the alt CDS and its last nt lies past
     # the end, so it does not lie inside the alt CDS and is no PTC. In the closest cases, the stop codon lies wholly
-    # inside the alt CDS (NA-03, a PTC) or wholly past its end (ST-23 in cases_stop, neither).
+    # inside the alt CDS (case stop_gained_in_the_last_codon_of_a_cds_end_nf_cds_is_a_ptc, a PTC) or wholly past its
+    # end (case frameshift_whose_first_stop_codon_lies_past_the_cds_end_without_stop_codon_rows_is_neither in
+    # cases_stop, neither).
     Case(
         "stop_codon_that_straddles_the_end_of_a_cds_end_nf_cds_is_no_ptc",
         """
@@ -1105,7 +1102,6 @@ CASES = [
         marks=(Mark("alt", 10, 13, "*", "first in-frame stop codon"),),
         ruler=Ruler((0, 4, 12, 20)),
     ),
-    # NA-09
     Case(
         "missense_in_the_last_codon_of_a_cds_end_nf_cds_is_no_stop_loss",
         """
@@ -1151,7 +1147,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 12, 18, 21)),
     ),
-    # NF-07
     Case(
         "cds_end_nf_coding_region_without_stop_codon_rows_loses_its_complete_stop_codon",
         """
@@ -1192,7 +1187,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 12, 18, 21, 25)),
     ),
-    # NF-08
     Case(
         "cds_end_nf_split_stop_codon_leaves_the_cds_with_the_cds_row_of_its_last_exon",
         """
@@ -1239,7 +1233,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 15, 17, 22)),
     ),
-    # NF-09
     Case(
         "cds_end_nf_cds_that_ends_in_a_stop_codon_out_of_frame_keeps_it",
         """
@@ -1286,7 +1279,6 @@ CASES = [
         },
         ruler=Ruler((0, 9, 13, 16), "CDS"),
     ),
-    # NF-10
     Case(
         "cds_end_nf_with_stop_codon_rows_keeps_its_stop_codon",
         """
@@ -1316,7 +1308,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 12, 18, 21, 25)),
     ),
-    # NF-11, NA-09
     Case(
         "missense_without_stop_codon_rows_and_tags_is_a_ptc_at_the_last_codon",
         """
@@ -1359,7 +1350,6 @@ CASES = [
         marks=(Mark("alt", 18, 21, "*", "PTC"), Span("alt", 18, 25, "ptc_to_exon_end = 7")),
         ruler=Ruler((0, 3, 12, 18, 21, 25)),
     ),
-    # NF-15, NF-13, NF-14, NF-01 (phase 1), STR-03
     Case(
         "ptc_in_a_cds_start_nf_and_cds_end_nf_cds_with_phase_1",
         """
@@ -1418,7 +1408,6 @@ CASES = [
         marks=(Mark("alt", 1, 4, "*", "PTC"), Span("alt", 1, 7, "ptc_to_exon_end = 6")),
         ruler=Ruler((0, 1, 7, 16)),
     ),
-    # NF-06, NF-12, NA-05 (TAA)
     Case(
         "ensembl_cds_start_nf_and_cds_end_nf_tags_do_not_change_the_codons_from_the_fasta",
         """
@@ -1450,7 +1439,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 12, 18, 21, 25)),
     ),
-    # NA-05 (AGA on chr1)
     Case(
         "ensembl_cds_ending_in_aga_on_chr1_has_no_stop_codon",
         """
@@ -1474,7 +1462,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 15, 18, 22)),
     ),
-    # NA-06 (AGA)
     Case(
         "ensembl_cds_ending_in_aga_on_mt_has_a_stop_codon_that_the_codon_scans_do_not_know",
         """
@@ -1499,7 +1486,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 15, 18, 22)),
     ),
-    # NA-06 (AGG)
     Case(
         "ensembl_cds_ending_in_agg_on_mt_has_a_stop_codon_that_the_codon_scans_do_not_know",
         """
@@ -1526,7 +1512,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 15, 18, 22)),
     ),
-    # NA-06 (TGA)
     Case(
         "ensembl_cds_ending_in_tga_on_mt_has_no_stop_codon_and_its_tga_is_a_ptc",
         """
@@ -1574,7 +1559,6 @@ CASES = [
         marks=(Mark("alt", 15, 18, "*", "PTC"), Span("alt", 15, 22, "ptc_to_exon_end = 7")),
         ruler=Ruler((0, 3, 15, 18, 22)),
     ),
-    # NA-07
     Case(
         "gencode_cds_ending_in_aga_on_chrm_without_stop_codon_rows_has_no_stop_codon",
         """
@@ -1598,7 +1582,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 15, 18, 22)),
     ),
-    # NA-05 (TGA out of frame)
     Case(
         "ensembl_cds_ending_in_tga_out_of_frame_has_a_stop_codon",
         """
@@ -1646,7 +1629,6 @@ CASES = [
         },
         ruler=Ruler((0, 11, 13, 16), "CDS"),
     ),
-    # NA-05 (ensembl_end_phase 1 on the last coding exon)
     Case(
         "ensembl_cds_whose_last_coding_exon_ends_mid_codon_has_no_stop_codon",
         """
@@ -1693,7 +1675,6 @@ CASES = [
         },
         ruler=Ruler((0, 11, 16, 19), "CDS"),
     ),
-    # NA-08 (fewer than 3 CDS bases)
     Case(
         "ensembl_cds_of_2_nt_has_neither_start_nor_stop_codon",
         """
@@ -1740,7 +1721,6 @@ CASES = [
         },
         ruler=Ruler((0, 5, 7, 11)),
     ),
-    # STR-10
     Case(
         "ensembl_exon_numbers_without_rank_follow_the_direction_of_transcription",
         """
@@ -1790,7 +1770,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 9, 16, 21, 26)),
     ),
-    # STR-06
     Case(
         "deletion_of_an_a_before_the_start_codon_shortens_the_5utr",
         """
@@ -1837,7 +1816,6 @@ CASES = [
         equivalent=(Change("ggacca[A>]TGGCC"),),
         ruler=Ruler((0, 6, 15, 21, 24, 31)),
     ),
-    # STR-05, STR-09
     Case(
         "deletion_of_an_a_in_the_run_after_the_stop_codon_shortens_the_3utr",
         """
@@ -1886,7 +1864,6 @@ CASES = [
         equivalent=(Change("CTGCTGTAAAA[A>]GCC"),),
         ruler=Ruler((0, 6, 15, 21, 24, 31)),
     ),
-    # STR-04
     Case(
         "insertion_that_repeats_the_start_codon_adds_a_met",
         """
@@ -1935,7 +1912,6 @@ CASES = [
         equivalent=(Change("ggaccaATG[>ATG]GCCAAG"), Change("ggaccaA[>TGA]TGGCC")),
         ruler=Ruler((0, 6, 15, 21, 24, 31)),
     ),
-    # STR-11
     Case(
         "transcript_with_strand_dot_is_an_error_that_names_the_transcript",
         """

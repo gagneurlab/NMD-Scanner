@@ -585,7 +585,6 @@ NF = Layout(
 )
 
 CASES = [
-    # NR-04 (51 nt, False), NR-12 and PF-12 (150 nt, False), NR-18, NR-03 (PTC in an earlier exon), NR-16
     Case(
         "ptc_51_nt_before_the_last_exon_junction_and_150_nt_after_the_start_codon_escapes_by_no_rule",
         """
@@ -640,7 +639,6 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 63, 147, 150, 201, 258, 267), "CDS"),
     ),
-    # NR-04 (50 nt, True)
     Case(
         "ptc_50_nt_before_the_last_exon_junction_escapes_by_the_50nt_rule",
         """
@@ -692,7 +690,7 @@ CASES = [
         marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 204, "ptc_to_exon_end = 50")),
         ruler=Ruler((-4, 0, 63, 147, 150, 200, 258, 267), "CDS"),
     ),
-    # NR-05 (0 nt, False): the PTC starts at the first base of the last exon, so the last exon rule fires instead
+    # The PTC starts at the first base of the last exon, so the last exon rule fires instead
     Case(
         "ptc_at_the_first_base_of_the_last_exon_is_0_nt_before_the_junction_and_escapes_by_the_last_exon_rule",
         """
@@ -745,7 +743,7 @@ CASES = [
         marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_exon_end = 117")),
         ruler=Ruler((-4, 0, 63, 147, 150, 258, 267), "CDS"),
     ),
-    # NR-05 (1 nt, True): the PTC codon is split over the last exon junction, its first base lies in exon 2
+    # The PTC codon is split over the last exon junction, its first base lies in exon 2
     Case(
         "ptc_codon_split_1_nt_before_the_last_exon_junction_escapes_by_the_50nt_rule",
         """
@@ -799,7 +797,6 @@ CASES = [
         marks=(Mark("alt", 154, 155, "*", "PTC TAG"), Span("alt", 154, 155, "ptc_to_exon_end = 1")),
         ruler=Ruler((-4, 0, 63, 147, 150, 151, 258, 267), "CDS"),
     ),
-    # NR-12 and PF-12 (147 nt, True), NR-17 (nmd_escape by the start-proximal rule only)
     Case(
         "ptc_147_nt_after_the_start_codon_escapes_by_the_start_proximal_rule_only",
         """
@@ -856,7 +853,6 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 63, 147, 201, 258, 267), "CDS"),
     ),
-    # NR-01
     Case(
         "nonsense_snv_in_the_last_exon_escapes_by_the_last_exon_rule",
         """
@@ -908,7 +904,7 @@ CASES = [
         marks=(Mark("alt", 229, 232, "*", "PTC"), Span("alt", 229, 271, "ptc_to_exon_end = 42")),
         ruler=Ruler((-4, 0, 63, 201, 225, 258, 267), "CDS"),
     ),
-    # NR-08: the deletion moves the last exon junction from 201 to 200 in alt CDS coordinates. Measured to the
+    # The deletion moves the last exon junction from 201 to 200 in alt CDS coordinates. Measured to the
     # junction in ref CDS coordinates, the PTC would lie 51 nt before it.
     Case(
         "frameshift_deletion_upstream_of_the_ptc_moves_the_last_exon_junction_into_the_50nt_rule",
@@ -990,7 +986,6 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 30, 63, 201, 258, 267), "CDS"),
     ),
-    # NR-21
     Case(
         "snv_in_the_splice_donor_gives_an_unknown_row_with_null_rules",
         """
@@ -1017,7 +1012,7 @@ CASES = [
         },
         ruler=Ruler((-4, 0, 63), "CDS"),
     ),
-    # NR-02, NR-09 (no last exon junction: 50 nt rule False), NR-15
+    # No last exon junction, so the 50 nt rule is False.
     Case(
         "ptc_in_a_single_exon_transcript_escapes_by_the_single_exon_and_last_exon_rules",
         """
@@ -1066,7 +1061,7 @@ CASES = [
         marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_exon_end = 117")),
         ruler=Ruler((-4, 0, 147, 150, 258, 267), "CDS"),
     ),
-    # NR-20: a row that is not a PTC row has every rule null, also the single exon rule of a single exon transcript
+    # A row that is not a PTC row has every rule null, also the single exon rule of a single exon transcript
     Case(
         "missense_snv_in_a_single_exon_transcript_is_no_ptc_row_and_every_rule_is_null",
         """
@@ -1104,7 +1099,7 @@ CASES = [
         },
         ruler=Ruler((-4, 0, 147, 258, 267), "CDS"),
     ),
-    # NR-06 (90 nt, False), NR-03: the PTC lies 30 nt before the end of its exon, but the last exon junction lies in
+    # The PTC lies 30 nt before the end of its exon, but the last exon junction lies in
     # the 3' UTR, 90 nt after the PTC
     Case(
         "ptc_30_nt_before_its_exon_end_but_90_nt_before_the_last_exon_junction_in_the_3utr_escapes_by_no_rule",
@@ -1162,7 +1157,6 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 150, 180, 207, 240, 252), "CDS"),
     ),
-    # NR-06 (51 nt, False), NR-03 (PTC in the last CDS exon before an exon with only 3' UTR)
     Case(
         "ptc_in_the_last_cds_exon_51_nt_before_the_last_exon_junction_in_the_3utr_escapes_by_no_rule",
         """
@@ -1206,7 +1200,6 @@ CASES = [
         marks=(Mark("alt", 193, 196, "*", "PTC"), Span("alt", 193, 244, "ptc_to_exon_end = 51")),
         ruler=Ruler((-4, 0, 180, 189, 207, 240, 252), "CDS"),
     ),
-    # NR-06 (50 nt, True)
     Case(
         "ptc_in_the_last_cds_exon_50_nt_before_the_last_exon_junction_in_the_3utr_escapes_by_the_50nt_rule",
         """
@@ -1253,7 +1246,7 @@ CASES = [
         marks=(Mark("alt", 193, 196, "*", "PTC"), Span("alt", 193, 243, "ptc_to_exon_end = 50")),
         ruler=Ruler((-4, 0, 180, 189, 207, 239, 251), "CDS"),
     ),
-    # NR-07: the whole CDS in exon 1 of 2, followed by 3' UTR in exon 1
+    # The whole CDS in exon 1 of 2, followed by 3' UTR in exon 1
     Case(
         "whole_cds_in_exon_1_of_2_ptc_35_nt_before_the_junction_in_the_3utr_escapes_by_the_50nt_rule",
         """
@@ -1292,7 +1285,7 @@ CASES = [
         marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 189, "ptc_to_exon_end = 35")),
         ruler=Ruler((-4, 0, 150, 162, 185, 197), "CDS"),
     ),
-    # NR-07: the whole CDS in exon 1 of 2, the stop codon ends at the end of exon 1
+    # The whole CDS in exon 1 of 2, the stop codon ends at the end of exon 1
     Case(
         "whole_cds_ending_at_the_end_of_exon_1_of_2_ptc_15_nt_before_the_junction_escapes_by_the_50nt_rule",
         """
@@ -1323,7 +1316,6 @@ CASES = [
         marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 169, "ptc_to_exon_end = 15")),
         ruler=Ruler((-4, 0, 150, 162, 165, 177), "CDS"),
     ),
-    # NR-11 (407 nt, False)
     Case(
         "ptc_in_an_exon_of_407_nt_escapes_by_no_rule",
         """
@@ -1354,7 +1346,7 @@ CASES = [
         marks=(Span("alt", 0, 407, "ptc_exon_length = 407"),),
         ruler=Ruler((-4, 0, 150, 403, 420, 429), "CDS"),
     ),
-    # NR-11 (408 nt, True): the CDS part of the exon has 403 nt, the 5' UTR counts too
+    # The CDS part of the exon has 403 nt, the 5' UTR counts too
     Case(
         "ptc_in_an_exon_of_408_nt_with_its_5utr_escapes_by_the_long_exon_rule",
         """
@@ -1388,7 +1380,7 @@ CASES = [
         marks=(Span("alt", 0, 408, "ptc_exon_length = 408"),),
         ruler=Ruler((-5, 0, 150, 403, 420, 429), "CDS"),
     ),
-    # NR-19: the last exon, long exon and start-proximal rules at once
+    # The last exon, long exon and start-proximal rules at once
     Case(
         "ptc_in_a_long_last_exon_93_nt_after_the_start_codon_escapes_by_three_rules",
         """
@@ -1442,7 +1434,7 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 63, 93, 486, 495), "CDS"),
     ),
-    # NR-22: the CDS rows of exon 2 say exon_number 9, which no exon row has. The exon features find the PTC exon by
+    # The CDS rows of exon 2 say exon_number 9, which no exon row has. The exon features find the PTC exon by
     # its position in alt_transcript_exons: exon 2, the last exon, of 432 nt. So the last exon rule and the long
     # exon rule fire.
     Case(
@@ -1500,7 +1492,7 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 63, 300, 486, 495), "CDS"),
     ),
-    # NR-10, NR-14: after the start loss, the PTC is the TGA of the rescued ORF. Measured from the annotated start
+    # After the start loss, the PTC is the TGA of the rescued ORF. Measured from the annotated start
     # codon, it would lie 160 nt downstream; the annotated stop codon in exon 3 would fire the last exon rule.
     Case(
         "start_loss_rescued_orf_ptc_escapes_by_the_50nt_and_start_proximal_rules_measured_from_the_rescued_atg",
@@ -1583,7 +1575,7 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 63, 100, 160, 201, 228, 237), "CDS"),
     ),
-    # NR-13: without an annotated start codon, the start-proximal rule is null, also 9 nt after the CDS start. No
+    # Without an annotated start codon, the start-proximal rule is null, also 9 nt after the CDS start. No
     # other rule is True, so nmd_escape is null too.
     Case(
         "cds_start_nf_ptc_9_nt_after_the_cds_start_has_a_null_start_proximal_rule_and_nmd_escape",

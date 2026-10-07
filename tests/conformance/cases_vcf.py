@@ -317,31 +317,31 @@ RUN_TO_CHROMOSOME_END = Layout(
 
 
 # The symbolic alleles and breakends at the SNV site of THREE_EXONS, as (name, ALT as written, reason for no row).
-# {ref} is the REF of the record: T on the plus strand, A on the minus strand. Each case also pins SY-05: a VCF with
+# {ref} is the REF of the record: T on the plus strand, A on the minus strand. Each case also pins that a VCF with
 # only symbolic records gives no row, with all columns and their dtypes.
 SYMBOLIC_ALTS = [
-    # SY-01: the symbolic alleles of structural variants
+    # The symbolic alleles of structural variants
     ("symbolic_deletion", "<DEL>", "symbolic allele"),
     ("symbolic_duplication", "<DUP>", "symbolic allele"),
     ("symbolic_insertion", "<INS>", "symbolic allele"),
     ("symbolic_inversion", "<INV>", "symbolic allele"),
     ("symbolic_copy_number_variant", "<CNV>", "symbolic allele"),
     ("symbolic_tandem_duplication", "<DUP:TANDEM>", "symbolic allele"),
-    # SY-02: the unspecified allele and a symbolic allele with subtypes
+    # The unspecified allele and a symbolic allele with subtypes
     ("symbolic_unspecified_allele", "<*>", "symbolic allele"),
     ("symbolic_mobile_element_insertion", "<INS:ME:ALU>", "symbolic allele"),
-    # SY-03: the 4 breakend forms. t]p]: the reverse complement of the piece left of p is joined after t. ]p]t: the
+    # The 4 breakend forms. t]p]: the reverse complement of the piece left of p is joined after t. ]p]t: the
     # piece left of p is joined before t. t[p[: the piece right of p is joined after t. [p[t: the reverse complement
     # of the piece right of p is joined before t.
     ("breakend_ref_then_closing_brackets", "{ref}]chr2:100]", "breakend"),
     ("breakend_closing_brackets_then_ref", "]chr2:100]{ref}", "breakend"),
     ("breakend_ref_then_opening_brackets", "{ref}[chr2:100[", "breakend"),
     ("breakend_opening_brackets_then_ref", "[chr2:100[{ref}", "breakend"),
-    # SY-04: single breakends, also with inserted bases
+    # Single breakends, also with inserted bases
     ("single_breakend_after_ref", "{ref}.", "breakend"),
     ("single_breakend_before_ref", ".{ref}", "breakend"),
     ("single_breakend_with_inserted_bases", "{ref}TA.", "breakend"),
-    # SY-08: a single symbolic allele or breakend with a pipe in its text is no multi-allelic record
+    # A single symbolic allele or breakend with a pipe in its text is no multi-allelic record
     ("symbolic_allele_with_a_pipe_in_its_id", "<INS:ME|ALU>", "symbolic allele"),
     ("breakend_to_a_contig_with_a_pipe_after_ref", "{ref}]gi|123|:100]", "breakend"),
     ("breakend_to_a_contig_with_a_pipe_before_ref", "[gi|123|:100[{ref}", "breakend"),
@@ -430,7 +430,7 @@ MISSENSE_ALT_CDS = {
 
 CASES = [
     *SYMBOLIC_CASES,
-    # VD-05, VD-06, VD-10, SY-06: an SNV, as a padded MNV, and with REF or ALT in lower case
+    # An SNV, as a padded MNV, and with REF or ALT in lower case
     Case(
         "missense_snv_in_an_internal_exon_gives_one_row_for_each_description",
         THREE_EXONS_SNV_DRAWING
@@ -460,7 +460,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             Change("GCCT[T>A]CAAG", lower_case=("ref", "alt")),
         ),
     ),
-    # SY-06: an ALT with N is a sequence, not a symbolic allele
+    # An ALT with N is a sequence, not a symbolic allele
     Case(
         "snv_to_n_puts_n_into_the_alt_cds",
         THREE_EXONS_SNV_DRAWING + "The VCF record of T>A at tx 23, CDS 19 has the ALT N: TTC>TNC.\n",
@@ -479,7 +479,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "stop_classification": "alt_transcript",
         },
     ),
-    # VD-09: REF equal to ALT, also if only the case differs
+    # REF equal to ALT, also if only the case differs
     Case(
         "ref_equal_to_alt_at_a_cds_position_gives_no_row",
         """
@@ -493,7 +493,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         NoRow("touches no coding region"),
         equivalent=(Change("GCCT[T>T]CAAG", lower_case=("alt",)), Change("GCC[TTC>TTC]AAG")),
     ),
-    # VD-11: the REF check covers the whole REF, not only the padding base
+    # The REF check covers the whole REF, not only the padding base
     Case(
         "deletion_whose_ref_mismatches_after_the_padding_base_gives_no_row",
         """
@@ -507,7 +507,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         Change("GCC[TT>]CAAG", vcf_ref="GA"),
         NoRow("REF mismatch"),
     ),
-    # VD-16, VD-05, VD-06: an in-frame deletion in a codon repeat, left- or right-aligned, shifted, or as a delins
+    # An in-frame deletion in a codon repeat, left- or right-aligned, shifted, or as a delins
     Case(
         "inframe_deletion_in_a_codon_repeat_gives_one_row_for_each_alignment",
         """
@@ -556,7 +556,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         ),
         ruler=Ruler((13, 19)),
     ),
-    # VD-01, VD-12: a 1 nt deletion in a run that starts in the stop codon, described at each of its 3 positions.
+    # A 1 nt deletion in a run that starts in the stop codon, described at each of its 3 positions.
     # On the minus strand, the 3'-most description is anchored on a 3'UTR base. The record AC>C lies in the 3'UTR
     # on both strands.
     Case(
@@ -592,7 +592,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         equivalent=(Change("TGGTA[A>]ACTG"), Change("TGGTAA[A>]CTG"), Change("TGGTAA[AC>C]TG")),
         ruler=Ruler((41, 43)),
     ),
-    # VD-02, VD-14: TCC inserted right before the stop codon TAA, described at each of its 4 positions. The 3'-most
+    # TCC inserted right before the stop codon TAA, described at each of its 4 positions. The 3'-most
     # placement is CCT inserted after the T of the stop codon.
     Case(
         "tcc_inserted_right_before_the_stop_codon_gives_one_row_for_each_description",
@@ -635,7 +635,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         ),
         ruler=Ruler((37, 40)),
     ),
-    # VD-14: TGGCCC inserted right before the stop codon TAA, described at each of its 4 positions
+    # TGGCCC inserted right before the stop codon TAA, described at each of its 4 positions
     Case(
         "tggccc_inserted_right_before_the_stop_codon_gives_one_row_for_each_description",
         """
@@ -676,7 +676,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         ),
         ruler=Ruler((37, 40)),
     ),
-    # VD-14, VD-16: the last sense codon TCC deleted, described at each of its 4 positions. The 3'-most placement
+    # The last sense codon TCC deleted, described at each of its 4 positions. The 3'-most placement
     # deletes CCT, with the T of the stop codon.
     Case(
         "last_sense_codon_tcc_deleted_before_the_stop_codon_gives_one_row_for_each_description",
@@ -714,7 +714,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         equivalent=(Change("GCCG[CCT>]CCTAA"), Change("GCCGCCT[CCT>]AA")),
         ruler=Ruler((35, 38)),
     ),
-    # VD-03: a 5 nt deletion across the stop codon, described from the CDS or into the 3'UTR
+    # A 5 nt deletion across the stop codon, described from the CDS or into the 3'UTR
     Case(
         "deletion_across_the_stop_codon_gives_one_row_for_each_description",
         """
@@ -763,7 +763,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         marks=(Mark("alt", 40, 43, "*", "TAG at the position of the stop codon"),),
         ruler=Ruler((38, 42, 46)),
     ),
-    # VD-04: a deletion from the stop codon into the 3'UTR, with the VCF anchor in the CDS or in the 3'UTR
+    # A deletion from the stop codon into the 3'UTR, with the VCF anchor in the CDS or in the 3'UTR
     Case(
         "deletion_from_the_stop_codon_into_the_3utr_gives_one_row_for_each_anchor",
         """
@@ -826,7 +826,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         ),
         ruler=Ruler((40, 45)),
     ),
-    # VD-07: a delins over the last base of the stop codon and the first base of the 3'UTR. Of its two placements,
+    # A delins over the last base of the stop codon and the first base of the 3'UTR. Of its two placements,
     # the one with the deletion at the 3'UTR end counts: A>G turns TAA into TAG, and the 3'UTR loses a c.
     Case(
         "delins_over_the_stop_codon_end_puts_its_deletion_into_the_3utr",
@@ -860,7 +860,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         },
         ruler=Ruler((42,)),
     ),
-    # VD-08: the delins ATAG>T is not split into an SNV plus an indel. GTA TAG TAG becomes GTT TAG: a stop loss,
+    # The delins ATAG>T is not split into an SNV plus an indel. GTA TAG TAG becomes GTT TAG: a stop loss,
     # although the protein stays the same.
     Case(
         "delins_atag_to_t_in_a_stop_codon_repeat_gives_the_same_row_for_each_description",
@@ -921,7 +921,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             Span("alt", 37, 40, "annotated_stop_distance = -3"),
         ),
     ),
-    # VD-13: the placements of a deletion in a run stop at the end of the chromosome. Some of them lie inside the
+    # The placements of a deletion in a run stop at the end of the chromosome. Some of them lie inside the
     # transcript and some after its 3' end, so they put the transcript end at different positions.
     Case(
         "deletion_in_a_run_to_the_chromosome_end_makes_the_transcript_end_ambiguous",
@@ -950,7 +950,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         equivalent=(Change("CTGTAA[A>]AA"), Change("CTGTAAAAAAA[A>]A")),
         ruler=Ruler((19, 21, 24)),
     ),
-    # SY-09. "." means that the record has no alternate allele, so it changes no base. The docs skip a record with
+    # "." means that the record has no alternate allele, so it changes no base. The docs skip a record with
     # the ALT "." or "*" with a warning ("Output columns").
     Case(
         "alt_dot_without_an_alternate_allele_gives_no_row",
@@ -964,7 +964,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         Change("AAG[C>A]TAA", vcf_alt="."),
         NoRow('ALT "." or "*"'),
     ),
-    # SY-10. "*" stands for the bases that an overlapping deletion removes, and that deletion has its own record. So
+    # "*" stands for the bases that an overlapping deletion removes, and that deletion has its own record. So
     # the "*" record changes no base itself. The docs skip a record with the ALT "." or "*" with a warning.
     Case(
         "alt_star_of_an_overlapping_deletion_gives_no_row",
@@ -978,7 +978,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         Change("AAG[C>A]TAA", vcf_alt="*"),
         NoRow('ALT "." or "*"'),
     ),
-    # VD-15. Two VCF records with the same CHROM, POS, REF and ALT, and the IDs var1 and var2. Each record gives a row
+    # Two VCF records with the same CHROM, POS, REF and ALT, and the IDs var1 and var2. Each record gives a row
     # with its own ID as variant_id ("Output columns").
     Case(
         "two_identical_records_with_different_ids_give_a_row_each",

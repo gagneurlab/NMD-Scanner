@@ -487,7 +487,6 @@ TWO_EXONS = Layout(
 )
 
 CASES = [
-    # ST-01
     Case(
         "nonsense_snv_in_an_internal_exon_is_a_ptc",
         (
@@ -556,7 +555,6 @@ CASES = [
         ),
         ruler=Ruler((0, 4, 8, 14, 20, 26)),
     ),
-    # ST-02
     Case(
         "stop_codon_snv_taa_to_tag_is_neither_ptc_nor_stop_loss",
         (
@@ -605,7 +603,6 @@ CASES = [
         },
         ruler=Ruler((0, 13, 25, 40)),
     ),
-    # ST-02
     Case(
         "stop_codon_snv_taa_to_tga_is_neither_ptc_nor_stop_loss",
         (
@@ -654,7 +651,6 @@ CASES = [
         },
         ruler=Ruler((0, 13, 25, 40)),
     ),
-    # ST-03
     Case(
         "stop_codon_snv_reads_through_to_an_in_frame_stop_codon_in_the_3utr",
         (
@@ -717,7 +713,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 40, 52)),
     ),
-    # ST-04
     Case(
         "stop_codon_snv_without_an_in_frame_stop_codon_up_to_the_transcript_end_is_a_nonstop",
         (
@@ -774,7 +769,6 @@ CASES = [
         marks=(Mark("alt", 40, 43, "s", "annotated stop codon"),),
         ruler=Ruler((0, 13, 25, 40, 55)),
     ),
-    # ST-05
     Case(
         "frameshift_whose_first_stop_codon_lies_inside_the_cds_is_a_ptc",
         (
@@ -845,7 +839,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 18, 25, 40)),
     ),
-    # ST-06
     Case(
         "frameshift_whose_first_stop_codon_lies_in_the_3utr_is_a_stop_loss",
         (
@@ -910,7 +903,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
-    # ST-07
     Case(
         "frameshift_without_an_in_frame_stop_codon_up_to_the_transcript_end_is_a_nonstop",
         (
@@ -966,7 +958,6 @@ CASES = [
         equivalent=(Change("ACCGC[C>GC]GCCGCCTAA"),),
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
-    # ST-08
     Case(
         "insertion_inside_the_stop_codon_taa_to_tgaa_keeps_the_stop_codon",
         (
@@ -1019,7 +1010,6 @@ CASES = [
         marks=(Mark("alt", 40, 43, "s", "annotated stop codon TGA, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 40)),
     ),
-    # ST-09
     Case(
         "deletion_of_one_a_of_the_stop_codon_in_an_a_run_keeps_the_stop_codon",
         (
@@ -1072,7 +1062,6 @@ CASES = [
         marks=(Mark("alt", 40, 41, "s", "annotated stop codon TAA, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 40, 43)),
     ),
-    # ST-10
     Case(
         "in_frame_insertion_right_before_the_stop_codon_keeps_the_stop_codon",
         (
@@ -1125,7 +1114,6 @@ CASES = [
         marks=(Mark("alt", 43, 46, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 29, 40)),
     ),
-    # ST-11
     Case(
         "in_frame_deletion_right_before_the_stop_codon_keeps_the_stop_codon",
         (
@@ -1178,7 +1166,6 @@ CASES = [
         marks=(Mark("alt", 37, 40, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 29, 37, 40)),
     ),
-    # ST-12
     Case(
         "tcc_inserted_right_before_the_stop_codon_taa_keeps_the_stop_codon",
         (
@@ -1230,7 +1217,6 @@ CASES = [
         marks=(Mark("alt", 43, 46, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-12
     Case(
         "tggccc_inserted_right_before_the_stop_codon_taa_keeps_the_stop_codon",
         (
@@ -1282,7 +1268,6 @@ CASES = [
         marks=(Mark("alt", 46, 49, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-12
     Case(
         "last_sense_codon_tcc_deleted_before_the_stop_codon_taa_keeps_the_stop_codon",
         (
@@ -1334,7 +1319,6 @@ CASES = [
         marks=(Mark("alt", 37, 40, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-13
     Case(
         "stop_codon_gained_right_before_the_stop_codon_is_a_ptc",
         (
@@ -1481,7 +1465,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 40)),
     ),
-    # ST-14
     Case(
         "delins_ccta_to_g_in_tcc_taa_leaves_a_tga_at_the_stop_codon",
         (
@@ -1534,7 +1517,6 @@ CASES = [
         marks=(Mark("alt", 37, 38, "s", "annotated stop codon TGA, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-14
     Case(
         "delins_ctta_to_g_in_tct_taa_leaves_a_tga_at_the_stop_codon",
         (
@@ -1587,7 +1569,6 @@ CASES = [
         marks=(Mark("alt", 37, 38, "s", "annotated stop codon TGA, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-14
     Case(
         "delins_ccta_to_g_before_a_second_taa_leaves_a_tga_at_the_stop_codon",
         (
@@ -1640,7 +1621,6 @@ CASES = [
         marks=(Mark("alt", 37, 38, "s", "annotated stop codon TGA, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40, 43)),
     ),
-    # ST-15
     Case(
         "last_sense_codon_and_stop_codon_deleted_before_a_taa_in_the_3utr_is_a_stop_loss",
         (
@@ -1705,7 +1685,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 37, 40, 43)),
     ),
-    # ST-15
     Case(
         "last_sense_codon_and_stop_codon_deleted_in_a_stop_codon_repeat_is_a_stop_loss",
         (
@@ -1770,7 +1749,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 37, 40, 43)),
     ),
-    # ST-15
     Case(
         "deletion_of_the_stop_codon_shifted_left_in_a_stop_codon_repeat_is_a_stop_loss",
         (
@@ -1979,7 +1957,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-16
     Case(
         "delins_atag_to_t_in_a_stop_codon_repeat_is_a_stop_loss",
         (
@@ -2044,7 +2021,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 37, 40, 43)),
     ),
-    # ST-17
     Case(
         "seven_nt_deletion_of_the_stop_codon_reads_on_to_a_taa_in_the_3utr_as_a_stop_loss",
         (
@@ -2109,7 +2085,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 36, 40, 43)),
     ),
-    # ST-18
     Case(
         "stop_codon_snv_behind_an_in_frame_tga_keeps_the_flags_from_the_cds",
         (
@@ -2187,7 +2162,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 28, 40, 52)),
     ),
-    # ST-18
     Case(
         "synonymous_snv_behind_an_in_frame_tga_keeps_the_flags_from_the_cds",
         (
@@ -2259,7 +2233,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 28, 40)),
     ),
-    # ST-19
     Case(
         "missense_snv_with_stop_codon_rows_on_a_sense_codon_keeps_the_flags_from_the_cds",
         (
@@ -2391,7 +2364,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 20, 25, 40)),
     ),
-    # ST-20
     Case(
         "stop_codon_snv_with_the_annotated_stop_codon_out_of_frame_keeps_the_flags_from_the_cds",
         (
@@ -2469,7 +2441,6 @@ CASES = [
         ),
         ruler=Ruler((0, 14, 26, 40, 47)),
     ),
-    # ST-22
     Case(
         "frameshift_whose_first_stop_codon_lies_inside_the_cds_without_stop_codon_rows_is_a_ptc",
         (
@@ -2539,7 +2510,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 18, 25, 40)),
     ),
-    # ST-23
     Case(
         "frameshift_whose_first_stop_codon_lies_past_the_cds_end_without_stop_codon_rows_is_neither",
         (
@@ -2596,7 +2566,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
-    # ST-24
     Case(
         "frameshift_without_an_in_frame_stop_codon_without_stop_codon_rows_is_neither",
         (
@@ -2646,7 +2615,6 @@ CASES = [
         },
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
-    # ST-25
     Case(
         "stop_gained_in_the_last_codon_without_stop_codon_rows_ends_at_the_cds_end_and_is_a_ptc",
         (
@@ -2715,7 +2683,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-25
     Case(
         "missense_in_the_last_codon_without_stop_codon_rows_stops_right_after_the_cds_end_and_is_neither",
         (
@@ -2771,7 +2738,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
-    # ST-26
     Case(
         "stop_loss_whose_alt_transcript_ends_in_a_stop_codon_out_of_frame",
         (
@@ -2837,7 +2803,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 40, 52)),
     ),
-    # ST-27
     Case(
         "stop_codon_snv_at_the_transcript_end_is_a_nonstop",
         (
@@ -2895,7 +2860,6 @@ CASES = [
         marks=(Mark("alt", 40, 43, "s", "annotated stop codon"),),
         ruler=Ruler((0, 13, 25, 40, 43)),
     ),
-    # SP-01
     Case(
         "snv_in_the_part_of_a_split_start_codon_in_the_second_exon_is_a_start_loss",
         (
@@ -2951,7 +2915,6 @@ CASES = [
         },
         ruler=Ruler((0, 13, 15, 40)),
     ),
-    # SP-02
     Case(
         "ensembl_start_codon_split_over_an_intron_is_an_annotated_start_codon",
         (
@@ -3001,7 +2964,6 @@ CASES = [
         },
         ruler=Ruler((0, 13, 15, 20, 40)),
     ),
-    # SP-03, SP-04
     Case(
         "split_stop_codon_taa_to_tag_in_its_one_base_cds_row_is_neither_ptc_nor_stop_loss",
         (
@@ -3055,7 +3017,6 @@ CASES = [
         },
         ruler=Ruler((0, 13, 25, 40, 42, 52)),
     ),
-    # SP-03, SP-04
     Case(
         "split_stop_codon_taa_to_caa_reads_through_into_the_next_exon_as_a_stop_loss",
         (
@@ -3123,7 +3084,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 40, 42, 52)),
     ),
-    # SP-05
     Case(
         "ptc_split_with_one_base_before_the_last_exon_junction_lies_in_the_exon_of_its_first_base",
         (
@@ -3191,7 +3151,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 26, 34)),
     ),
-    # SP-05, SP-06
     Case(
         "snv_at_an_exon_start_completes_a_ptc_with_two_bases_before_the_last_exon_junction",
         (
@@ -3259,7 +3218,6 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 27, 34)),
     ),
-    # SP-07
     Case(
         "readthrough_stop_codon_split_over_an_exon_junction_lies_in_the_exon_of_its_first_base",
         (
@@ -3323,7 +3281,7 @@ CASES = [
         ),
         ruler=Ruler((0, 13, 25, 40, 46, 48)),
     ),
-    # ST-28. The deletion of the T of the start codon shortens alt exon 1 to 10 nt. The scan finds the ATG at tx 7,
+    # The deletion of the T of the start codon shortens alt exon 1 to 10 nt. The scan finds the ATG at tx 7,
     # and its PTC TAA at tx 10 is the first base of alt exon 2, the last exon. The exon numbers of the scan come from
     # the alt transcript: alt_scan_stop_codon_exons is [2], and the PTC features and rules are those of a PTC in
     # the last exon.

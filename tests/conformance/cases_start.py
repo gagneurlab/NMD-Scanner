@@ -116,7 +116,7 @@ NO_ATG_FOUND = {
 }
 
 CASES = [
-    # SC-01, SC-11, SC-22 (has_start_codon from the start_codon rows)
+    # The has_start_codon column comes from the start_codon rows.
     Case(
         "atg_to_acg_is_a_start_loss_and_without_a_next_atg_neither_a_ptc_nor_a_stop_loss",
         """
@@ -164,7 +164,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 8, 15, 18, 23)),
     ),
-    # SC-02
     Case(
         "ctg_to_ccg_is_a_start_loss_of_a_non_atg_start_codon",
         """
@@ -211,7 +210,6 @@ CASES = [
         },
         ruler=Ruler((0, 3, 8, 15, 18, 23)),
     ),
-    # SC-03
     Case(
         "missense_after_a_ctg_start_codon_keeps_the_start_codon",
         """
@@ -260,7 +258,7 @@ CASES = [
     ),
 ]
 
-# SC-04: the CDS starts with the annotated start codon CTG and has an in-frame ATG at CDS 30
+# The CDS starts with the annotated start codon CTG and has an in-frame ATG at CDS 30
 INTERNAL_MET_CDS = "CTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TGGGACTAA"
 INTERNAL_MET = Layout(
     Transcript(("ggg" + INTERNAL_MET_CDS[:100], INTERNAL_MET_CDS[100:] + "ggggg")),
@@ -298,7 +296,7 @@ INTERNAL_MET = Layout(
     },
 )
 
-# SC-20: the start codon CTG, an in-frame ATG at CDS 6, and a TAG in the 3' UTR in the frame of the CDS
+# The start codon CTG, an in-frame ATG at CDS 6, and a TAG in the 3' UTR in the frame of the CDS
 CTG_THEN_ATG = Layout(
     Transcript(("ggCTGAA", "AATGCCCTAAgggtagcc")),
     {
@@ -358,7 +356,7 @@ ATG_TAA_BASE = {
     "likely_misannotated": False,
 }
 
-# SC-16: an ATG at CDS 6, in frame, and a CAG at CDS 9
+# An ATG at CDS 6, in frame, and a CAG at CDS 9
 MET_RESCUE_CDS = "ATGGCCATGCAG" + "AAA" * 36 + "GACTAA"
 MET_RESCUE = Layout(
     Transcript(("ggg" + MET_RESCUE_CDS[:60], MET_RESCUE_CDS[60:120], MET_RESCUE_CDS[120:] + "ggggg")),
@@ -388,7 +386,7 @@ MET_RESCUE = Layout(
     },
 )
 
-# SC-08: an ATG at CDS 4, out of frame, whose frame reads CTA AAA as TAA
+# An ATG at CDS 4, out of frame, whose frame reads CTA AAA as TAA
 OUT_OF_FRAME_RESCUE_CDS = "ATGGATGCCCTA" + "AAA" * 50 + "GACTAA"
 OUT_OF_FRAME_RESCUE = Layout(
     Transcript(
@@ -420,7 +418,7 @@ OUT_OF_FRAME_RESCUE = Layout(
     },
 )
 
-# SC-05, SC-09: GTA AGC after the start codon, and an ATG at CDS 9 in frame
+# GTA AGC after the start codon, and an ATG at CDS 9 in frame
 FRAMESHIFT_RESCUE = Layout(
     Transcript(("gggATGGT", "AAGCATGGCCAAAGACTAAggggg")),
     {
@@ -454,7 +452,7 @@ ATG_CCC_AAA_GAC = {
     "total_exon_count": 2,
 }
 
-# SC-12: an ATG in the 3' UTR, 5 nt after the first base of the stop codon
+# An ATG in the 3' UTR, 5 nt after the first base of the stop codon
 ATG_IN_THE_3UTR = Layout(
     Transcript(("gggATGCC", "CAAAGACTAAggatgccctgagg")),
     {
@@ -469,7 +467,7 @@ ATG_IN_THE_3UTR = Layout(
     },
 )
 
-# SC-13: an ATG that starts at the last base of the stop codon: TAA tg
+# An ATG that starts at the last base of the stop codon: TAA tg
 ATG_AT_THE_LAST_STOP_CODON_BASE = Layout(
     Transcript(("gggATGCC", "CAAAGACTAAtgccctgagg")),
     {
@@ -484,7 +482,7 @@ ATG_AT_THE_LAST_STOP_CODON_BASE = Layout(
     },
 )
 
-# SC-13: an ATG that starts 1 nt before the stop codon TGA: CCA TGA
+# An ATG that starts 1 nt before the stop codon TGA: CCA TGA
 ATG_BEFORE_THE_STOP_CODON = Layout(
     Transcript(("gggATGCC", "CAAACCATGAcctaggg")),
     {
@@ -503,7 +501,7 @@ ATG_BEFORE_THE_STOP_CODON = Layout(
     },
 )
 
-# SC-10: an ATG at CDS 4, out of frame, whose frame reads on past the stop codon to a TGA in the 3' UTR
+# An ATG at CDS 4, out of frame, whose frame reads on past the stop codon to a TGA in the 3' UTR
 RESCUE_PAST_THE_STOP = Layout(
     Transcript(("gggATGGATGC", "CCCCAAAGACTAAgtgacc")),
     {
@@ -527,7 +525,6 @@ RESCUE_PAST_THE_STOP = Layout(
 )
 
 CASES += [
-    # SC-04
     Case(
         "ptc_after_a_ctg_start_codon_is_measured_from_the_ctg_not_from_the_internal_met",
         """
@@ -582,7 +579,6 @@ CASES += [
         ),
         ruler=Ruler((0, 30, 159, 165), "CDS"),
     ),
-    # SC-20
     Case(
         "stop_loss_scan_starts_at_the_annotated_ctg_not_at_the_in_frame_atg",
         """
@@ -620,7 +616,6 @@ CASES += [
         },
         ruler=Ruler((0, 2, 7, 8, 14, 20, 25)),
     ),
-    # SC-16
     Case(
         "start_loss_with_a_ptc_3_nt_after_the_atg_of_the_scan_escapes_by_the_start_proximal_rule",
         """
@@ -696,7 +691,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 9, 12, 63, 123, 126, 134)),
     ),
-    # SC-08, PF-08, PF-11, PF-14, PF-21
     Case(
         "start_loss_classifies_the_first_stop_codon_of_an_out_of_frame_rescued_orf_as_a_ptc",
         """
@@ -751,7 +745,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 7, 13, 63, 123, 168, 176)),
     ),
-    # SC-05, SC-09
     Case(
         "deletion_in_the_atg_is_a_start_loss_and_the_next_atg_in_frame_reads_to_the_annotated_stop_codon",
         """
@@ -798,7 +791,6 @@ CASES += [
             Mark("alt", 23, 26, "s", "the annotated stop codon"),
         ),
     ),
-    # SC-12
     Case(
         "start_loss_with_the_next_atg_in_the_3utr_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -844,7 +836,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 15, 20, 26, 31)),
     ),
-    # SC-10
     Case(
         "start_loss_whose_rescued_orf_ends_downstream_of_the_annotated_stop_codon_is_a_stop_loss",
         """
@@ -892,7 +883,7 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 7, 11, 21, 25, 30)),
     ),
-    # SC-13, the side of an ATG upstream of the first base of the stop codon
+    # The side of an ATG upstream of the first base of the stop codon
     Case(
         "start_loss_with_the_next_atg_1_nt_before_the_stop_codon_is_classified",
         """
@@ -938,7 +929,7 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 15, 20, 25)),
     ),
-    # SC-13, the side of an ATG downstream of the first base of the stop codon
+    # The side of an ATG downstream of the first base of the stop codon
     Case(
         "start_loss_with_the_next_atg_at_the_last_base_of_the_stop_codon_has_no_orf",
         """
@@ -987,7 +978,7 @@ CASES += [
     ),
 ]
 
-# SC-06: ATG and 12 C, so that the frame +1 of the CDS reads past the stop codon to a TGA in the 3' UTR
+# ATG and 12 C, so that the frame +1 of the CDS reads past the stop codon to a TGA in the 3' UTR
 ATG_C12 = Layout(
     Transcript(("gggATGCCCCC", "CCCCCCCTAAggtgacc")),
     {
@@ -1010,7 +1001,7 @@ ATG_C12 = Layout(
     },
 )
 
-# SC-07, SC-21: a 13 nt 5' UTR with an ATG at tx 2, ATG GCT ATG GCT GCT GCT TGA, and a TAG in the frame of the CDS in
+# A 13 nt 5' UTR with an ATG at tx 2, ATG GCT ATG GCT GCT GCT TGA, and a TAG in the frame of the CDS in
 # the 3' UTR. The 5' UTR is one exon or two.
 SCAN_START_TRANSCRIPT = "CCATGCCGCCGCC" + "ATGGCTATGGCTGCTGCTTGA" + "GCTGCTTAGCCTAACCC"
 SCAN_START_BASE = {
@@ -1060,7 +1051,7 @@ SCAN_START_AFTER_A_5UTR_INTRON = Layout(
     },
 )
 
-# SC-14: one exon; the 3' UTR holds the next ATG and a TGA in its frame
+# One exon; the 3' UTR holds the next ATG and a TGA in its frame
 STOP_THEN_ATG = Layout(
     Transcript(("ccATGAAACCCTAAgatgccctgacc",)),
     {
@@ -1085,7 +1076,7 @@ STOP_THEN_ATG = Layout(
     },
 )
 
-# SC-15: a cds_end_NF transcript without stop_codon rows, whose CDS ends in GAC. Its ATG at CDS 4 reads CTA AAA as TAA,
+# A cds_end_NF transcript without stop_codon rows, whose CDS ends in GAC. Its ATG at CDS 4 reads CTA AAA as TAA,
 # or its frame reads CCA AAA and finds a TAA only in the 3' region after the CDS.
 NO_STOP_CODON_BASE = {
     **ATG_TAA_BASE,
@@ -1131,7 +1122,7 @@ NO_STOP_CODON_STOP_PAST_THE_CDS = Layout(
     },
 )
 
-# SC-17: as OUT_OF_FRAME_RESCUE, with the CTA 150 nt after the ATG at CDS 4, in an exon 1 of 173 nt
+# As OUT_OF_FRAME_RESCUE, with the CTA 150 nt after the ATG at CDS 4, in an exon 1 of 173 nt
 START_PROXIMAL_150_CDS = "ATGGATGCC" + "AAA" * 48 + "CTA" + "AAA" * 30 + "GACTAA"
 START_PROXIMAL_150 = Layout(
     Transcript(
@@ -1164,7 +1155,7 @@ START_PROXIMAL_150 = Layout(
 )
 
 
-# SC-19: a 5' UTR gggtca, and the ATG at CDS 4 that reads CTA AAA as TAA
+# A 5' UTR gggtca, and the ATG at CDS 4 that reads CTA AAA as TAA
 UTR5_AND_START_CODON = "ATGGATGCCCTA" + "AAA" * 3 + "GACTAA"
 UTR5_AND_START = Layout(
     Transcript(("gggtca" + UTR5_AND_START_CODON[:16], UTR5_AND_START_CODON[16:] + "ggggg")),
@@ -1190,7 +1181,6 @@ UTR5_AND_START = Layout(
 )
 
 CASES += [
-    # SC-06
     Case(
         "insertion_inside_the_start_codon_that_keeps_an_atg_at_the_cds_start_is_no_start_loss",
         """
@@ -1236,7 +1226,6 @@ CASES += [
             Mark("alt", 27, 30, "s", "the stop codon of the scan"),
         ),
     ),
-    # SC-07, SC-21
     Case(
         "start_loss_scan_skips_the_atg_in_the_5utr_and_takes_the_first_atg_from_the_cds_start",
         """
@@ -1292,7 +1281,6 @@ CASES += [
         ),
         ruler=Ruler((0, 2, 13, 19, 31, 34, 40, 51)),
     ),
-    # SC-07, SC-21
     Case(
         "start_loss_scan_after_an_intron_in_the_5utr_takes_the_first_atg_from_the_cds_start",
         """
@@ -1348,7 +1336,6 @@ CASES += [
         ),
         ruler=Ruler((0, 2, 5, 13, 19, 31, 34, 40, 51)),
     ),
-    # SC-14
     Case(
         "start_loss_with_a_deleted_stop_codon_reads_from_the_next_atg_in_the_former_3utr",
         """
@@ -1396,7 +1383,7 @@ CASES += [
             Mark("alt", 10, 13, "s", "the stop codon of the scan"),
         ),
     ),
-    # SC-15, the side of a rescued stop codon inside the alt CDS
+    # The side of a rescued stop codon inside the alt CDS
     Case(
         "start_loss_without_an_annotated_stop_codon_and_a_rescued_stop_inside_the_alt_cds_is_a_ptc",
         """
@@ -1445,7 +1432,7 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 7, 13, 18, 27, 31)),
     ),
-    # SC-15, the side of a rescued stop codon past the end of the alt CDS
+    # The side of a rescued stop codon past the end of the alt CDS
     Case(
         "start_loss_without_an_annotated_stop_codon_and_a_rescued_stop_past_the_alt_cds_is_neither",
         """
@@ -1487,7 +1474,6 @@ CASES += [
         marks=(Mark("alt", 7, 10, "a", "ATG of the scan"), Mark("alt", 28, 31, "s", "the stop codon of the scan")),
         ruler=Ruler((0, 3, 7, 18, 28, 33)),
     ),
-    # SC-17
     Case(
         "start_loss_with_a_ptc_150_nt_after_the_atg_of_the_scan_is_not_start_proximal",
         """
@@ -1540,7 +1526,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 7, 157, 173, 243, 252, 260)),
     ),
-    # SC-19
     Case(
         "deletion_of_5utr_bases_and_the_start_codon_moves_the_alt_cds_start_and_the_scan_reads_from_there",
         """
@@ -1594,7 +1579,7 @@ CASES += [
     ),
 ]
 
-# SC-23, SC-24: Ensembl GFF3. It has no start_codon rows, so a CDS has a start codon only if it starts with ATG in
+# Ensembl GFF3. It has no start_codon rows, so a CDS has a start codon only if it starts with ATG in
 # phase 0. This is the CDS of ATG_START with the non-ATG start CTG.
 ENSEMBL_CTG_START = Layout(
     Transcript(("gggCTGAA", "ACCCGACTAAggggg"), flavor="ensembl"),
@@ -1606,7 +1591,7 @@ ENSEMBL_CTG_START = Layout(
     },
 )
 
-# SC-23: the CDS A TGC AAA CCC GAC TAA starts with ATG, but its phase is 1
+# The CDS A TGC AAA CCC GAC TAA starts with ATG, but its phase is 1
 ENSEMBL_ATG_IN_PHASE_1 = Layout(
     Transcript(("gggATGCA", "AACCCGACTAAggggg"), frame=1, start_codon=False, flavor="ensembl", tags=("cds_start_NF",)),
     {
@@ -1629,7 +1614,7 @@ ENSEMBL_ATG_IN_PHASE_1 = Layout(
     },
 )
 
-# SC-23: the CDS starts with ATG in phase 0, and an intron splits the ATG into AT and G
+# The CDS starts with ATG in phase 0, and an intron splits the ATG into AT and G
 ENSEMBL_SPLIT_ATG = Layout(
     Transcript(("gggAT", "GAAACCCGACTAAggggg"), flavor="ensembl"),
     {
@@ -1639,11 +1624,9 @@ ENSEMBL_SPLIT_ATG = Layout(
     },
 )
 
-# SC-24
 ENSEMBL_ATG_START = Layout(Transcript(("gggATGAA", "ACCCGACTAAggggg"), flavor="ensembl"), ATG_START.ref)
 
 CASES += [
-    # SC-23
     Case(
         "ensembl_cds_starting_with_ctg_has_no_start_codon_and_a_missense_is_no_start_loss",
         """
@@ -1682,7 +1665,6 @@ CASES += [
         },
         ruler=Ruler((0, 3, 8, 15, 18)),
     ),
-    # SC-23
     Case(
         "ensembl_cds_starting_with_atg_in_phase_1_has_no_start_codon",
         """
@@ -1724,7 +1706,6 @@ CASES += [
         marks=(Mark("alt", 16, 19, "s", "the annotated stop codon"),),
         ruler=Ruler((0, 3, 8, 16, 19)),
     ),
-    # SC-23
     Case(
         "ensembl_cds_starting_with_an_atg_split_by_an_intron_has_a_start_codon",
         """
@@ -1764,7 +1745,6 @@ CASES += [
         },
         ruler=Ruler((0, 3, 5, 15, 18)),
     ),
-    # SC-24
     Case(
         "ensembl_atg_to_acg_in_a_leading_atg_in_phase_0_is_a_start_loss",
         """
@@ -1805,7 +1785,7 @@ CASES += [
     ),
 ]
 
-# The reference values that the cds_start_NF layouts of FR-01 to FR-10 share: no start_codon rows, so no start codon
+# The reference values that the cds_start_NF layouts share: no start_codon rows, so no start codon
 CDS_START_NF_REF = {
     **IDS,
     "has_start_codon": False,
@@ -1935,7 +1915,7 @@ def frame_ptc_row(frame):
 
 
 CASES += [
-    # FR-01, the SNV that makes a TAA out of frame
+    # The SNV that makes a TAA out of frame
     Case(
         "cds_frame_0_snv_that_makes_a_taa_out_of_frame_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -1959,7 +1939,7 @@ CASES += [
         },
         ruler=Ruler((0, 3, 8, 12, 18, 21)),
     ),
-    # FR-01, the SNV that makes a PTC in frame
+    # The SNV that makes a PTC in frame
     Case(
         "cds_frame_0_nonsense_snv_in_the_last_exon_is_a_ptc_6_nt_before_the_annotated_stop_codon",
         """
@@ -1992,7 +1972,7 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 12, 18, 21)),
     ),
-    # FR-02, FR-04 (the minus strand: the CDS rows have the phases 1 and 2, and exon 1 is the row with the largest Start)
+    # The minus strand: the CDS rows have the phases 1 and 2, and exon 1 is the row with the largest Start.
     Case(
         "cds_frame_1_snv_that_makes_a_taa_out_of_frame_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -2016,7 +1996,6 @@ CASES += [
         },
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-02, FR-04
     Case(
         "cds_frame_1_nonsense_snv_in_the_last_exon_is_a_ptc_6_nt_before_the_annotated_stop_codon",
         """
@@ -2048,7 +2027,7 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-03, FR-04 (phases 2 and 0)
+    # Phases 2 and 0.
     Case(
         "cds_frame_2_snv_that_makes_a_taa_out_of_frame_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -2072,7 +2051,6 @@ CASES += [
         },
         ruler=Ruler((0, 3, 8, 14, 20, 23)),
     ),
-    # FR-03, FR-04
     Case(
         "cds_frame_2_nonsense_snv_in_the_last_exon_is_a_ptc_6_nt_before_the_annotated_stop_codon",
         """
@@ -2104,7 +2082,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 14, 20, 23)),
     ),
-    # FR-08
     Case(
         "cds_frame_comes_from_the_5prime_most_cds_row_and_not_from_the_phase_of_the_other_rows",
         """
@@ -2136,7 +2113,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-10
     Case(
         "cds_frame_1_change_of_the_base_before_the_first_complete_codon_changes_no_codon",
         """
@@ -2175,7 +2151,6 @@ CASES += [
         },
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-11
     Case(
         "cds_row_with_phase_dot_is_an_error_that_names_the_transcript",
         """
@@ -2191,7 +2166,7 @@ CASES += [
     ),
 ]
 
-# FR-05: the CDS A TGC AAA CCC TAA of frame 1, and a 3' UTR with a TGA in the CDS frame at tx 25
+# The CDS A TGC AAA CCC TAA of frame 1, and a 3' UTR with a TGA in the CDS frame at tx 25
 FRAME_1_STOP_LOSS = Layout(
     Transcript(("gggATGCA", "AACCCTAAgggcccgggtgacc"), frame=1, start_codon=False, tags=("cds_start_NF",)),
     {
@@ -2214,7 +2189,7 @@ FRAME_1_STOP_LOSS = Layout(
     },
 )
 
-# FR-06: the CDS CTG AAA CCC GAC TAA of frame 0 without a start codon, and a TAG in the 3' UTR at tx 21
+# The CDS CTG AAA CCC GAC TAA of frame 0 without a start codon, and a TAG in the 3' UTR at tx 21
 NO_START_STOP_LOSS = Layout(
     Transcript(("gggCTGAA", "ACCCGACTAAgggtagccgg"), start_codon=False, tags=("cds_start_NF",)),
     {
@@ -2237,7 +2212,7 @@ NO_START_STOP_LOSS = Layout(
     },
 )
 
-# FR-07: a CDS of 15 nt with the phase 1, so the annotated TAA at CDS 12 is out of frame
+# A CDS of 15 nt with the phase 1, so the annotated TAA at CDS 12 is out of frame
 STOP_OUT_OF_FRAME = Layout(
     Transcript(("gggGCCAA", "ACCCGACTAAggggg"), frame=1, start_codon=False, tags=("cds_start_NF",)),
     {
@@ -2262,7 +2237,7 @@ STOP_OUT_OF_FRAME = Layout(
     },
 )
 
-# FR-09: the annotated start codon ACG, the CDS frame 1 (CDS A CGC ATG CCC GAC TAA), and an ATG at CDS 4
+# The annotated start codon ACG, the CDS frame 1 (CDS A CGC ATG CCC GAC TAA), and an ATG at CDS 4
 START_CODON_AND_FRAME_1 = Layout(
     Transcript(("gggACGCATGC", "CCGACTAAggggg"), frame=1),
     {
@@ -2285,7 +2260,6 @@ START_CODON_AND_FRAME_1 = Layout(
 )
 
 CASES += [
-    # FR-05
     Case(
         "cds_frame_1_stop_loss_reads_through_the_3utr_in_the_cds_frame_to_a_tga",
         """
@@ -2331,7 +2305,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 13, 16, 25)),
     ),
-    # FR-06
     Case(
         "stop_loss_in_a_cds_without_a_start_codon_reads_through_the_3utr_to_a_tag",
         """
@@ -2377,7 +2350,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 15, 18, 21)),
     ),
-    # FR-07
     Case(
         "annotated_stop_codon_out_of_frame_in_the_cds_frame_keeps_the_flags_from_the_cds",
         """
@@ -2420,7 +2392,6 @@ CASES += [
         marks=(Mark("ref", 15, 18, "s", "the annotated TAA, out of frame"),),
         ruler=Ruler((0, 3, 8, 15, 18)),
     ),
-    # FR-09
     Case(
         "start_loss_in_a_cds_with_cds_frame_1_scans_from_the_first_complete_codon",
         """

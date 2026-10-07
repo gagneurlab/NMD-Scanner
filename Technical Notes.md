@@ -219,50 +219,6 @@ A row gets the first value whose condition holds, in this order (`MODEL_STATUSES
 
 `unknown_effect` goes first. Its rows have a null `alt_has_ptc`, and `no_ptc` would claim that they have no PTC. `no_annotated_stop` and `no_annotated_start` hold for every variant of the transcript. So they go before the values `start_loss` and `missing_input`, which depend on the variant, and the counts per value group the unscorable rows by annotation first. A row with both annotation reasons gets `no_annotated_stop`.
 
-### Column names before 0.4.0
-
-Release 0.4.0 renamed 27 columns, so that the names follow one scheme. The values stay the same. The variant columns `chrom`, `start` and `end` are named as in BED. The scan columns of the alt transcript start with `alt_scan_`, because they hold positions in `alt_transcript_seq`. Lengths end in `_length`, counts in `_count`, and genomic ends in `_end`. `ptc_to_exon_end` and `annotated_stop_distance` are model inputs, so a model trained on the old names needs them mapped.
-
-| Name before 0.4.0             | Name since 0.4.0            |
-| ----------------------------- | --------------------------- |
-| `ptc_to_intron`               | `ptc_to_exon_end`           |
-| `stop_codon_distance`         | `annotated_stop_distance`   |
-| `transcript_start_codon_pos`  | `alt_scan_start_codon_pos`  |
-| `transcript_start_codon_exon` | `alt_scan_start_codon_exon` |
-| `transcript_first_stop_codon` | `alt_scan_first_stop_codon` |
-| `transcript_first_stop_pos`   | `alt_scan_first_stop_pos`   |
-| `transcript_num_stop_codons`  | `alt_scan_stop_codon_count` |
-| `transcript_all_stop_codons`  | `alt_scan_stop_codons`      |
-| `transcript_stop_codon_exons` | `alt_scan_stop_codon_exons` |
-| `ref_start_codon_exon`        | `start_codon_exon`          |
-| `ref_cds_start`               | `cds_start`                 |
-| `ref_cds_stop`                | `cds_end`                   |
-| `chromosome`                  | `chrom`                     |
-| `start_variant`               | `start`                     |
-| `end_variant`                 | `end`                       |
-| `ref_cds_len`                 | `ref_cds_length`            |
-| `alt_cds_len`                 | `alt_cds_length`            |
-| `ref_num_stop_codons`         | `ref_stop_codon_count`      |
-| `alt_num_stop_codons`         | `alt_stop_codon_count`      |
-| `ref_cds_info`                | `ref_cds_exons`             |
-| `alt_cds_info`                | `alt_cds_exons`             |
-| `transcript_exon_info`        | `transcript_exons`          |
-| `alt_transcript_exon_info`    | `alt_transcript_exons`      |
-| `ref_all_stop_codons`         | `ref_stop_codons`           |
-| `alt_all_stop_codons`         | `alt_stop_codons`           |
-| `ref_is_premature`            | `ref_has_ptc`               |
-| `alt_is_premature`            | `alt_has_ptc`               |
-
-Release 0.4.0 also dropped 7 columns that carry no information of their own:
-
-| Dropped column                                   | What gives its value                                                                          |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `alt_cds_start`, `alt_cds_stop`                  | `cds_start` and `cds_end`: the variant does not move the bounds of the coding region          |
-| `ref_start_codon_pos`                            | 0 if `has_start_codon` is True and the ref CDS has at least 3 nt, else null                   |
-| `alt_start_codon_pos`                            | 0 if, in addition, `start_loss` is False, else null                                           |
-| `alt_start_codon_exon`                           | `start_codon_exon`, if `alt_start_codon_pos` would be 0                                       |
-| `transcript_last_codon`, `transcript_valid_stop` | the last 3 nt of `alt_transcript_seq`, in no reading frame, and whether they are a stop codon |
-
 ## Figures of the features and the NMD rules
 
 The figures show a transcript 5' to 3' and are not to scale. `u` is UTR, `=` is CDS, `[...]` is an exon, `|` between two exons is an exon junction, and `*` is the PTC. `*--->|` is the distance from the PTC to an exon junction or to the transcript end, and `<--->` is a length. The numbers are positions in CDS coordinates, as alt_first_stop_pos: 0 is the 5' base of the CDS, here also of the start codon, and the 5' UTR has negative positions. After an indel, the positions are in alt CDS coordinates, and the exons are those of the alt transcript (`alt_transcript_exons`), so the exon junctions move with the PTC. The figures and the exon numbers follow the transcript. On the minus strand, the genomic coordinates run the other way.
