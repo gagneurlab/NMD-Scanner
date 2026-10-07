@@ -318,6 +318,18 @@ def records(table, record_type):
     return [record_type(*values) for values in zip(*columns)]
 
 
+def record(row, record_type):
+    """
+    Return one row as an instance of the dataclass ``record_type``, as records does for each row of a table.
+
+    :param row: A row of a table, as a pandas Series or a dict, with a value for each field of ``record_type``
+    :param record_type: The dataclass, e.g. extra_features.FeatureRow
+    :raises KeyError: if ``row`` has no value for a field of ``record_type``
+    """
+
+    return record_type(*(plain_value(row[field.name]) for field in dataclasses.fields(record_type)))
+
+
 def to_arrow(results: pd.DataFrame) -> pa.Table:
     """
     Return ``results`` as a pyarrow Table, with the Arrow type of each column's kind (KIND_ARROW_TYPES).

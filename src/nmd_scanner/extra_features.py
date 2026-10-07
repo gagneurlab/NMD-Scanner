@@ -1,4 +1,4 @@
-import math
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -17,31 +17,58 @@ from nmd_scanner.schema import (
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
     apply_schema,
+    record,
+    records,
 )
 
 
-def _plain_values(row):
+@dataclass(frozen=True, slots=True)
+class FeatureRow:
+    """The columns of a row of extract_ptc that add_nmd_features reads, see schema.records."""
+
+    unknown_reason: str | None
+    has_start_codon: bool
+    has_stop_codon: bool
+    cds_frame: int
+    ref_cds_seq: str
+    alt_cds_seq: str | None
+    alt_cds_length: int | None
+    cds_in_transcript: bool
+    ref_valid_stop: bool | None
+    alt_first_stop_pos: int | None
+    alt_has_ptc: bool | None
+    start_loss: bool | None
+    alt_scan_start_codon_pos: int | None
+    alt_scan_first_stop_pos: int | None
+    transcript_seq: str | None
+    cds_start_in_transcript: int | None
+    cds_end_in_transcript: int | None
+    transcript_exons: list[dict] | None
+    alt_transcript_seq: str | None
+    alt_cds_start_in_transcript: int | None
+    alt_transcript_exons: list[dict] | None
+
+
+@dataclass(frozen=True, slots=True)
+class RuleRow:
     """
-    Return the values of ``row`` as a dict of plain Python values, with None for a missing value.
-
-    A row of the result table holds pd.NA for a missing value in an int, bool or string column, and NaN in a
-    categorical column. A row of a table without that schema can hold NaN instead, and a row taken with ``.iloc``
-    holds numpy scalars. The
-    feature and rule functions test for a missing value with ``is None`` and for False with ``is False``, so
-    they need plain values. Lists, e.g. ``transcript_exons``, stay as they are.
-
-    :param row: A DataFrame row (pandas Series) or a dict
-    :return: A dict of column name to value
+    The columns of a row of extract_ptc that evaluate_nmd_escape_rules reads, and 3 columns that add_nmd_features adds,
+    see schema.records.
     """
 
-    values = {}
-    for column, value in row.items():
-        if isinstance(value, np.generic):
-            value = value.item()
-        if value is pd.NA or (isinstance(value, float) and math.isnan(value)):
-            value = None
-        values[column] = value
-    return values
+    has_start_codon: bool
+    ref_cds_seq: str
+    alt_cds_seq: str | None
+    alt_first_stop_pos: int | None
+    alt_has_ptc: bool | None
+    start_loss: bool | None
+    alt_scan_start_codon_pos: int | None
+    alt_scan_first_stop_pos: int | None
+    alt_cds_start_in_transcript: int | None
+    alt_transcript_exons: list[dict] | None
+    total_exon_count: int | None
+    downstream_exon_count: int | None
+    ptc_exon_length: int | None
 
 
 def ptc_pos_in_alt_transcript(row):
@@ -52,16 +79,16 @@ def ptc_pos_in_alt_transcript(row):
     in the alt transcript adds alt_cds_start_in_transcript. After a start loss, translation starts at the ATG of the
     scan, and the PTC is the first in-frame stop codon after it, at alt_scan_first_stop_pos in the alt transcript.
 
-    :param row: A dict of plain values (see _plain_values)
+    :param row: A FeatureRow or a RuleRow
     :return: The position, or None if the row is not a PTC row or has no alt_transcript_seq
     """
 
-    if not row.get("alt_has_ptc"):
+    if not row.alt_has_ptc:
         return None
-    if row.get("start_loss"):
-        return row.get("alt_scan_first_stop_pos")
-    stop = row.get("alt_first_stop_pos")
-    cds_start = row.get("alt_cds_start_in_transcript")
+    if row.start_loss:
+        return row.alt_scan_first_stop_pos
+    stop = row.alt_first_stop_pos
+    cds_start = row.alt_cds_start_in_transcript
     return None if stop is None or cds_start is None else cds_start + stop
 
 
@@ -73,7 +100,7 @@ def ptc_in_alt_transcript(row):
     with the length changes of the variant in the CDS and in the UTRs. An exon that the variant deletes has length 0.
     It is not in the mRNA, so it is left out.
 
-    :param row: A dict of plain values (see _plain_values)
+    :param row: A FeatureRow or a RuleRow
     :return: Tuple (position, exons, index): the position of the PTC in the alt transcript, (exon_number, start, end)
              of each exon of the alt transcript with bases, 5' to 3', in alt transcript positions (end is the position
              after the last base), and the index of the PTC exon in this list. None if the row is not a PTC row, or if
@@ -81,7 +108,7 @@ def ptc_in_alt_transcript(row):
     """
 
     position = ptc_pos_in_alt_transcript(row)
-    exon_info = row.get("alt_transcript_exons")
+    exon_info = row.alt_transcript_exons
     if position is None or not exon_info:
         return None
 
@@ -102,14 +129,16 @@ def add_nmd_features(row):
     inspired by benchmark datasets from nmd_eff. These features include UTR lengths, exon structure and positional information
     of the premature termination codon (PTC).
 
-    :param row: A DataFrame row with annotated transcript information
+    :param row: A row of the result of extract_ptc: a FeatureRow, or a pandas Series or a dict with a value for each
+                field of FeatureRow
     :return: A dictionary with additional NMD related features.
     """
 
-    row = _plain_values(row)
+    if not isinstance(row, FeatureRow):
+        row = record(row, FeatureRow)
 
     # Without an alt transcript (unknown_reason), only the features of the reference are known
-    if row.get("unknown_reason") is not None:
+    if row.unknown_reason is not None:
         return {
             **calculate_utr_lengths(row),
             "total_exon_count": calculate_exon_features(row)["total_exon_count"],
@@ -180,15 +209,15 @@ def calculate_utr_lengths(row):
     Calculate the 5' and 3' UTR lengths of the reference transcript from the position of the CDS in it.
     The 3'UTR starts after the stop codon, so its length is None without an annotated stop codon (has_stop_codon False).
 
-    :param row: A row of the DataFrame including cds_start_in_transcript and cds_end_in_transcript
-                (coding region, from cds_range_in_transcript), transcript_exons and has_stop_codon
+    :param row: A FeatureRow: it has cds_start_in_transcript and cds_end_in_transcript (coding region, from
+                cds_range_in_transcript), transcript_exons and has_stop_codon
     :return: A dictionary with utr5_length and utr3_length, both None if the CDS position or the exons are unknown
     """
 
-    cds_start = row.get("cds_start_in_transcript")
-    cds_end = row.get("cds_end_in_transcript")
-    transcript_exons = row.get("transcript_exons") or []
-    has_stop_codon = bool(row["has_stop_codon"])
+    cds_start = row.cds_start_in_transcript
+    cds_end = row.cds_end_in_transcript
+    transcript_exons = row.transcript_exons or []
+    has_stop_codon = bool(row.has_stop_codon)
 
     if cds_start is None or cds_end is None or not transcript_exons:
         return {"utr5_length": None, "utr3_length": None}
@@ -206,7 +235,7 @@ def calculate_exon_features(row):
       so it does not count there.
     """
 
-    total_exons = len(row.get("transcript_exons") or [])
+    total_exons = len(row.transcript_exons or [])
     ptc = ptc_in_alt_transcript(row)
     if ptc is None:
         return {
@@ -236,15 +265,15 @@ def calculate_ptc_to_start_distance(row):
     codon such as TAG. Translation cannot start on a stop codon, so such a start codon is a misannotation.
     """
 
-    if not row.get("alt_has_ptc"):
+    if not row.alt_has_ptc:
         return None
 
-    if row.get("start_loss"):
-        start = row.get("alt_scan_start_codon_pos")
-        stop = row.get("alt_scan_first_stop_pos")
+    if row.start_loss:
+        start = row.alt_scan_start_codon_pos
+        stop = row.alt_scan_first_stop_pos
     else:
         start = 0 if starts_with_annotated_start_codon(row, "alt") else None
-        stop = row.get("alt_first_stop_pos")
+        stop = row.alt_first_stop_pos
 
     if start is None or stop is None:
         return None
@@ -310,22 +339,22 @@ def calculate_stop_codon_dist(row):
     stop codon.
     """
 
-    if not row["has_stop_codon"]:
+    if not row.has_stop_codon:
         return None
 
-    alt_seq = row.get("alt_transcript_seq")
-    alt_stop = row.get("alt_first_stop_pos")
-    alt_cds_start = row.get("alt_cds_start_in_transcript")
-    if isinstance(alt_seq, str) and alt_cds_start is not None and row.get("start_loss"):
-        return classify_rescued_orf(row, row.get("alt_scan_start_codon_pos"), row.get("alt_scan_first_stop_pos"))[2]
+    alt_seq = row.alt_transcript_seq
+    alt_stop = row.alt_first_stop_pos
+    alt_cds_start = row.alt_cds_start_in_transcript
+    if isinstance(alt_seq, str) and alt_cds_start is not None and row.start_loss:
+        return classify_rescued_orf(row, row.alt_scan_start_codon_pos, row.alt_scan_first_stop_pos)[2]
     if not isinstance(alt_seq, str) or alt_cds_start is None:
-        alt_cds_length = row.get("alt_cds_length")
+        alt_cds_length = row.alt_cds_length
         if alt_cds_length is None or alt_stop is None:
             return None
         return alt_cds_length - 3 - alt_stop
 
     if ends_at_annotated_stop(row):
-        first_stop = first_stop_codon(alt_seq, alt_cds_start + int(row["cds_frame"]))
+        first_stop = first_stop_codon(alt_seq, alt_cds_start + int(row.cds_frame))
     else:
         first_stop = None if alt_stop is None else alt_cds_start + alt_stop
     return annotated_stop_distance(row, first_stop)
@@ -348,24 +377,27 @@ def evaluate_nmd_escape_rules(row):
     On a PTC row, a rule is None if one of its inputs is None, because its value is unknown then. nmd_escape is
     True if one rule is True, None if no rule is True and one is None, and False otherwise.
 
-    :param row: A row of the DataFrame including alt_has_ptc (bool), the columns that ptc_in_alt_transcript reads
-                (the PTC position and alt_transcript_exons), total_exon_count, downstream_exon_count and
-                ptc_exon_length (see add_nmd_features), and the columns that calculate_ptc_to_start_distance reads
+    :param row: A row of the result of extract_ptc with the features of add_nmd_features: a RuleRow, or a pandas
+                Series or a dict with a value for each field of RuleRow. These are alt_has_ptc (bool), the columns that
+                ptc_in_alt_transcript reads (the PTC position and alt_transcript_exons), total_exon_count,
+                downstream_exon_count and ptc_exon_length (see add_nmd_features), and the columns that
+                calculate_ptc_to_start_distance reads.
     :return: A dictionary with a flag or None for each rule and for the overall NMD escape
     """
 
-    row = _plain_values(row)
+    if not isinstance(row, RuleRow):
+        row = record(row, RuleRow)
 
     # Only relevant for premature stop codons. A row with unknown_reason has no known PTC either.
-    if not row.get("alt_has_ptc"):
+    if not row.alt_has_ptc:
         return dict.fromkeys(NMD_RULE_COLUMN_KINDS)
 
     # Extract relevant data
     ptc = ptc_in_alt_transcript(row)
 
-    total_exons = row.get("total_exon_count")
-    downstream_exons = row.get("downstream_exon_count")
-    ptc_exon_length = row.get("ptc_exon_length")
+    total_exons = row.total_exon_count
+    downstream_exons = row.downstream_exon_count
+    ptc_exon_length = row.ptc_exon_length
 
     # Single exon rule
     rule_single_exon = None if total_exons is None else total_exons == 1
@@ -436,8 +468,8 @@ def add_likely_misannotated_flag(row):
     # the ref CDS does not start with an annotated start codon
     # "ref_valid_stop" is FALSE
 
-    cds_in_transcript = row.get("cds_in_transcript")
-    ref_valid_stop = row.get("ref_valid_stop")
+    cds_in_transcript = row.cds_in_transcript
+    ref_valid_stop = row.ref_valid_stop
 
     # if any of these are missing entirely, flag as likely misannotated
     if cds_in_transcript is None or ref_valid_stop is None:
@@ -454,8 +486,9 @@ def add_features_and_rules(results):
     """
     Add the NMD features and the NMD escape rules to a result of ``extract_ptc``.
 
-    This runs ``add_nmd_features`` on each row, then ``evaluate_nmd_escape_rules`` (it reads columns that the
-    features add). Then it adds the column nmd_model_status (see ``nmd_model_status``) and applies the output schema.
+    This runs ``add_nmd_features`` on the FeatureRow of each row, then ``evaluate_nmd_escape_rules`` on the RuleRow of
+    each row (it reads columns that the features add). Then it adds the column nmd_model_status (see
+    ``nmd_model_status``) and applies the output schema.
     The result has the columns, column order and dtypes of OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero
     rows. ``results`` is not changed.
 
@@ -464,12 +497,14 @@ def add_features_and_rules(results):
     """
 
     if results.empty:
-        # DataFrame.apply with result_type="expand" returns the input columns again for zero rows
+        # Without rows, the lists of features and rules below give DataFrames without columns
         return apply_schema(results.reindex(columns=list(OUTPUT_COLUMN_KINDS)), OUTPUT_COLUMN_KINDS)
 
-    extra_features = results.apply(add_nmd_features, axis=1, result_type="expand")
+    extra_features = pd.DataFrame([add_nmd_features(row) for row in records(results, FeatureRow)], index=results.index)
     results = pd.concat([results, extra_features], axis=1)
-    nmd_results = results.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
+    nmd_results = pd.DataFrame(
+        [evaluate_nmd_escape_rules(row) for row in records(results, RuleRow)], index=results.index
+    )
     results = pd.concat([results, nmd_results], axis=1)
     results["nmd_model_status"] = nmd_model_status(results)
     return apply_schema(results, OUTPUT_COLUMN_KINDS)
