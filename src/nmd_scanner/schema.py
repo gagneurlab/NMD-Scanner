@@ -39,14 +39,14 @@ KIND_ARROW_TYPES = {
 PTC_COLUMN_KINDS = {
     "transcript_id": "string",
     "variant_id": "string",
-    "ref_cds_start": "int",
-    "ref_cds_stop": "int",
+    "cds_start": "int",
+    "cds_end": "int",
     "ref_cds_seq": "string",
-    "ref_cds_len": "int",
+    "ref_cds_length": "int",
     "alt_cds_start": "int",
     "alt_cds_stop": "int",
     "alt_cds_seq": "string",
-    "alt_cds_len": "int",
+    "alt_cds_length": "int",
     "chromosome": "string",
     "gene_id": "string",
     "strand": "string",
@@ -55,31 +55,31 @@ PTC_COLUMN_KINDS = {
     "cds_frame": "int",
     "ref": "string",
     "alt": "string",
-    "start_variant": "int",
-    "end_variant": "int",
-    "ref_cds_info": "pair_list",
-    "alt_cds_info": "pair_list",
+    "variant_start": "int",
+    "variant_end": "int",
+    "ref_cds_exons": "pair_list",
+    "alt_cds_exons": "pair_list",
     "cds_in_transcript": "bool",
     "ref_start_codon_pos": "int",
-    "ref_start_codon_exon": "int",
+    "start_codon_exon": "int",
     "ref_last_codon": "string",
     "ref_valid_stop": "bool",
     "ref_first_stop_codon": "string",
     "ref_first_stop_pos": "int",
-    "ref_num_stop_codons": "int",
-    "ref_all_stop_codons": "stop_codon_list",
+    "ref_stop_codon_count": "int",
+    "ref_stop_codons": "stop_codon_list",
     "ref_stop_codon_exons": "int_list",
-    "ref_is_premature": "bool",
+    "ref_has_ptc": "bool",
     "alt_start_codon_pos": "int",
     "alt_start_codon_exon": "int",
     "alt_last_codon": "string",
     "alt_valid_stop": "bool",
     "alt_first_stop_codon": "string",
     "alt_first_stop_pos": "int",
-    "alt_num_stop_codons": "int",
-    "alt_all_stop_codons": "stop_codon_list",
+    "alt_stop_codon_count": "int",
+    "alt_stop_codons": "stop_codon_list",
     "alt_stop_codon_exons": "int_list",
-    "alt_is_premature": "bool",
+    "alt_has_ptc": "bool",
     "start_loss": "bool",
     "stop_loss": "bool",
     "transcript_start": "int",
@@ -91,17 +91,17 @@ PTC_COLUMN_KINDS = {
     "alt_transcript_seq": "string",
     "alt_transcript_length": "int",
     "alt_cds_start_in_transcript": "int",
-    "transcript_exon_info": "pair_list",
-    "alt_transcript_exon_info": "pair_list",
-    "transcript_start_codon_pos": "int",
-    "transcript_start_codon_exon": "int",
+    "transcript_exons": "pair_list",
+    "alt_transcript_exons": "pair_list",
+    "alt_scan_start_codon_pos": "int",
+    "alt_scan_start_codon_exon": "int",
     "transcript_last_codon": "string",
     "transcript_valid_stop": "bool",
-    "transcript_first_stop_codon": "string",
-    "transcript_first_stop_pos": "int",
-    "transcript_num_stop_codons": "int",
-    "transcript_all_stop_codons": "stop_codon_list",
-    "transcript_stop_codon_exons": "int_list",
+    "alt_scan_first_stop_codon": "string",
+    "alt_scan_first_stop_pos": "int",
+    "alt_scan_stop_codon_count": "int",
+    "alt_scan_stop_codons": "stop_codon_list",
+    "alt_scan_stop_codon_exons": "int_list",
     "unknown_reason": "string",
 }
 
@@ -153,7 +153,7 @@ SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcr
 # pyarrow's pandas conversion treats each tuple as a flat list of one type: it infers int from the first
 # field and then fails on the string. to_arrow turns the tuples into {"position": ..., "codon": ...}
 # records instead, which fit the struct of KIND_ARROW_TYPES["stop_codon_list"].
-STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons")
+STOP_CODON_COLUMNS = ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons")
 
 # The 19 inputs of the NMD efficiency model best_model.pkl (see scripts/train_new.ipynb), in the order that the
 # model takes them. The model cannot score a row in which one of them is null.
@@ -180,10 +180,10 @@ MODEL_INPUTS = [
 ]
 
 # The values of nmd_model_status, in the order they are checked. A row gets the first value whose condition holds:
-# - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_is_premature and 15 of the 19 model
+# - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 15 of the 19 model
 #   inputs are null. unknown_reason says why.
-# - no_ptc: alt_is_premature is not True, so there is no PTC to score.
-# - ref_ptc: ref_is_premature is True. The reference has a PTC already, so the variant does not create it.
+# - no_ptc: alt_has_ptc is not True, so there is no PTC to score.
+# - ref_ptc: ref_has_ptc is True. The reference has a PTC already, so the variant does not create it.
 # - no_annotated_stop: has_stop_codon is False, which makes annotated_stop_distance and utr3_length null.
 # - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
 #   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).

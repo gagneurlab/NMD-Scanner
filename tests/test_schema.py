@@ -252,14 +252,14 @@ def none_row(**values):
     "values",
     [
         {},
-        {"alt_is_premature": True, "alt_first_stop_pos": 30, "cds_in_transcript": True, "ref_valid_stop": True},
+        {"alt_has_ptc": True, "alt_first_stop_pos": 30, "cds_in_transcript": True, "ref_valid_stop": True},
         {
-            "alt_is_premature": True,
+            "alt_has_ptc": True,
             "alt_start_codon_pos": 0,
             "alt_first_stop_pos": 30,
             "alt_cds_start_in_transcript": 40,
-            "transcript_exon_info": [(1, 100), (2, 120)],
-            "alt_transcript_exon_info": [(1, 100), (2, 120)],
+            "transcript_exons": [(1, 100), (2, 120)],
+            "alt_transcript_exons": [(1, 100), (2, 120)],
             "cds_in_transcript": True,
             "ref_start_codon_pos": 0,
             "ref_valid_stop": False,

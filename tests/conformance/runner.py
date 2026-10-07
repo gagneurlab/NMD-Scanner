@@ -40,32 +40,32 @@ REF_COLUMNS = (
     "gene_id",
     "chromosome",
     "strand",
-    "ref_cds_start",
-    "ref_cds_stop",
+    "cds_start",
+    "cds_end",
     "ref_cds_seq",
-    "ref_cds_len",
+    "ref_cds_length",
     "has_start_codon",
     "has_stop_codon",
     "cds_frame",
-    "ref_cds_info",
+    "ref_cds_exons",
     "cds_in_transcript",
     "ref_start_codon_pos",
-    "ref_start_codon_exon",
+    "start_codon_exon",
     "ref_last_codon",
     "ref_valid_stop",
     "ref_first_stop_codon",
     "ref_first_stop_pos",
-    "ref_num_stop_codons",
-    "ref_all_stop_codons",
+    "ref_stop_codon_count",
+    "ref_stop_codons",
     "ref_stop_codon_exons",
-    "ref_is_premature",
+    "ref_has_ptc",
     "transcript_start",
     "transcript_end",
     "transcript_seq",
     "transcript_length",
     "cds_start_in_transcript",
     "cds_end_in_transcript",
-    "transcript_exon_info",
+    "transcript_exons",
     "utr3_length",
     "utr5_length",
     "total_exon_count",
@@ -74,7 +74,7 @@ REF_COLUMNS = (
 # The columns that depend on the variant. A Case gives their expected values.
 CASE_COLUMNS = tuple(column for column in OUTPUT_COLUMN_KINDS if column not in REF_COLUMNS)
 # The columns that echo the VCF record
-RECORD_COLUMNS = ("ref", "alt", "start_variant", "end_variant")
+RECORD_COLUMNS = ("ref", "alt", "variant_start", "variant_end")
 
 
 class PerStrand(NamedTuple):
@@ -91,15 +91,15 @@ def per_strand(plus, minus):
 # Expected values that many cases share
 IDS = {"transcript_id": "tx1", "gene_id": "g1", "chromosome": CHROMOSOME, "strand": per_strand("+", "-")}
 NOT_SCANNED = {
-    "transcript_start_codon_pos": None,
-    "transcript_start_codon_exon": None,
+    "alt_scan_start_codon_pos": None,
+    "alt_scan_start_codon_exon": None,
     "transcript_last_codon": None,
     "transcript_valid_stop": None,
-    "transcript_first_stop_codon": None,
-    "transcript_first_stop_pos": None,
-    "transcript_num_stop_codons": None,
-    "transcript_all_stop_codons": None,
-    "transcript_stop_codon_exons": None,
+    "alt_scan_first_stop_codon": None,
+    "alt_scan_first_stop_pos": None,
+    "alt_scan_stop_codon_count": None,
+    "alt_scan_stop_codons": None,
+    "alt_scan_stop_codon_exons": None,
 }
 NO_PTC_FEATURES = {
     "upstream_exon_count": None,
@@ -123,24 +123,24 @@ UNKNOWN_ALT = {
     "alt_cds_start": None,
     "alt_cds_stop": None,
     "alt_cds_seq": None,
-    "alt_cds_len": None,
-    "alt_cds_info": None,
+    "alt_cds_length": None,
+    "alt_cds_exons": None,
     "alt_start_codon_pos": None,
     "alt_start_codon_exon": None,
     "alt_last_codon": None,
     "alt_valid_stop": None,
     "alt_first_stop_codon": None,
     "alt_first_stop_pos": None,
-    "alt_num_stop_codons": None,
-    "alt_all_stop_codons": None,
+    "alt_stop_codon_count": None,
+    "alt_stop_codons": None,
     "alt_stop_codon_exons": None,
-    "alt_is_premature": None,
+    "alt_has_ptc": None,
     "start_loss": None,
     "stop_loss": None,
     "alt_transcript_seq": None,
     "alt_transcript_length": None,
     "alt_cds_start_in_transcript": None,
-    "alt_transcript_exon_info": None,
+    "alt_transcript_exons": None,
     **NOT_SCANNED,
     "upstream_exon_count": None,
     "downstream_exon_count": None,
@@ -166,7 +166,7 @@ class _SameExons:
         return "SAME_EXONS"
 
 
-# The expected alt_transcript_exon_info of a variant that keeps the length of every exon: the transcript_exon_info of
+# The expected alt_transcript_exons of a variant that keeps the length of every exon: the transcript_exons of
 # the row
 SAME_EXONS = _SameExons()
 
@@ -575,12 +575,12 @@ def on_strand(value, strand):
 def expected_row(case, strand, more=None):
     """
     The expected value of every output column on the strand, in output order: of the first row, or of the further row
-    with the values more, an item of more_rows. SAME_EXONS becomes the transcript_exon_info of the row.
+    with the values more, an item of more_rows. SAME_EXONS becomes the transcript_exons of the row.
     """
     values = {**case.layout.ref, **case.expected, **(more or {})}
     row = {column: on_strand(values[column], strand) for column in OUTPUT_COLUMN_KINDS}
-    if row["alt_transcript_exon_info"] is SAME_EXONS:
-        row["alt_transcript_exon_info"] = row["transcript_exon_info"]
+    if row["alt_transcript_exons"] is SAME_EXONS:
+        row["alt_transcript_exons"] = row["transcript_exons"]
     return row
 
 
@@ -614,7 +614,7 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
         # Another description of the variant: the columns that echo the VCF record take it from the record, unless a
         # further row gives them
         pos, ref, alt = record
-        echo = {"ref": ref, "alt": alt, "start_variant": pos - 1, "end_variant": pos - 1 + len(ref)}
+        echo = {"ref": ref, "alt": alt, "variant_start": pos - 1, "variant_end": pos - 1 + len(ref)}
         for row, more in zip(rows, ({}, *case.more_rows)):
             row.update({column: value for column, value in echo.items() if column not in more})
     assert len(results) == len(rows), f"expected {len(rows)} rows, got {len(results)}"

@@ -129,8 +129,10 @@ def run_pipeline_on_transcript(
 
 
 def test_create_reference_cds_using_file():
-    # Load expected output
-    expected = pd.read_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t")
+    # Load expected output. The fixture has the column names before 0.4.0.
+    expected = pd.read_csv("resources/test_output_files/create_reference_CDS.tsv", sep="\t").rename(
+        columns={"ref_cds_len": "ref_cds_length", "alt_cds_len": "alt_cds_length"}
+    )
 
     df3 = pd.read_csv("resources/test_output_files/variant_exon_output.tsv", sep="\t")
     cds_df_test = pd.read_csv("resources/test_output_files/cds_df_adj.tsv", sep="\t")
@@ -152,8 +154,8 @@ def test_create_reference_cds_using_file():
         "variant_id",
         "ref_cds_seq",
         "alt_cds_seq",
-        "ref_cds_len",
-        "alt_cds_len",
+        "ref_cds_length",
+        "alt_cds_length",
         "strand",
         "ref",
         "alt",
@@ -278,10 +280,10 @@ def test_create_reference_cds():
 
     for _, row in result.iterrows():
         assert row["ref_cds_seq"] == ref_seq
-        assert row["ref_cds_len"] == ref_len
+        assert row["ref_cds_length"] == ref_len
 
     alt_seqs = {row["variant_id"]: row["alt_cds_seq"] for _, row in result.iterrows()}
-    alt_lens = {row["variant_id"]: row["alt_cds_len"] for _, row in result.iterrows()}
+    alt_lens = {row["variant_id"]: row["alt_cds_length"] for _, row in result.iterrows()}
 
     # Variant-specific checks
     assert alt_seqs["var_snp"] == "AAACCTGGGTTTAAA"
@@ -421,11 +423,11 @@ def test_extract_ptc_of_a_transcript_without_exon_rows(tmp_path, strand):
         "transcript_length": None,
         "cds_start_in_transcript": None,
         "cds_end_in_transcript": None,
-        "transcript_exon_info": None,
+        "transcript_exons": None,
         "alt_transcript_seq": None,
         "alt_transcript_length": None,
         "alt_cds_start_in_transcript": None,
-        "alt_is_premature": False,
+        "alt_has_ptc": False,
         "start_loss": False,
         "stop_loss": False,
         "utr5_length": None,
@@ -451,8 +453,8 @@ def test_analyze_sequence():
             {
                 "ref_cds_seq": "ATGAAATAG",
                 "alt_cds_seq": "ATGAAATAA",
-                "ref_cds_info": [(1, 9)],
-                "alt_cds_info": [(1, 9)],
+                "ref_cds_exons": [(1, 9)],
+                "alt_cds_exons": [(1, 9)],
                 "has_start_codon": True,
                 "has_stop_codon": True,
                 "cds_frame": 0,
@@ -473,8 +475,8 @@ def test_analyze_sequence_without_stop_codon():
             {
                 "ref_cds_seq": "ATGAAATGG",
                 "alt_cds_seq": "ATGAAATAG",
-                "ref_cds_info": [(1, 9)],
-                "alt_cds_info": [(1, 9)],
+                "ref_cds_exons": [(1, 9)],
+                "alt_cds_exons": [(1, 9)],
                 "has_start_codon": True,
                 "has_stop_codon": False,
                 "cds_frame": 0,
@@ -483,8 +485,8 @@ def test_analyze_sequence_without_stop_codon():
             {
                 "ref_cds_seq": "ATGAAAGTAA",
                 "alt_cds_seq": "ATGAAAGTAA",
-                "ref_cds_info": [(1, 10)],
-                "alt_cds_info": [(1, 10)],
+                "ref_cds_exons": [(1, 10)],
+                "alt_cds_exons": [(1, 10)],
                 "has_start_codon": True,
                 "has_stop_codon": False,
                 "cds_frame": 0,
@@ -495,8 +497,8 @@ def test_analyze_sequence_without_stop_codon():
 
     # every in-frame stop is premature, including one in the last codon
     assert analyzed.loc[0, "alt_first_stop_pos"] == 6
-    assert analyzed.loc[0, "alt_is_premature"] == True
-    assert analyzed.loc[0, "ref_is_premature"] == False
+    assert analyzed.loc[0, "alt_has_ptc"] == True
+    assert analyzed.loc[0, "ref_has_ptc"] == False
     # the last codon is not an annotated stop codon, whatever its bases
     assert analyzed["ref_valid_stop"].tolist() == [False, False]
     assert analyzed["alt_valid_stop"].tolist() == [False, False]
@@ -552,8 +554,8 @@ def test_start_loss_judges_the_annotated_start_codon():
                 "ATGCAAACCCTAA",  # insertion after the start codon
                 "GTGAAACCCTAA",  # A>G at the first base, without an annotated start codon
             ],
-            "ref_cds_info": [[(1, 12)]] * 5,
-            "alt_cds_info": [[(1, 12)]] * 3 + [[(1, 13)]] + [[(1, 12)]],
+            "ref_cds_exons": [[(1, 12)]] * 5,
+            "alt_cds_exons": [[(1, 12)]] * 3 + [[(1, 13)]] + [[(1, 12)]],
             "has_stop_codon": [True] * 5,
             "cds_frame": [0] * 5,
         }
@@ -584,8 +586,8 @@ def test_start_codon_pos_is_the_annotated_start_codon():
                 "ATGAAAATGCCATAA",  # CCC>CCA
                 "CTGAAAATGCCATAA",  # CCC>CCA
             ],
-            "ref_cds_info": [[(1, 15)]] * 4,
-            "alt_cds_info": [[(1, 15)]] * 4,
+            "ref_cds_exons": [[(1, 15)]] * 4,
+            "alt_cds_exons": [[(1, 15)]] * 4,
             "has_stop_codon": [True] * 4,
             "cds_frame": [0] * 4,
         }
@@ -594,7 +596,7 @@ def test_start_codon_pos_is_the_annotated_start_codon():
     result = analyze_sequence(df)
 
     assert result["ref_start_codon_pos"].tolist() == [0, 0, None, None]
-    assert result["ref_start_codon_exon"].tolist() == [1, 1, None, None]
+    assert result["start_codon_exon"].tolist() == [1, 1, None, None]
     # ATG>ACG changes the annotated start codon, so the alt CDS has none
     assert result["alt_start_codon_pos"].tolist() == [0, None, None, None]
 
@@ -649,8 +651,8 @@ def test_analyze_transcript_without_cds_start_in_transcript():
                 "alt_transcript_seq": "CCCATGAAATAATAGGGG",
                 "cds_start_in_transcript": None,
                 "alt_cds_start_in_transcript": None,
-                "transcript_exon_info": [(1, 10), (2, 10)],
-                "alt_transcript_exon_info": [(1, 10), (2, 10)],
+                "transcript_exons": [(1, 10), (2, 10)],
+                "alt_transcript_exons": [(1, 10), (2, 10)],
                 "start_loss": True,
                 "stop_loss": False,
             }
@@ -659,9 +661,9 @@ def test_analyze_transcript_without_cds_start_in_transcript():
 
     row = analyze_transcript(df).loc[0]
 
-    assert row["transcript_start_codon_pos"] is None
-    assert row["transcript_num_stop_codons"] is None
-    assert row["transcript_all_stop_codons"] is None
+    assert row["alt_scan_start_codon_pos"] is None
+    assert row["alt_scan_stop_codon_count"] is None
+    assert row["alt_scan_stop_codons"] is None
 
 
 def test_analyze_transcript_reads_from_the_alt_cds_start():
@@ -686,20 +688,20 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
         "has_stop_codon": True,
         "ref_cds_seq": "ATGAAATAA",
         "alt_cds_seq": "ATGAAACAA",
-        "transcript_exon_info": [(1, 20)],
-        "alt_transcript_exon_info": [(1, 19)],
-        "alt_is_premature": False,
+        "transcript_exons": [(1, 20)],
+        "alt_transcript_exons": [(1, 19)],
+        "alt_has_ptc": False,
         "start_loss": False,
         "stop_loss": True,
     }
 
     result = analyze_transcript(pd.DataFrame([row])).loc[0]
 
-    assert result["alt_is_premature"] == False
+    assert result["alt_has_ptc"] == False
     assert result["stop_loss"] == True
-    assert result["transcript_start_codon_pos"] == 2
-    assert result["transcript_first_stop_pos"] == 14
-    assert result["transcript_all_stop_codons"] == [(14, "TGA")]
+    assert result["alt_scan_start_codon_pos"] == 2
+    assert result["alt_scan_first_stop_pos"] == 14
+    assert result["alt_scan_stop_codons"] == [(14, "TGA")]
 
 
 # Transcript parts for the scan tests: a 5'UTR of 13 nt with an ATG at transcript position 2, and a 3'UTR from position
@@ -734,10 +736,10 @@ def test_stop_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
     assert row["stop_loss"] == True
     assert row["cds_start_in_transcript"] == 13
     assert row["alt_cds_start_in_transcript"] == 13
-    assert row["transcript_start_codon_pos"] == 13
-    assert row["transcript_first_stop_codon"] == "TAG"
-    assert row["transcript_first_stop_pos"] == 40
-    assert row["transcript_all_stop_codons"] == [(40, "TAG")]
+    assert row["alt_scan_start_codon_pos"] == 13
+    assert row["alt_scan_first_stop_codon"] == "TAG"
+    assert row["alt_scan_first_stop_pos"] == 40
+    assert row["alt_scan_stop_codons"] == [(40, "TAG")]
 
 
 @pytest.mark.parametrize(
@@ -872,13 +874,13 @@ def test_extract_ptc_stop_codon_change(tmp_path, strand):
     for swap in ["TAA>TAG", "TAA>TGA"]:
         assert result.loc[swap, "alt_valid_stop"] == True
         assert result.loc[swap, "stop_loss"] == False
-        assert result.loc[swap, "alt_is_premature"] == False
-        assert pd.isna(result.loc[swap, "transcript_num_stop_codons"])
+        assert result.loc[swap, "alt_has_ptc"] == False
+        assert pd.isna(result.loc[swap, "alt_scan_stop_codon_count"])
     # the annotated stop codon no longer encodes a stop
     assert result.loc["TAA>CAA", "stop_loss"] == True
-    assert result.loc["TAA>CAA", "alt_is_premature"] == False
+    assert result.loc["TAA>CAA", "alt_has_ptc"] == False
     # a stop gained in the last sense codon lies upstream of the annotated stop codon
-    assert result.loc["TGG>TAG", "alt_is_premature"] == True
+    assert result.loc["TGG>TAG", "alt_has_ptc"] == True
     assert result.loc["TGG>TAG", "stop_loss"] == False
 
 
@@ -897,7 +899,7 @@ def test_extract_ptc_gives_a_row_per_vcf_record(tmp_path, strand):
     result = _extract_ptc_synthetic(tmp_path, strand, True, {"var1": (46, "A"), "var2": (46, "A")})
 
     assert list(result.index) == ["var1", "var2"]
-    assert result["alt_is_premature"].tolist() == [True, True]
+    assert result["alt_has_ptc"].tolist() == [True, True]
     assert result["alt_first_stop_pos"].tolist() == [45, 45]
     # Apart from variant_id, the two rows are the same
     assert _values(result.loc["var1"], result.columns) == _values(result.loc["var2"], result.columns)
@@ -923,7 +925,7 @@ def test_extract_ptc_skips_records_with_alt_dot_or_star(tmp_path, strand, caplog
         )
 
     assert list(result.index) == ["var3"]
-    assert result.loc["var3", "alt_is_premature"] == True
+    assert result.loc["var3", "alt_has_ptc"] == True
     assert result.loc["var3", "alt_first_stop_pos"] == 45
     warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
     assert [message for message in warnings if "ALT" in message] == [

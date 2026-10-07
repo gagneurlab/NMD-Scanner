@@ -72,7 +72,7 @@ ARROW_TYPES = {
     "stop_codon_list": pa.list_(pa.struct([("position", pa.int64()), ("codon", pa.string())])),
 }
 # The columns of kind stop_codon_list: lists of (position, codon) tuples, which to_arrow turns into records
-STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons")
+STOP_CODON_COLUMNS = ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons")
 CASES_WITH_A_RESULT = [case for case in CASES if not isinstance(case.expected, Raises)]
 
 
@@ -115,8 +115,8 @@ def test_to_arrow_types_a_column_with_only_nulls(tmp_path):
     """The one row of a destroyed splice site has a null in a column of each kind: the alt CDS columns."""
     case = next(case for case in CASES if case.name == "snv_at_donor_plus_1_destroys_the_splice_site")
     null_columns = (
-        *("alt_cds_len", "start_loss", "alt_cds_seq"),
-        *("alt_cds_info", "alt_stop_codon_exons", "alt_all_stop_codons"),
+        *("alt_cds_length", "start_loss", "alt_cds_seq"),
+        *("alt_cds_exons", "alt_stop_codon_exons", "alt_stop_codons"),
     )
     assert {OUTPUT_COLUMN_KINDS[column] for column in null_columns} == set(ARROW_TYPES)
 
@@ -147,14 +147,14 @@ VALUES = {
     # None: a ref CDS of fewer than 3 nt
     "ref_valid_stop": {True, False, None},
     "ref_first_stop_codon": {"TAA", "TAG", "TGA", None},
-    "ref_is_premature": {True, False, None},
+    "ref_has_ptc": {True, False, None},
     "alt_valid_stop": {True, False, None},
     "alt_first_stop_codon": {"TAA", "TAG", "TGA", None},
-    "alt_is_premature": {True, False, None},
+    "alt_has_ptc": {True, False, None},
     "start_loss": {True, False, None},
     "stop_loss": {True, False, None},
     "transcript_valid_stop": {True, False, None},
-    "transcript_first_stop_codon": {"TAA", "TAG", "TGA", None},
+    "alt_scan_first_stop_codon": {"TAA", "TAG", "TGA", None},
     "unknown_reason": {"splice_site_destroyed", "exon_boundary_ambiguous", None},
     "ptc_less_than_150nt_to_start": {True, False, None},
     "likely_misannotated": {True, False},
@@ -208,12 +208,12 @@ def _scanned(row):
 
 
 def _no_exon_rows(row):
-    """A row shows that its transcript has no exon rows by a null transcript_exon_info."""
-    return row["transcript_exon_info"] is None
+    """A row shows that its transcript has no exon rows by a null transcript_exons."""
+    return row["transcript_exons"] is None
 
 
 def _keeps_the_flags_from_the_cds(row):
-    """Whether the row keeps alt_is_premature and stop_loss from the codon scan of the alt CDS."""
+    """Whether the row keeps alt_has_ptc and stop_loss from the codon scan of the alt CDS."""
     if not _known(row):
         return False
     seq = row["alt_transcript_seq"]
@@ -229,7 +229,7 @@ def _keeps_the_flags_from_the_cds(row):
 
 
 def _ptc_row(row):
-    return row["alt_is_premature"] is True
+    return row["alt_has_ptc"] is True
 
 
 def _no_orf_overlaps_the_cds_after_a_start_loss(row):
@@ -237,8 +237,8 @@ def _no_orf_overlaps_the_cds_after_a_start_loss(row):
     if not (_known(row) and row["has_stop_codon"] and row["start_loss"] and _scanned(row)):
         return False
     # The variant changes the start codon only, so the annotated stop codon is the last codon of the alt CDS
-    stop = row["alt_cds_start_in_transcript"] + row["alt_cds_len"] - 3
-    return row["transcript_start_codon_pos"] is None or row["transcript_start_codon_pos"] > stop
+    stop = row["alt_cds_start_in_transcript"] + row["alt_cds_length"] - 3
+    return row["alt_scan_start_codon_pos"] is None or row["alt_scan_start_codon_pos"] > stop
 
 
 UNKNOWN = "`unknown_reason` is set"
@@ -248,18 +248,18 @@ NO_IN_FRAME_STOP = "no in-frame stop codon"
 NO_EXON_ROWS = "the transcript has no exon rows"
 NOT_SCANNED = "not scanned"
 NOT_A_PTC_ROW = "not a PTC row"
-NO_ALT_EXONS = "`alt_transcript_exon_info` is null"
+NO_ALT_EXONS = "`alt_transcript_exons` is null"
 CDS_START_IS_NULL = "`cds_start_in_transcript` is null"
 NULL_CASES = [
     *[
         (column, UNKNOWN, lambda row: not _known(row))
         for column in (
-            *("alt_cds_start", "alt_cds_stop", "alt_cds_seq", "alt_cds_len", "alt_cds_info"),
+            *("alt_cds_start", "alt_cds_stop", "alt_cds_seq", "alt_cds_length", "alt_cds_exons"),
             *("alt_start_codon_pos", "alt_start_codon_exon", "alt_last_codon", "alt_valid_stop"),
-            *("alt_first_stop_codon", "alt_first_stop_pos", "alt_num_stop_codons", "alt_all_stop_codons"),
-            *("alt_stop_codon_exons", "alt_is_premature", "start_loss", "stop_loss"),
+            *("alt_first_stop_codon", "alt_first_stop_pos", "alt_stop_codon_count", "alt_stop_codons"),
+            *("alt_stop_codon_exons", "alt_has_ptc", "start_loss", "stop_loss"),
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
-            "alt_transcript_exon_info",
+            "alt_transcript_exons",
             *("ptc_less_than_150nt_to_start", "annotated_stop_distance"),
             *("nmd_last_exon_rule", "nmd_50nt_penultimate_rule", "nmd_long_exon_rule", "nmd_start_proximal_rule"),
             *("nmd_single_exon_rule", "nmd_escape"),
@@ -267,21 +267,21 @@ NULL_CASES = [
     ],
     *[
         entry
-        for column in ("ref_start_codon_pos", "ref_start_codon_exon")
+        for column in ("ref_start_codon_pos", "start_codon_exon")
         for entry in [
             (column, NO_START_CODON, lambda row: not row["has_start_codon"]),
-            (column, SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_len"] < 3),
+            (column, SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_length"] < 3),
         ]
     ],
     *[
-        (column, SHORT_CDS, lambda row: row["ref_cds_len"] < 3)
+        (column, SHORT_CDS, lambda row: row["ref_cds_length"] < 3)
         for column in (
             *("ref_last_codon", "ref_valid_stop", "ref_first_stop_codon", "ref_first_stop_pos"),
-            *("ref_num_stop_codons", "ref_all_stop_codons", "ref_stop_codon_exons", "ref_is_premature"),
+            *("ref_stop_codon_count", "ref_stop_codons", "ref_stop_codon_exons", "ref_has_ptc"),
         )
     ],
     *[
-        (column, NO_IN_FRAME_STOP, lambda row: row["ref_cds_len"] >= 3 and row["ref_num_stop_codons"] == 0)
+        (column, NO_IN_FRAME_STOP, lambda row: row["ref_cds_length"] >= 3 and row["ref_stop_codon_count"] == 0)
         for column in ("ref_first_stop_codon", "ref_first_stop_pos")
     ],
     *[
@@ -292,48 +292,50 @@ NULL_CASES = [
             (
                 column,
                 SHORT_CDS,
-                lambda row: _known(row) and row["has_start_codon"] and row["alt_cds_len"] < 3 and not row["start_loss"],
+                lambda row: (
+                    _known(row) and row["has_start_codon"] and row["alt_cds_length"] < 3 and not row["start_loss"]
+                ),
             ),
             (
                 column,
                 "the variant changes the start codon",
-                lambda row: _known(row) and row["start_loss"] and row["alt_cds_len"] >= 3,
+                lambda row: _known(row) and row["start_loss"] and row["alt_cds_length"] >= 3,
             ),
         ]
     ],
     *[
-        (column, SHORT_CDS, lambda row: _known(row) and row["alt_cds_len"] < 3)
+        (column, SHORT_CDS, lambda row: _known(row) and row["alt_cds_length"] < 3)
         for column in (
             *("alt_last_codon", "alt_valid_stop", "alt_first_stop_codon", "alt_first_stop_pos"),
-            *("alt_num_stop_codons", "alt_all_stop_codons", "alt_stop_codon_exons"),
+            *("alt_stop_codon_count", "alt_stop_codons", "alt_stop_codon_exons"),
         )
     ],
     *[
         (
             column,
             NO_IN_FRAME_STOP,
-            lambda row: _known(row) and row["alt_cds_len"] >= 3 and row["alt_num_stop_codons"] == 0,
+            lambda row: _known(row) and row["alt_cds_length"] >= 3 and row["alt_stop_codon_count"] == 0,
         )
         for column in ("alt_first_stop_codon", "alt_first_stop_pos")
     ],
     (
-        "alt_is_premature",
+        "alt_has_ptc",
         "the row keeps the flags from the CDS, and the alt CDS has fewer than 3 nt",
-        lambda row: _keeps_the_flags_from_the_cds(row) and row["alt_cds_len"] < 3,
+        lambda row: _keeps_the_flags_from_the_cds(row) and row["alt_cds_length"] < 3,
     ),
     # A transcript without exon rows gives a row with null transcript columns (NU-08)
     *[
         (column, NO_EXON_ROWS, _no_exon_rows)
         for column in (
             *("transcript_start", "transcript_end", "transcript_seq", "transcript_length"),
-            *("cds_start_in_transcript", "cds_end_in_transcript", "transcript_exon_info", "total_exon_count"),
+            *("cds_start_in_transcript", "cds_end_in_transcript", "transcript_exons", "total_exon_count"),
         )
     ],
     *[
         entry
         for column in (
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
-            "alt_transcript_exon_info",
+            "alt_transcript_exons",
         )
         for entry in [
             (column, CDS_START_IS_NULL, lambda row: _known(row) and row["cds_start_in_transcript"] is None),
@@ -348,13 +350,13 @@ NULL_CASES = [
         ]
     ],
     (
-        "alt_transcript_exon_info",
+        "alt_transcript_exons",
         "the exon lengths do not add up to `alt_transcript_length`",
         lambda row: row["alt_transcript_seq"] is not None,
     ),
     *[
         entry
-        for column in ("transcript_start_codon_pos", "transcript_start_codon_exon")
+        for column in ("alt_scan_start_codon_pos", "alt_scan_start_codon_exon")
         for entry in [
             (column, NOT_SCANNED, lambda row: not _scanned(row)),
             (
@@ -374,28 +376,28 @@ NULL_CASES = [
         ]
     ],
     (
-        "transcript_start_codon_exon",
+        "alt_scan_start_codon_exon",
         NO_ALT_EXONS,
         lambda row: (
-            _scanned(row) and row["transcript_start_codon_pos"] is not None and row["alt_transcript_exon_info"] is None
+            _scanned(row) and row["alt_scan_start_codon_pos"] is not None and row["alt_transcript_exons"] is None
         ),
     ),
     *[
         (column, NOT_SCANNED, lambda row: not _scanned(row))
         for column in (
-            *("transcript_last_codon", "transcript_valid_stop", "transcript_first_stop_codon"),
-            *("transcript_first_stop_pos", "transcript_num_stop_codons", "transcript_all_stop_codons"),
-            "transcript_stop_codon_exons",
+            *("transcript_last_codon", "transcript_valid_stop", "alt_scan_first_stop_codon"),
+            *("alt_scan_first_stop_pos", "alt_scan_stop_codon_count", "alt_scan_stop_codons"),
+            "alt_scan_stop_codon_exons",
         )
     ],
     (
-        "transcript_stop_codon_exons",
+        "alt_scan_stop_codon_exons",
         NO_ALT_EXONS,
-        lambda row: _scanned(row) and row["alt_transcript_exon_info"] is None,
+        lambda row: _scanned(row) and row["alt_transcript_exons"] is None,
     ),
     *[
-        (column, "no stop codon found", lambda row: _scanned(row) and row["transcript_num_stop_codons"] == 0)
-        for column in ("transcript_first_stop_codon", "transcript_first_stop_pos")
+        (column, "no stop codon found", lambda row: _scanned(row) and row["alt_scan_stop_codon_count"] == 0)
+        for column in ("alt_scan_first_stop_codon", "alt_scan_first_stop_pos")
     ],
     ("unknown_reason", "the alt transcript is known", lambda row: row["alt_cds_seq"] is not None),
     (
@@ -409,11 +411,11 @@ NULL_CASES = [
         entry
         for column in ("upstream_exon_count", "downstream_exon_count", "ptc_exon_length", "ptc_to_exon_end")
         for entry in [
-            (column, NOT_A_PTC_ROW, lambda row: row["alt_is_premature"] is False),
-            (column, NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exon_info"] is None),
+            (column, NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
+            (column, NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exons"] is None),
         ]
     ],
-    ("ptc_to_start_codon", NOT_A_PTC_ROW, lambda row: row["alt_is_premature"] is False),
+    ("ptc_to_start_codon", NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
     (
         "ptc_to_start_codon",
         "the transcript has no annotated start codon",
@@ -441,7 +443,7 @@ NULL_CASES = [
             and not row["start_loss"]
             and row["stop_loss"]
             and not _keeps_the_flags_from_the_cds(row)
-            and row["transcript_num_stop_codons"] == 0
+            and row["alt_scan_stop_codon_count"] == 0
         ),
     ),
     (
@@ -453,7 +455,7 @@ NULL_CASES = [
         "annotated_stop_distance",
         "on a row that keeps the flags from the CDS, the alt CDS has no in-frame stop codon",
         lambda row: (
-            _keeps_the_flags_from_the_cds(row) and row["has_stop_codon"] and row["alt_num_stop_codons"] in (0, None)
+            _keeps_the_flags_from_the_cds(row) and row["has_stop_codon"] and row["alt_stop_codon_count"] in (0, None)
         ),
     ),
 ]

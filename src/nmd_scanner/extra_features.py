@@ -14,7 +14,7 @@ def _plain_values(row):
     A row of the result table holds pd.NA for a missing value in an int, bool or string column. A row of a
     table without that schema can hold NaN instead, and a row taken with ``.iloc`` holds numpy scalars. The
     feature and rule functions test for a missing value with ``is None`` and for False with ``is False``, so
-    they need plain values. Lists, e.g. ``transcript_exon_info``, stay as they are.
+    they need plain values. Lists, e.g. ``transcript_exons``, stay as they are.
 
     :param row: A DataFrame row (pandas Series) or a dict
     :return: A dict of column name to value
@@ -36,26 +36,26 @@ def ptc_in_alt_transcript(row):
 
     The PTC is the first in-frame stop codon of the alt CDS, at alt_first_stop_pos in alt CDS coordinates. Its position
     in the alt transcript adds alt_cds_start_in_transcript. After a start loss, translation starts at the ATG of the
-    scan, and the PTC is the first in-frame stop codon after it, at transcript_first_stop_pos in the alt transcript.
-    alt_transcript_exon_info gives the exons of the alt transcript, with the length changes of the variant in the CDS
+    scan, and the PTC is the first in-frame stop codon after it, at alt_scan_first_stop_pos in the alt transcript.
+    alt_transcript_exons gives the exons of the alt transcript, with the length changes of the variant in the CDS
     and in the UTRs. An exon that the variant deletes has length 0. It is not in the mRNA, so it is left out.
 
     :param row: A dict of plain values (see _plain_values)
     :return: Tuple (position, exons, index): the position of the PTC in the alt transcript, (exon_number, start, end)
              of each exon of the alt transcript with bases, 5' to 3', in alt transcript positions (end is the position
              after the last base), and the index of the PTC exon in this list. None if the row is not a PTC row, or if
-             the PTC position or alt_transcript_exon_info is null.
+             the PTC position or alt_transcript_exons is null.
     """
 
-    if not row.get("alt_is_premature"):
+    if not row.get("alt_has_ptc"):
         return None
     if row.get("start_loss"):
-        position = row.get("transcript_first_stop_pos")
+        position = row.get("alt_scan_first_stop_pos")
     else:
         stop = row.get("alt_first_stop_pos")
         cds_start = row.get("alt_cds_start_in_transcript")
         position = None if stop is None or cds_start is None else cds_start + stop
-    exon_info = row.get("alt_transcript_exon_info")
+    exon_info = row.get("alt_transcript_exons")
     if position is None or not exon_info:
         return None
 
@@ -146,32 +146,32 @@ def calculate_utr_lengths(row):
     The 3'UTR starts after the stop codon, so its length is None without an annotated stop codon (has_stop_codon False).
 
     :param row: A row of the DataFrame including cds_start_in_transcript and cds_end_in_transcript
-                (coding region, from cds_range_in_transcript), transcript_exon_info and has_stop_codon
+                (coding region, from cds_range_in_transcript), transcript_exons and has_stop_codon
     :return: A dictionary with utr5_length and utr3_length, both None if the CDS position or the exons are unknown
     """
 
     cds_start = row.get("cds_start_in_transcript")
     cds_end = row.get("cds_end_in_transcript")
-    transcript_exon_info = row.get("transcript_exon_info") or []
+    transcript_exons = row.get("transcript_exons") or []
     has_stop_codon = bool(row["has_stop_codon"])
 
-    if cds_start is None or cds_end is None or not transcript_exon_info:
+    if cds_start is None or cds_end is None or not transcript_exons:
         return {"utr5_length": None, "utr3_length": None}
 
-    utr3 = sum(int(length) for _, length in transcript_exon_info) - cds_end
+    utr3 = sum(int(length) for _, length in transcript_exons) - cds_end
     return {"utr5_length": cds_start, "utr3_length": utr3 if utr3 >= 0 and has_stop_codon else None}
 
 
 def calculate_exon_features(row):
     """
     Calculate exon-related features:
-    - total_exon_count: the number of exons of the ref transcript (transcript_exon_info)
+    - total_exon_count: the number of exons of the ref transcript (transcript_exons)
     - upstream_exon_count / downstream_exon_count: the number of exons of the alt transcript upstream and downstream of
       the PTC exon, only on a PTC row (see ptc_in_alt_transcript). An exon that the variant deletes is not in the mRNA,
       so it does not count there.
     """
 
-    total_exons = len(row.get("transcript_exon_info") or [])
+    total_exons = len(row.get("transcript_exons") or [])
     ptc = ptc_in_alt_transcript(row)
     if ptc is None:
         return {
@@ -195,18 +195,18 @@ def calculate_ptc_to_start_distance(row):
     alt_first_stop_pos, both CDS positions. The distance is None if the transcript has no annotated start codon (e.g.
     cds_start_NF: the true start lies upstream of the CDS, at an unknown distance).
     After a start loss, translation starts at the ATG that the scan of the alt transcript found. So the distance runs
-    from that ATG (transcript_start_codon_pos) to the first in-frame stop codon after it (transcript_first_stop_pos),
+    from that ATG (alt_scan_start_codon_pos) to the first in-frame stop codon after it (alt_scan_first_stop_pos),
     both alt transcript positions. Such a row is a PTC row only if the scan found both (see rules.classify_rescued_orf).
     The distance is None, too, if the PTC is the annotated start codon itself, i.e. the annotated start codon is a stop
     codon such as TAG. Translation cannot start on a stop codon, so such a start codon is a misannotation.
     """
 
-    if not row.get("alt_is_premature"):
+    if not row.get("alt_has_ptc"):
         return None
 
     if row.get("start_loss"):
-        start = row.get("transcript_start_codon_pos")
-        stop = row.get("transcript_first_stop_pos")
+        start = row.get("alt_scan_start_codon_pos")
+        stop = row.get("alt_scan_first_stop_pos")
     else:
         start = row.get("alt_start_codon_pos")
         stop = row.get("alt_first_stop_pos")
@@ -252,7 +252,7 @@ def calculate_stop_codon_dist(row):
     analyze_transcript classifies the first in-frame stop codon of the alt transcript (see annotated_stop_distance).
     A row that keeps the flags from the CDS there takes alt_first_stop_pos, the first stop codon of the alt CDS.
     Without an alt transcript or alt_cds_start_in_transcript, both positions are in alt CDS coordinates, and the reference
-    stop codon is the last codon of the alt coding region, at alt_cds_len - 3. That holds only for a variant upstream of the stop codon: an
+    stop codon is the last codon of the alt coding region, at alt_cds_length - 3. That holds only for a variant upstream of the stop codon: an
     insertion inside it (TAA>TGAA) lengthens the alt coding region but leaves the stop codon in place. An indel
     upstream of the PTC shifts both positions by the same amount, so the distance is the same as in ref CDS
     coordinates.
@@ -269,12 +269,12 @@ def calculate_stop_codon_dist(row):
     alt_stop = row.get("alt_first_stop_pos")
     alt_cds_start = row.get("alt_cds_start_in_transcript")
     if isinstance(alt_seq, str) and alt_cds_start is not None and row.get("start_loss"):
-        return classify_rescued_orf(row, row.get("transcript_start_codon_pos"), row.get("transcript_first_stop_pos"))[2]
+        return classify_rescued_orf(row, row.get("alt_scan_start_codon_pos"), row.get("alt_scan_first_stop_pos"))[2]
     if not isinstance(alt_seq, str) or alt_cds_start is None:
-        alt_cds_len = row.get("alt_cds_len")
-        if alt_cds_len is None or alt_stop is None:
+        alt_cds_length = row.get("alt_cds_length")
+        if alt_cds_length is None or alt_stop is None:
             return None
-        return alt_cds_len - 3 - alt_stop
+        return alt_cds_length - 3 - alt_stop
 
     if ends_at_annotated_stop(row):
         first_stop = first_stop_codon(alt_seq, alt_cds_start + int(row["cds_frame"]))
@@ -296,8 +296,8 @@ def evaluate_nmd_escape_rules(row):
     A PTC is considered to escape NMD if it satisfies any of the above rules. "Technical Notes.md" has figures of the
     rules.
 
-    :param row: A row of the DataFrame including alt_is_premature (bool), the columns that ptc_in_alt_transcript reads
-                (the PTC position and alt_transcript_exon_info), total_exon_count, downstream_exon_count and
+    :param row: A row of the DataFrame including alt_has_ptc (bool), the columns that ptc_in_alt_transcript reads
+                (the PTC position and alt_transcript_exons), total_exon_count, downstream_exon_count and
                 ptc_exon_length (see add_nmd_features), and the columns that calculate_ptc_to_start_distance reads
     :return: A dictionary with boolean flags for each rule and overall NMD escape
     """
@@ -316,7 +316,7 @@ def evaluate_nmd_escape_rules(row):
         }
 
     # Only relevant for premature stop codons
-    if not row.get("alt_is_premature"):
+    if not row.get("alt_has_ptc"):
         return {
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": False,
@@ -449,7 +449,7 @@ def nmd_model_status(results):
     reason why it cannot. MODEL_STATUSES in nmd_scanner.schema lists the values and their conditions, in the order
     they are checked.
 
-    :param results: DataFrame with unknown_reason, alt_is_premature, ref_is_premature, has_stop_codon, has_start_codon
+    :param results: DataFrame with unknown_reason, alt_has_ptc, ref_has_ptc, has_stop_codon, has_start_codon
                     and the columns of MODEL_INPUTS
     :return: Series of the values of MODEL_STATUSES, with the index of ``results`` and the string dtype
     """
@@ -462,8 +462,8 @@ def nmd_model_status(results):
 
     conditions = [
         results["unknown_reason"].notna().to_numpy(),
-        ~is_true("alt_is_premature"),
-        is_true("ref_is_premature"),
+        ~is_true("alt_has_ptc"),
+        is_true("ref_has_ptc"),
         is_false("has_stop_codon"),
         is_false("has_start_codon"),
         is_true("start_loss") & results["ptc_to_start_codon"].isna().to_numpy(),
