@@ -1,6 +1,7 @@
 # Import dependencies
 
 import logging
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -525,28 +526,44 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
              unknown_reason has None in the alt columns.
     """
 
-    results = []
-
-    # Only transcripts with a variant. transcript_id can be category (see join_variants_to_cds).
+    # The rows of each pair of transcript and VCF record, in the order of the result. variant_row tells apart two
+    # records with the same CHROM, POS, REF and ALT. transcript_id can be category (see join_variants_to_cds).
     # observed=True: with the pandas 2 default (False), unused categories would be groups too.
-    for transcript_id, var_df in intersection_cds_vcf.groupby("transcript_id", observed=True):
+    variant_key = ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]
+    if "variant_row" in intersection_cds_vcf:
+        variant_key.append("variant_row")
+    df = intersection_cds_vcf.reset_index(drop=True)
+    variants_by_transcript = defaultdict(list)
+    for (transcript_id, *variant), positions in df.groupby(
+        ["transcript_id", *variant_key], observed=True
+    ).indices.items():
+        variants_by_transcript[transcript_id].append((variant, positions))
+
+    # The loop reads the joined rows by position. Taking a DataFrame of each pair is slow.
+    columns = {column: df[column].to_numpy() for column in df.columns}
+    starts = columns["Start"]
+
+    # The reference coding rows of each transcript with a variant
+    ref_rows = cds_df_test[cds_df_test["transcript_id"].isin(list(variants_by_transcript))]
+    ref_exons_by_transcript = dict(list(ref_rows.groupby("transcript_id", observed=True)))
+
+    results = []
+    for transcript_id, variants in variants_by_transcript.items():
         # 1. Get reference exons
-        ref_exons = cds_df_test[cds_df_test["transcript_id"] == transcript_id].copy()
-        ref_exons = ref_exons.sort_values("Start")
+        ref_exons = ref_exons_by_transcript[transcript_id].sort_values("Start")
 
         # Get reference CDS sequence start und stop position for finding position in transcript sequence
         cds_start = ref_exons["Start"].min()
         cds_end = ref_exons["End"].max()
 
         # Join reference exon sequences to form full CDS sequence
-        ref_seq = "".join(ref_exons["Exon_CDS_seq"].tolist())
+        exon_numbers = ref_exons["exon_number"].tolist()
+        exon_seqs = ref_exons["Exon_CDS_seq"].tolist()
+        ref_seq = "".join(exon_seqs)
 
         # Collect exon numbers and lengths (for tracking exon contribution later on)
         ref_cds_exons = sorted(
-            [
-                {"exon_number": row["exon_number"], "length": len(row["Exon_CDS_seq"])}
-                for _, row in ref_exons.iterrows()
-            ],
+            [{"exon_number": number, "length": len(seq)} for number, seq in zip(exon_numbers, exon_seqs)],
             key=lambda exon: exon["exon_number"],
         )
 
@@ -561,22 +578,18 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         # (e.g. cds_start_NF). That row has the smallest Start on the plus strand and the largest on the minus strand.
         cds_frame = int(ref_exons["Frame"].iloc[0 if strand == "+" else -1])
 
-        # One group per VCF record: variant_row tells apart two records with the same CHROM, POS, REF and ALT
-        variant_key = ["Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]
-        if "variant_row" in var_df:
-            variant_key.append("variant_row")
-        for variant, cds_df in var_df.groupby(variant_key, observed=True):
+        for variant, positions in variants:
             # Variant-identifying fields come straight from the group key;
             # ID and gene_id are constant within the group, so read them once.
             chromosome, variant_start, variant_end, ref_allele, alt_allele = variant[:5]
             # A record without ID has "." there, and its variant_id is null
-            variant_id = cds_df["ID"].iloc[0]
+            variant_id = columns["ID"][positions[0]]
             if variant_id == ".":
                 variant_id = None
-            gene_id = cds_df["gene_id"].iloc[0]
+            gene_id = columns["gene_id"][positions[0]]
 
             # An unknown alt transcript gives a row without alt CDS
-            unknown_reason = cds_df["unknown_reason"].iloc[0] if "unknown_reason" in cds_df else None
+            unknown_reason = columns["unknown_reason"][positions[0]] if "unknown_reason" in columns else None
             if isinstance(unknown_reason, str):
                 results.append(
                     {
@@ -609,28 +622,18 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                 continue
 
             # Sort variant exons
-            cds_df = cds_df.sort_values("Start")
-
-            # Copy ref exons for modification
-            alt_exons = ref_exons.copy()
+            rows = sorted(positions, key=lambda row: starts[row])
 
             # Replace affected exon sequences with variant versions
-            for _, var_row in cds_df.iterrows():
-                exon_nr = var_row["exon_number"]
-                alt_exons.loc[alt_exons["exon_number"] == exon_nr, "Exon_CDS_seq"] = var_row["Exon_Alt_CDS_seq"]
-
-            # Join and sort alt CDS
-            alt_exons = alt_exons.sort_values("Start")
+            alt_by_exon = {columns["exon_number"][row]: columns["Exon_Alt_CDS_seq"][row] for row in rows}
+            alt_exon_seqs = [alt_by_exon.get(number, seq) for number, seq in zip(exon_numbers, exon_seqs)]
 
             alt_cds_exons = sorted(
-                [
-                    {"exon_number": row["exon_number"], "length": len(row["Exon_CDS_seq"])}
-                    for _, row in alt_exons.iterrows()
-                ],
+                [{"exon_number": number, "length": len(seq)} for number, seq in zip(exon_numbers, alt_exon_seqs)],
                 key=lambda exon: exon["exon_number"],
             )
 
-            alt_seq = "".join(alt_exons["Exon_CDS_seq"].tolist())
+            alt_seq = "".join(alt_exon_seqs)
 
             # Apply reverse complement if on minus strand
             alt_seq_final = str(Seq(alt_seq).reverse_complement()) if strand == "-" else alt_seq
@@ -658,9 +661,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
                     "end": variant_end,
                     "ref_cds_exons": ref_cds_exons,
                     "alt_cds_exons": alt_cds_exons,
-                    "utr5_change": utr_change(cds_df, "UTR5"),
-                    "utr3_change": utr_change(cds_df, "UTR3"),
-                    "alt_exon_lengths": cds_df["Alt_Exon_Lengths"].iloc[0] if "Alt_Exon_Lengths" in cds_df else None,
+                    "utr5_change": utr_change(columns, rows[0], "UTR5"),
+                    "utr3_change": utr_change(columns, rows[0], "UTR3"),
+                    "alt_exon_lengths": columns["Alt_Exon_Lengths"][rows[0]] if "Alt_Exon_Lengths" in columns else None,
                     "unknown_reason": None,
                 }
             )
@@ -673,18 +676,19 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     return results_df
 
 
-def utr_change(cds_df, utr):
+def utr_change(columns, row, utr):
     """
     The UTR change (ref, alt) of a variant-transcript pair, from the columns that apply_variants adds; both empty
     without them.
 
-    :param cds_df: The coding rows of the pair
+    :param columns: The columns of the joined rows, as arrays by row position
+    :param row: Position of a coding row of the pair
     :param utr: "UTR5" or "UTR3"
     """
 
-    if f"{utr}_Ref" not in cds_df:
+    if f"{utr}_Ref" not in columns:
         return "", ""
-    return cds_df[f"{utr}_Ref"].iloc[0], cds_df[f"{utr}_Alt"].iloc[0]
+    return columns[f"{utr}_Ref"][row], columns[f"{utr}_Alt"][row]
 
 
 def get_transcript_sequence(exons_df, fasta):
