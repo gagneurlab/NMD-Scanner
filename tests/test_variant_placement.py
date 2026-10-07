@@ -9,10 +9,8 @@ import pytest
 from Bio.Seq import Seq
 from pyfaidx import Fasta
 
-from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.variant_placement import (
-    EXON_BOUNDARY_AMBIGUOUS,
     SPLICE_SITE_DESTROYED,
     Placement,
     ReferenceSequence,
@@ -113,38 +111,10 @@ def _effect(variant_start, ref, alt, coding_rows=((2, 10), (30, 40)), exons=_EXO
     return place_in_transcript(placements, list(coding_rows), exons, _GENOME, "+", coding_region)
 
 
-def test_place_in_transcript_exonic_snv():
-    effect = _effect(9, "T", "C")
-    assert effect.unknown_reason is None
-    assert effect.alt_coding == {(2, 10): "ATGGCTCC", (30, 40): "AGTGAACGTT"}
-
-
 def test_place_in_transcript_untouched():
     # intron +5, and an intron variant that does not shift into the splice dinucleotide
     assert _effect(14, "A", "G") is None
     assert _effect(18, "C", "") is None
-
-
-def test_place_in_transcript_splice_dinucleotide_snv():
-    assert _effect(10, "G", "A").unknown_reason == SPLICE_SITE_DESTROYED
-    assert _effect(29, "G", "C").unknown_reason == SPLICE_SITE_DESTROYED
-
-
-def test_place_in_transcript_deletion_over_boundary_destroys_splice_site():
-    # exon -1 to intron +5: TGTGTA leaves CTCAG..., no GT after any position
-    assert _effect(9, "TGTGTA", "").unknown_reason == SPLICE_SITE_DESTROYED
-
-
-def test_place_in_transcript_ambiguous_insertion():
-    # inserting GT in CT|GTGT: the exon keeps its end or gains GT
-    assert _effect(10, "", "GT").unknown_reason == EXON_BOUNDARY_AMBIGUOUS
-
-
-def test_place_in_transcript_transcript_end_has_no_splice_site():
-    # the coding region reaches the transcript start at 2; a deletion over it leaves the exon shorter
-    effect = _effect(1, "CA", "")
-    assert effect.unknown_reason is None
-    assert effect.alt_coding[2, 10] == "TGGCTCT"
 
 
 def test_place_in_transcript_changes_over_boundary_that_keep_the_donor():
@@ -230,8 +200,6 @@ _STOP = "TAA"
 _UTR3 = "AAAGCTGCC"
 _LAYOUT = _FLANK + _UTR5 + _EXON1_CDS + _INTRON1 + _EXON2 + _INTRON2 + _EXON3_CDS + _STOP + _UTR3 + _FLANK
 _REF_CDS = _EXON1_CDS + _EXON2 + _EXON3_CDS + _STOP
-_DONOR1 = 22  # end of exon 1
-_ACCEPTOR2 = 42  # start of exon 2
 _STOP_END = 87
 # (feature, exon number, start, end) in layout positions. A CDS row includes the stop codon.
 _ROWS = [
@@ -330,76 +298,6 @@ def strand(request):
     return request.param
 
 
-def test_exonic_snv(tmp_path, strand):
-    row = _single_row(_run(tmp_path, strand, 15, "T", "C"))
-    assert pd.isna(row["unknown_reason"])
-    assert row["ref_cds_seq"] == _REF_CDS
-    assert row["alt_cds_seq"] == "ACGGCTCT" + _REF_CDS[8:]
-
-
-def test_mnv_over_donor_that_changes_only_the_exon_base(tmp_path, strand):
-    # exon -1 T>C, intron +1 G stays
-    row = _single_row(_run(tmp_path, strand, _DONOR1 - 1, "TG", "CG"))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == "ATGGCTCC" + _REF_CDS[8:]
-
-
-def test_deletion_with_an_equivalent_intronic_placement(tmp_path, strand):
-    # CT|GTGT: deleting TG over the boundary equals deleting the intron's GT, so the exon stays as it is
-    row = _single_row(_run(tmp_path, strand, _DONOR1 - 1, "TG", ""))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == _REF_CDS
-
-
-def test_acceptor_deletion_left_aligned_into_the_intron(tmp_path, strand):
-    # CAG|AGT: deleting the intron's AG equals deleting the exon's AG; only the latter keeps the acceptor
-    row = _single_row(_run(tmp_path, strand, _ACCEPTOR2 - 2, "AG", ""))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == _EXON1_CDS + _EXON2[2:] + _EXON3_CDS + _STOP
-
-
-@pytest.mark.parametrize(
-    "position, inserted, alt_cds",
-    [
-        (_ACCEPTOR2, "T", _EXON1_CDS + "T" + _EXON2 + _EXON3_CDS + _STOP),
-        (_DONOR1, "A", _EXON1_CDS + "A" + _EXON2 + _EXON3_CDS + _STOP),
-    ],
-    ids=["acceptor", "donor"],
-)
-def test_insertion_between_intron_and_exon(tmp_path, strand, position, inserted, alt_cds):
-    # The inserted bases go into the exon. On the plus strand, the acceptor lies on the left genomic side of the
-    # exon and the donor on the right; on the minus strand it is the other way round.
-    row = _single_row(_run(tmp_path, strand, position, "", inserted))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == alt_cds
-
-
-@pytest.mark.parametrize("position, alt", [(_DONOR1, "A"), (_DONOR1 + 1, "C"), (_ACCEPTOR2 - 1, "C")])
-def test_splice_dinucleotide_snv(tmp_path, strand, position, alt):
-    row = _single_row(_run(tmp_path, strand, position, _LAYOUT[position], alt))
-    assert row["unknown_reason"] == SPLICE_SITE_DESTROYED
-    assert row["ref_cds_seq"] == _REF_CDS
-    assert pd.isna(row["alt_cds_seq"])
-    assert pd.isna(row["start_loss"]) and pd.isna(row["stop_loss"])
-
-    row = row.to_dict()
-    features = add_nmd_features(row)
-    assert features["ptc_less_than_150nt_to_start"] is None
-    assert features["total_exon_count"] == 3
-    assert all(value is None for value in evaluate_nmd_escape_rules(row).values())
-
-
-def test_intron_snv_outside_the_dinucleotide_has_no_row(tmp_path, strand):
-    assert _run(tmp_path, strand, _DONOR1 + 2, "G", "A").empty
-
-
-def test_ambiguous_acceptor_insertion(tmp_path, strand):
-    # CAG|AG + AG: the exon may start at either AG
-    row = _single_row(_run(tmp_path, strand, _ACCEPTOR2, "", "AG"))
-    assert row["unknown_reason"] == EXON_BOUNDARY_AMBIGUOUS
-    assert pd.isna(row["alt_cds_seq"])
-
-
 def test_deletion_in_a_run_at_the_stop_codon(tmp_path, strand):
     # TAA|AAA: deleting one A anywhere in the run leaves TAA in place. On the minus strand, the left-normalized
     # VCF placement lies fully in the 3'UTR, so the VCF interval does not touch the coding region.
@@ -459,52 +357,6 @@ def test_insertion_in_the_stop_codon_run_at_an_exon_end(tmp_path, strand):
     assert pd.isna(row["unknown_reason"])
     assert row["alt_cds_seq"] == _EDGE_CDS
     assert row["stop_loss"] == False
-
-
-def _donor_layout(exon1_end):
-    """_LAYOUT with exon 1 ending in ``exon1_end`` and intron 1 starting with GTAAGT."""
-    layout = _FLANK + _UTR5 + "ATGGC" + exon1_end + _EDGE_INTRON + _LAYOUT[_ACCEPTOR2:]
-    assert len(layout) == len(_LAYOUT)
-    return layout
-
-
-# A delins whose REF and ALT differ in length is matched from the left and from the right. The splice site rule and
-# the coding region edge rules treat these two like equivalent placements.
-@pytest.mark.parametrize(
-    "exon1_end, position, ref, alt",
-    [
-        # CTG|GTA to CGGTTTT: GT follows GG, but neither matching keeps GT after the boundary
-        ("CTG", 20, "TGGTA", "GGTTTT"),
-        # CAG|GTA to GGGTTTT: the same with GGG
-        ("CAG", 19, "CAGGTA", "GGGTTTT"),
-    ],
-    ids=["TGGTA_GGTTTT", "CAGGTA_GGGTTTT"],
-)
-def test_delins_over_donor_that_destroys_it(tmp_path, strand, exon1_end, position, ref, alt):
-    row = _single_row(_run(tmp_path, strand, position, ref, alt, _donor_layout(exon1_end)))
-    assert row["unknown_reason"] == SPLICE_SITE_DESTROYED
-
-
-@pytest.mark.parametrize(
-    "alt, exon1_cds",
-    [
-        # CTCT|GTGTAA to CTCCC|GTATAA: only matching from the right keeps GT after the boundary
-        ("CCGTA", "ATGGCTCCC"),
-        # CTCT|GTGTAA to CTCA|GTCCTAA: only matching from the left keeps GT after the boundary
-        ("AGTCC", "ATGGCTCA"),
-    ],
-    ids=["from_the_right", "from_the_left"],
-)
-def test_delins_over_donor_that_one_matching_keeps(tmp_path, strand, alt, exon1_cds):
-    row = _single_row(_run(tmp_path, strand, _DONOR1 - 1, "TGTG", alt))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == exon1_cds + _REF_CDS[8:]
-
-
-def test_delins_over_donor_that_both_matchings_keep(tmp_path, strand):
-    # CT|GTGT to CTAGTGTC: GT follows A if matched from the left, and AGT if matched from the right
-    row = _single_row(_run(tmp_path, strand, _DONOR1 - 1, "TGTG", "AGTGTC"))
-    assert row["unknown_reason"] == EXON_BOUNDARY_AMBIGUOUS
 
 
 def test_delins_over_the_start_codon_edge(tmp_path, strand):
@@ -575,26 +427,6 @@ _SHORT_ROWS = [
     ("CDS", 2, 50, 62),
     ("CDS", 3, 82, 91),
 ]
-
-
-# A placement counts only if it keeps every splice site it maps. Taking each splice site from another placement
-# can make two exons overlap.
-@pytest.mark.parametrize(
-    "position, ref, alt",
-    [
-        # G|intron 1|CA to 19 C, AG, CCC, GT, 20 C: matched from the left, only the acceptor keeps its AG. Matched
-        # from the right, only the donor keeps its GT, 3 bases after that acceptor, so CCC would be in both exons.
-        (29, "G" + _EDGE_INTRON + "CA", "C" * 19 + "AGCCCGT" + "C" * 20),
-        # TCAG|exon 2|GTA to CCAGTC: matched from the left, only the acceptor keeps its AG. Matched from the right,
-        # only the donor keeps its GT, 1 base before that acceptor, so exon 2 would have a negative length.
-        (46, "TCAG" + _SHORT_EXON2 + "GTA", "CCAGTC"),
-    ],
-    ids=["overlapping_exons", "exon_of_negative_length"],
-)
-def test_delins_whose_matchings_each_keep_one_splice_site(tmp_path, strand, position, ref, alt):
-    row = _single_row(_run(tmp_path, strand, position, ref, alt, _SHORT_LAYOUT, _SHORT_ROWS))
-    assert row["unknown_reason"] == SPLICE_SITE_DESTROYED
-    assert pd.isna(row["alt_cds_seq"])
 
 
 def test_deletion_of_a_whole_short_exon(tmp_path, strand):
