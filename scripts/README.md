@@ -75,6 +75,23 @@ This notebook contains the full NMD-Scanner implementation split into individual
 
 ---
 
+### 5. `train_model.py`
+
+Retrains the NMD efficiency model on the features of the installed NMD-Scanner release. It replaces the
+notebooks above for that purpose: it runs end to end and pins its dependencies in a PEP 723 header.
+
+```bash
+uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir out/
+```
+
+- The target is `NMD_efficiency` of the NMDEff TCGA benchmark, downloaded at a pinned commit.
+- The variants are `resources/TCGA_benchmark/tcga_dataset.vcf`.
+- It compares the random forest of `best_model.pkl`, a tuned random forest and LightGBM with default
+  hyperparameters in nested cross-validation. The folds are grouped by chromosome, and for comparison by variant.
+- It saves the tuned random forest and the LightGBM model, both fit on all usable rows, to `out/models/`.
+
+---
+
 ## Notes
 
 - None of the notebooks are required for end users of the package.
