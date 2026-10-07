@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.4.0...v0.5.0) (2026-10-07)
+
+
+### Features
+
+* retrain the NMD efficiency model on NMD-Scanner 0.4.0 features ([23fbdda](https://github.com/gagneurlab/NMD-Scanner/commit/23fbdda1de7f7f325bdf316021bea544e9b4050d))
+
+
+### Bug Fixes
+
+* name the file in read errors on polars 2 ([43649e2](https://github.com/gagneurlab/NMD-Scanner/commit/43649e2fb34622aa52164afa5e90b43ad69dce80))
+* **resources:** write the genomic alleles into the TCGA benchmark VCF ([23fbdda](https://github.com/gagneurlab/NMD-Scanner/commit/23fbdda1de7f7f325bdf316021bea544e9b4050d))
+
 ## [0.4.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.3.0...v0.4.0) (2026-10-07)
 
 
