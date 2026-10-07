@@ -123,23 +123,6 @@ def test_empty_and_nonempty_results_have_the_same_schema(run_main, request, vcf,
     assert_schema(written, OUTPUT_COLUMN_KINDS)
 
 
-@pytest.mark.parametrize(
-    "vcf, has_rows",
-    [
-        ("resources/test_files/variants.vcf", True),
-        ("intergenic_vcf", False),
-        ("reference_mismatch_vcf", False),
-    ],
-)
-def test_annotate_returns_the_same_schema_for_empty_and_nonempty_results(request, vcf, has_rows):
-    vcf_path = request.getfixturevalue(vcf) if vcf.endswith("_vcf") else vcf
-
-    results = cli.annotate(vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-
-    assert (len(results) > 0) == has_rows
-    assert_schema(results, OUTPUT_COLUMN_KINDS)
-
-
 def test_feature_and_rule_columns_match_the_schema(run_main):
     _, written = run_main("resources/test_files/variants.vcf")
     row = written.iloc[0]

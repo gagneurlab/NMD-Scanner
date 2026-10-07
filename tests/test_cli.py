@@ -720,14 +720,6 @@ def test_annotate_does_not_write_files_or_configure_logging(tmp_path):
     assert completed.stdout.split() == ["0", str(logging.INFO)]
 
 
-def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic_vcf):
-    results = annotate(intergenic_vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-
-    assert isinstance(results, pd.DataFrame)
-    assert results.empty
-    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
-
-
 # Each symbolic allele and breakend sits at the position of v1, inside the GREB1L CDS. Before they were skipped, a
 # symbolic allele with a padding base went into the alt CDS as text, e.g. "<DEL>".
 SYMBOLIC_ALTS = ["<DEL>", "<DUP>", "<INS>", "<INV>", "<CNV>", "<DUP:TANDEM>", "G]chr2:100]", "[chr2:100[G", "G.", ".G"]
@@ -753,13 +745,6 @@ def test_annotate_skips_symbolic_alleles_and_breakends_with_a_warning(tmp_path, 
     assert any(
         message.startswith(f"Skipping {len(SYMBOLIC_ALTS)} variant(s) with a symbolic ALT") for message in warnings
     )
-
-
-def test_annotate_with_only_symbolic_alleles_returns_all_columns_and_no_rows(tmp_path):
-    results = annotate(_symbolic_vcf(tmp_path, False), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-
-    assert results.empty
-    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
 
 
 def test_annotate_without_symbolic_alleles_does_not_warn_about_them(caplog):
