@@ -31,16 +31,16 @@ NMD-Scanner reads a transcript with one of these misannotations. The null cases 
 These clauses add to the "Null when" column of the tables in "Technical Notes.md". "as `x`" stands for the clauses
 of column `x` in both files.
 
-| Column | Null when |
-|---|---|
-| `transcript_start` | the transcript has no exon rows |
-| `transcript_end` | as `transcript_start` |
-| `transcript_seq` | as `transcript_start` |
-| `transcript_length` | as `transcript_start` |
+| Column                    | Null when                                                               |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `transcript_start`        | the transcript has no exon rows                                         |
+| `transcript_end`          | as `transcript_start`                                                   |
+| `transcript_seq`          | as `transcript_start`                                                   |
+| `transcript_length`       | as `transcript_start`                                                   |
 | `cds_start_in_transcript` | the transcript has no exon rows; the 5' CDS base lies outside the exons |
-| `cds_end_in_transcript` | as `cds_start_in_transcript` |
-| `alt_transcript_seq` | `cds_start_in_transcript` is null |
-| `transcript_exons` | the transcript has no exon rows |
-| `alt_transcript_exons` | the exon lengths do not add up to `alt_transcript_length` |
-| `total_exon_count` | the transcript has no exon rows |
-| `ptc_to_start_codon` | the annotated start codon is a stop codon, such as TAG |
+| `cds_end_in_transcript`   | as `cds_start_in_transcript`                                            |
+| `alt_transcript_seq`      | `cds_start_in_transcript` is null                                       |
+| `transcript_exons`        | the transcript has no exon rows                                         |
+| `alt_transcript_exons`    | the exon lengths do not add up to `alt_transcript_length`               |
+| `total_exon_count`        | the transcript has no exon rows                                         |
+| `ptc_to_start_codon`      | the annotated start codon is a stop codon, such as TAG                  |

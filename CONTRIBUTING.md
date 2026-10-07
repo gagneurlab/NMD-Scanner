@@ -27,13 +27,13 @@ uv run tox -e <env>
 
 Available environments (defined in `pyproject.toml`):
 
-| Env             | Purpose                                  |
-|-----------------|------------------------------------------|
-| `format-check`  | `ruff format --check .`                  |
-| `lints`         | `ruff check .`                           |
-| `typecheck`     | `mypy src/nmd_scanner`                   |
-| `py3.12`        | Run pytest under Python 3.12             |
-| `py3.14`        | Run pytest under Python 3.14             |
+| Env            | Purpose                      |
+| -------------- | ---------------------------- |
+| `format-check` | `ruff format --check .`      |
+| `lints`        | `ruff check .`               |
+| `typecheck`    | `mypy src/nmd_scanner`       |
+| `py3.12`       | Run pytest under Python 3.12 |
+| `py3.14`       | Run pytest under Python 3.14 |
 
 Run the full matrix CI runs with:
 
@@ -70,4 +70,3 @@ Versioning and tagging are automated by [release-please](https://github.com/goog
 - `release-please.yml` does not call `publish.yml` via `workflow_call`, because PyPI then rejects the upload's attestation: the attestation names `release-please.yml`, but the trusted publisher on PyPI is `publish.yml`.
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) on `main` so release-please can pick the next version (`fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major). Before 1.0.0, a breaking change bumps the minor version instead (`bump-minor-pre-major` in `release-please-config.json`).
-
