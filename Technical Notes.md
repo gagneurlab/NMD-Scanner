@@ -102,24 +102,24 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 
 | Column | Kind | Meaning | Null when |
 |---|---|---|---|
-| `transcript_id` | string | Transcript ID from the annotation | never |
+| `chrom` | string | Chromosome name, as in the input files | never |
+| `start` | int | Genomic start of the variant: VCF POS minus 1 | never |
+| `end` | int | Genomic end of the variant: `start` plus the length of REF | never |
+| `ref` | string | REF allele of the VCF record | never |
+| `alt` | string | ALT allele of the VCF record | never |
 | `variant_id` | string | ID of the VCF record | the ID of the VCF record is `.` |
+| `transcript_id` | string | Transcript ID from the annotation | never |
 | `cds_start` | int | Genomic start of the coding region: the smallest Start of its CDS rows | never |
 | `cds_end` | int | Genomic end of the coding region: the largest End of its CDS rows | never |
 | `ref_cds_seq` | string | Sequence of the ref CDS, 5' to 3', stop codon included | never |
 | `ref_cds_length` | int | Length of `ref_cds_seq` | never |
 | `alt_cds_seq` | string | Sequence of the alt CDS: `ref_cds_seq` with the variant applied. At an edge of the coding region, the placements of the variant decide which alt bases are coding (see [Variants at exon boundaries](#variants-at-exon-boundaries)) | `unknown_reason` is set |
 | `alt_cds_length` | int | Length of `alt_cds_seq` | `unknown_reason` is set |
-| `chromosome` | string | Chromosome name, as in the input files | never |
 | `gene_id` | string | Gene ID from the annotation | never |
 | `strand` | strand | Strand of the transcript, `+` or `-` | never |
 | `has_start_codon` | bool | Whether the CDS starts with an annotated start codon, at CDS position 0. It can be a non-ATG codon such as CTG. A `cds_start_NF` transcript has none | never |
 | `has_stop_codon` | bool | Whether the coding region ends in an annotated stop codon | never |
 | `cds_frame` | int | GFF3 phase of the 5'-most CDS row: the number of bases before the first complete codon, 0 to 2. It is 1 or 2 only for a CDS that lacks its 5' end, e.g. of a `cds_start_NF` transcript. Every codon scan starts at CDS position `cds_frame` (see [Positions and terms](#positions-and-terms)) | never |
-| `ref` | string | REF allele of the VCF record | never |
-| `alt` | string | ALT allele of the VCF record | never |
-| `variant_start` | int | Genomic start of the variant: VCF POS minus 1 | never |
-| `variant_end` | int | Genomic end of the variant: `variant_start` plus the length of REF | never |
 | `ref_cds_exons` | pair_list | `exon_number` and `length` of the ref CDS part in each exon, in exon number order | never |
 | `alt_cds_exons` | pair_list | `exon_number` and `length` of the alt CDS part in each exon, in exon number order | `unknown_reason` is set |
 | `cds_in_transcript` | bool | Whether `ref_cds_seq` occurs in `transcript_seq` | never |
@@ -221,7 +221,7 @@ A row gets the first value whose condition holds, in this order (`MODEL_STATUSES
 
 ### Column names before 0.4.0
 
-Release 0.4.0 renamed 26 columns, so that the names follow one scheme. The values stay the same. The scan columns of the alt transcript start with `alt_scan_`, because they hold positions in `alt_transcript_seq`. Lengths end in `_length`, counts in `_count`, and genomic ends in `_end`. `ptc_to_exon_end` and `annotated_stop_distance` are model inputs, so a model trained on the old names needs them mapped.
+Release 0.4.0 renamed 27 columns, so that the names follow one scheme. The values stay the same. The variant columns `chrom`, `start` and `end` are named as in BED. The scan columns of the alt transcript start with `alt_scan_`, because they hold positions in `alt_transcript_seq`. Lengths end in `_length`, counts in `_count`, and genomic ends in `_end`. `ptc_to_exon_end` and `annotated_stop_distance` are model inputs, so a model trained on the old names needs them mapped.
 
 | Name before 0.4.0 | Name since 0.4.0 |
 |---|---|
@@ -237,8 +237,9 @@ Release 0.4.0 renamed 26 columns, so that the names follow one scheme. The value
 | `ref_start_codon_exon` | `start_codon_exon` |
 | `ref_cds_start` | `cds_start` |
 | `ref_cds_stop` | `cds_end` |
-| `start_variant` | `variant_start` |
-| `end_variant` | `variant_end` |
+| `chromosome` | `chrom` |
+| `start_variant` | `start` |
+| `end_variant` | `end` |
 | `ref_cds_len` | `ref_cds_length` |
 | `alt_cds_len` | `alt_cds_length` |
 | `ref_num_stop_codons` | `ref_stop_codon_count` |

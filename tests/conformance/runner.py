@@ -38,7 +38,7 @@ FLAVORS = ("gencode", "ensembl")
 REF_COLUMNS = (
     "transcript_id",
     "gene_id",
-    "chromosome",
+    "chrom",
     "strand",
     "cds_start",
     "cds_end",
@@ -73,7 +73,7 @@ REF_COLUMNS = (
 # The columns that depend on the variant. A Case gives their expected values.
 CASE_COLUMNS = tuple(column for column in OUTPUT_COLUMN_KINDS if column not in REF_COLUMNS)
 # The columns that echo the VCF record
-RECORD_COLUMNS = ("ref", "alt", "variant_start", "variant_end")
+RECORD_COLUMNS = ("ref", "alt", "start", "end")
 
 
 class PerStrand(NamedTuple):
@@ -88,7 +88,7 @@ def per_strand(plus, minus):
 
 
 # Expected values that many cases share
-IDS = {"transcript_id": "tx1", "gene_id": "g1", "chromosome": CHROMOSOME, "strand": per_strand("+", "-")}
+IDS = {"transcript_id": "tx1", "gene_id": "g1", "chrom": CHROMOSOME, "strand": per_strand("+", "-")}
 NOT_SCANNED = {
     "alt_scan_start_codon_pos": None,
     "alt_scan_start_codon_exon": None,
@@ -612,7 +612,7 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
         # Another description of the variant: the columns that echo the VCF record take it from the record, unless a
         # further row gives them
         pos, ref, alt = record
-        echo = {"ref": ref, "alt": alt, "variant_start": pos - 1, "variant_end": pos - 1 + len(ref)}
+        echo = {"ref": ref, "alt": alt, "start": pos - 1, "end": pos - 1 + len(ref)}
         for row, more in zip(rows, ({}, *case.more_rows)):
             row.update({column: value for column, value in echo.items() if column not in more})
     assert len(results) == len(rows), f"expected {len(rows)} rows, got {len(results)}"

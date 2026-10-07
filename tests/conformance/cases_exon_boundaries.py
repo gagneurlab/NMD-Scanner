@@ -252,9 +252,9 @@ START_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE = Layout(
 )
 
 
-def record(ref, alt, variant_start, variant_end):
+def record(ref, alt, start, end):
     """The columns that echo the VCF record. Each argument is a value or a per_strand pair."""
-    return {"variant_id": "var1", "ref": ref, "alt": alt, "variant_start": variant_start, "variant_end": variant_end}
+    return {"variant_id": "var1", "ref": ref, "alt": alt, "start": start, "end": end}
 
 
 CASES = [

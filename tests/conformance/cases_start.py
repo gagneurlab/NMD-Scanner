@@ -47,8 +47,8 @@ RULE_COLUMNS = tuple(NO_RULE)
 
 
 def variant(ref, alt, start, end):
-    """The columns of the VCF record var1: ref, alt, variant_start and variant_end."""
-    return {"variant_id": "var1", "ref": ref, "alt": alt, "variant_start": start, "variant_end": end}
+    """The columns of the VCF record var1: ref, alt, start and end."""
+    return {"variant_id": "var1", "ref": ref, "alt": alt, "start": start, "end": end}
 
 
 def columns(names, *values):
@@ -133,8 +133,8 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("T", "A"),
             "alt": per_strand("C", "G"),
-            "variant_start": per_strand(14, 48),
-            "variant_end": per_strand(15, 49),
+            "start": per_strand(14, 48),
+            "end": per_strand(15, 49),
             "alt_cds_seq": "ACGAAACCCGACTAA",
             "alt_cds_length": 15,
             "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
@@ -180,8 +180,8 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("T", "A"),
             "alt": per_strand("C", "G"),
-            "variant_start": per_strand(14, 48),
-            "variant_end": per_strand(15, 49),
+            "start": per_strand(14, 48),
+            "end": per_strand(15, 49),
             "alt_cds_seq": "CCGAAACCCGACTAA",
             "alt_cds_length": 15,
             "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
@@ -227,8 +227,8 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("C", "G"),
             "alt": per_strand("G", "C"),
-            "variant_start": per_strand(40, 22),
-            "variant_end": per_strand(41, 23),
+            "start": per_strand(40, 22),
+            "end": per_strand(41, 23),
             "alt_cds_seq": "CTGAAACGCGACTAA",
             "alt_cds_length": 15,
             "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
