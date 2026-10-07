@@ -1,5 +1,89 @@
 # Changelog
 
+## [0.4.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.3.0...v0.4.0) (2026-10-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* raise a KeyError in add_nmd_features and evaluate_nmd_escape_rules for a row without a column they read
+* rename the model inputs ptc_to_intron and stop_codon_distance
+* rename the output columns to one naming scheme
+* drop the output columns that carry no information of their own
+* make the NMD rules null on rows without a PTC or with a null rule input
+* type the list columns as named structs and keep their shape through Parquet and CSV
+* make the closed value sets categorical and give variant_id null without an ID
+* start the output with the columns that identify a row
+* remove cli.parquet_schema and cli.to_parquet_safe
+
+### Features
+
+* add nmd_model_status and MODEL_INPUTS for the NMD efficiency model ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* add ptc_pos_in_alt_transcript, ptc_exon_number and stop_classification ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* add sequences=False and --no-sequences to drop the 4 sequence columns ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* add the output columns unknown_reason, alt_cds_start_in_transcript, cds_frame, has_start_codon and alt_transcript_exon_info ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* add to_arrow to convert the result table to a typed Arrow table ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* drop the output columns that carry no information of their own ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* make the closed value sets categorical and give variant_id null without an ID ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* remove cli.parquet_schema and cli.to_parquet_safe ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* rename the model inputs ptc_to_intron and stop_codon_distance ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* rename the output columns to one naming scheme ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* start the output with the columns that identify a row ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* type the list columns as named structs and keep their shape through Parquet and CSV ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+
+
+### Bug Fixes
+
+* apply 5'UTR changes at the CDS start to the alt transcript ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* classify the first in-frame stop codon of the alt transcript ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* classify the rescued ORF after a start loss ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* compute the exon features of a PTC from the exons of the alt transcript ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* give a row with null transcript columns if no joined transcript has exon rows ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* give each VCF record its own row ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* give the length of the PTC exon in the alt transcript as ptc_exon_length ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* handle variants at exon boundaries by their splice sites ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* judge start loss on the annotated start codon ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* make the NMD rules null on rows without a PTC or with a null rule input ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* measure ptc_to_intron of a last-exon PTC to the transcript end ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* measure stop_codon_distance to the stop codon in the alt transcript ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* measure the start-proximal rule from the rescued ATG after a start loss ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* number the exons of the alt transcript scan by the alt exon lengths ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* raise a ValueError for a CDS row outside the exon rows of its transcript ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* raise a ValueError that names the broken input rule ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* read codons in the frame of the annotated CDS ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* require a leading ATG to flag start loss ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* skip variants with a symbolic ALT allele or a breakend ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* skip VCF records with ALT "." or "*" ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* start the transcript codon scan at the CDS start in the transcript ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* use the annotated start codon as the start codon position ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+
+
+### Performance Improvements
+
+* build the alt CDS of each variant without pandas copies ([ae86a07](https://github.com/gagneurlab/NMD-Scanner/commit/ae86a0728871e1a9f38f5d70d8b7b2c9f1292788))
+* collect the codon scan results in lists instead of DataFrame cells ([ae86a07](https://github.com/gagneurlab/NMD-Scanner/commit/ae86a0728871e1a9f38f5d70d8b7b2c9f1292788))
+* compute the exon boundaries once per transcript ([ae86a07](https://github.com/gagneurlab/NMD-Scanner/commit/ae86a0728871e1a9f38f5d70d8b7b2c9f1292788))
+* scan the whole alt transcript for stop codons only on a stop loss ([ae86a07](https://github.com/gagneurlab/NMD-Scanner/commit/ae86a0728871e1a9f38f5d70d8b7b2c9f1292788))
+
+
+### Documentation
+
+* define the transcript position and the exon number, and drop the old pipeline description ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* describe short alt transcripts, chromosome ends and REF ends at the coding region edge ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* describe the meaning, dtype and null cases of every output column ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* draw the transcript layout of the ptc_to_intron and NMD rule cases ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* drop the GFF3 details from the new pipeline description ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* drop the history from the docs and the test comments ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* format the markdown files with prettier ([5526ad0](https://github.com/gagneurlab/NMD-Scanner/commit/5526ad0f001a12385c77fd7519926f511135df90))
+* give ptc_to_start_codon a null clause for a stop codon as start codon ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* move the GFF3 defects and input checks into Input Defects.md ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* say that the output for CDS rows that share bases can be wrong ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+* say why likely_misannotated does not flag a stop codon as start codon ([92c2ac4](https://github.com/gagneurlab/NMD-Scanner/commit/92c2ac41a99ef1da6ebaced23a74262b1b26c52e))
+
+
+### Code Refactoring
+
+* raise a KeyError in add_nmd_features and evaluate_nmd_escape_rules for a row without a column they read ([ae86a07](https://github.com/gagneurlab/NMD-Scanner/commit/ae86a0728871e1a9f38f5d70d8b7b2c9f1292788))
+
 ## [0.3.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.2.0...v0.3.0) (2026-10-05)
 
 
