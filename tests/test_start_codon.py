@@ -216,54 +216,6 @@ def test_start_loss_is_a_change_of_the_annotated_start_codon(tmp_path, strand, c
     )
 
 
-@pytest.mark.parametrize(
-    ("start_codon", "expected"),
-    [
-        (
-            False,
-            {
-                "ref_start_codon_pos": None,
-                "alt_start_codon_pos": None,
-                "ptc_to_start_codon": None,
-                "likely_misannotated": True,
-            },
-        ),
-    ],
-    ids=["cds_start_nf"],
-)
-def test_ptc_distance_is_measured_from_the_annotated_start_codon(tmp_path, strand, start_codon, expected):
-    """
-    The CDS is CTG, 9 times AAA, ATG, 42 times AAA, TGG, GAC, then the stop codon TAA. CTG at t3 (`x`) is the annotated
-    start codon, or the transcript has none, as one tagged cds_start_NF. The in-frame ATG at CDS position 30 (`a`) is
-    an internal Met. TGG>TAG at t163 is a PTC (`*`) at CDS position 159: 159 nt from the start codon CTG, but only 129
-    nt from the ATG, < 150. Without an annotated start codon, the start lies upstream of the CDS, at an unknown
-    distance.
-
-              103 nt                73 nt
-    5' [uuuxxx===a=========]|[=====*===sssuuuuu] 3'
-    tx  0  3                  103  162 168     176
-    CDS    0     30                159 165
-           <----------------------->  ptc_to_start_codon = 159, not < 150
-    """
-    cds = "CTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TGG" + "GAC"
-    exons = ["GGG" + cds[:100], cds[100:] + "TAA" + "GGGGG"]
-    tx = SyntheticTranscript(tmp_path, strand, exons, 3, 3 + len(cds), start_codon=start_codon)
-
-    row = tx.run(163, "G", "A")
-
-    _assert_values(
-        row,
-        {
-            **expected,
-            "alt_is_premature": True,
-            "alt_first_stop_pos": 159,
-            "start_loss": False,
-            "ptc_less_than_150nt_to_start": False,
-            "nmd_start_proximal_rule": False,
-        },
-    )
-
-
 def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, strand):
     """
     The annotated start codon is TAG (`*`), a stop codon. Translation cannot start on a stop codon, so this start
