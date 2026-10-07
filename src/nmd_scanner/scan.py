@@ -77,7 +77,9 @@ def read_vcf(vcf_path):
             .collect()
             .to_pandas()
         )
-    except (ValueError, pl.exceptions.ComputeError) as error:
+    # polars < 2 wraps a polars-bio read error in ValueError or ComputeError. polars 2 passes on the
+    # bare Exception that DataFusion raises, so no narrower type exists to catch.
+    except Exception as error:
         message = f"Cannot read {os.fspath(vcf_path)!r} as VCF ({error})."
         # polars-bio reads the header when it registers the file as a table
         if "Failed to register table" in str(error) and any(text in str(error) for text in VCF_HEADER_ERRORS):
@@ -389,7 +391,9 @@ def _read_gff3_rows(gff3_path):
                 )
                 .collect()
             )
-    except (ValueError, pl.exceptions.ComputeError) as error:
+    # polars < 2 wraps a polars-bio read error in ValueError or ComputeError. polars 2 passes on the
+    # bare Exception that DataFusion raises, so no narrower type exists to catch.
+    except Exception as error:
         raise ValueError(f"Cannot read {os.fspath(gff3_path)!r} as GFF3 ({error}).") from error
     # polars-bio skips a line that it cannot parse, and logs it at DEBUG only
     if rows.height < data_lines.result():
