@@ -122,7 +122,8 @@ def _keeps_the_flags_from_the_cds(row):
     if row["start_loss"] or not row["has_stop_codon"]:
         return False
     # The ref transcript, read in frame from the first complete codon, does not stop at the annotated stop codon
-    seq, start = row["transcript_seq"], row["cds_start_in_transcript"] + row["cds_frame"]
+    seq = row["transcript_seq"]
+    start = row["cds_start_in_transcript"] + row["cds_frame"]
     stops = [i for i in range(start, len(seq) - 2, 3) if seq[i : i + 3] in {"TAA", "TAG", "TGA"}]
     return stops[:1] != [row["cds_end_in_transcript"] - 3]
 

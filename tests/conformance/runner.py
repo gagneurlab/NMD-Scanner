@@ -229,7 +229,8 @@ class Transcript:
     def exon_spans(self):
         """(start, end) of each exon in the layout, in transcript order."""
         introns = self.introns if self.introns is not None else (INTRON,) * (len(self.exons) - 1)
-        spans, start = [], len(self.flanks[0])
+        spans = []
+        start = len(self.flanks[0])
         for exon, intron in zip(self.exons, [*introns, ""]):
             spans.append((start, start + len(exon)))
             start += len(exon) + len(intron)
@@ -346,10 +347,12 @@ class Change:
         genome = transcript.chromosome(strand)
         start, end = transcript.to_genome(start, start + len(ref), strand)
         if strand == "-":
-            ref, alt = reverse_complement(ref), reverse_complement(alt)
+            ref = reverse_complement(ref)
+            alt = reverse_complement(alt)
         if not ref or not alt:
             start -= 1
-            ref, alt = genome[start] + ref, genome[start] + alt
+            ref = genome[start] + ref
+            alt = genome[start] + alt
         if "ref" in self.lower_case:
             ref = ref.lower()
         if "alt" in self.lower_case:
@@ -533,7 +536,9 @@ def plain(value):
 
 def write_inputs(transcript, changes, strand, directory):
     """Write the FASTA, GFF3 and VCF file of a run; return their paths and the VCF record of each change."""
-    fasta, gff3, vcf = directory / "genome.fa", directory / "annotation.gff3", directory / "variants.vcf"
+    fasta = directory / "genome.fa"
+    gff3 = directory / "annotation.gff3"
+    vcf = directory / "variants.vcf"
     fasta.write_text(f">{transcript.fasta_contig or transcript.contig}\n{transcript.chromosome(strand)}\n")
     gff3.write_text("##gff-version 3\n" + "\n".join(transcript.gff3(strand)) + "\n")
     records = [change.record(transcript, strand) for change in changes]
@@ -653,7 +658,10 @@ def _layout_bases(transcript):
     for i, exon in enumerate(transcript.exons):
         parts += [("exon", i, exon), ("intron", i, introns[i] if i < len(introns) else "")]
     parts.append(("flank", 1, transcript.flanks[1]))
-    regions, tx, drawn, length = [], [], [], 0
+    regions = []
+    tx = []
+    drawn = []
+    length = 0
     for name, i, seq in parts:
         regions += [(name, i)] * len(seq)
         tx += list(range(length, length + len(seq))) if name == "exon" else [None] * len(seq)
@@ -726,7 +734,9 @@ def render(transcript, change=None, marks=(), ruler=None, more_changes=(), equiv
     :param ruler: the Ruler line above the ref line
     """
     regions, tx, drawn = _layout_bases(transcript)
-    start, ref, alt = len(drawn), "", ""
+    start = len(drawn)
+    ref = ""
+    alt = ""
     if change is not None:
         _, ref, alt, _ = change.parse()
         start = change.locate(transcript)
@@ -745,14 +755,16 @@ def render(transcript, change=None, marks=(), ruler=None, more_changes=(), equiv
     alt_tx = 0
     for column in columns:
         if column.region[0] == "exon" and column.alt != "-":
-            column.alt_tx, alt_tx = alt_tx, alt_tx + 1
+            column.alt_tx = alt_tx
+            alt_tx += 1
     index = {
         ("layout", "ref"): {column.pos: i for i, column in enumerate(columns) if column.pos is not None},
         ("tx", "ref"): {column.tx: i for i, column in enumerate(columns) if column.tx is not None},
         ("tx", "alt"): {column.alt_tx: i for i, column in enumerate(columns) if column.alt_tx is not None},
     }
     coding = [t for t, base in enumerate("".join(transcript.exons)) if base.isupper()]
-    cds_start, cds_end = coding[0], coding[-1] + 1
+    cds_start = coding[0]
+    cds_end = coding[-1] + 1
     first_coding = {"ref": cds_start}
     first_coding["alt"] = sum(1 for column in columns[: index["tx", "ref"][cds_start]] if column.alt_tx is not None)
 
@@ -807,12 +819,14 @@ def render(transcript, change=None, marks=(), ruler=None, more_changes=(), equiv
             opens[j] = j > 0 and columns[j - 1].region == column.region
 
     # The runs to elide, as first column: column after the run. In the coding region, a run holds whole codons.
-    elided, i = {}, 0
+    elided = {}
+    i = 0
     while i < len(columns):
         end = i
         while end < len(columns) and end not in pinned and columns[end].region == columns[i].region:
             end += 1
-        first, last = i, end
+        first = i
+        last = end
         if any(column.tx is not None and cds_start <= column.tx < cds_end for column in columns[i:end]):
             cuts = [
                 j for j in range(i, min(end + 1, len(columns))) if opens[j] and columns[j].region == columns[i].region
@@ -823,24 +837,35 @@ def render(transcript, change=None, marks=(), ruler=None, more_changes=(), equiv
         i = max(end, i + 1)
 
     # The ref and the alt line, and the x of each drawn column in them
-    ref_line, alt_line, xs, previous, i = "5' ", "5' ", {}, None, 0
+    ref_line = "5' "
+    alt_line = "5' "
+    xs = {}
+    previous = None
+    i = 0
     while i < len(columns):
         column = columns[i]
         if column.region == previous:
             separator = " " if opens[i] else ""
         else:
-            exon_before, exon_now = previous is not None and previous[0] == "exon", column.region[0] == "exon"
+            exon_before = previous is not None and previous[0] == "exon"
+            exon_now = column.region[0] == "exon"
             separator = "]" * exon_before + "|" * (exon_before and exon_now) + "[" * exon_now
-        ref_line, alt_line = ref_line + separator, alt_line + separator
+        ref_line += separator
+        alt_line += separator
         previous = column.region
         if i in elided:
             marker = f"..{elided[i] - i}.."
-            ref_line, alt_line, i = ref_line + marker, alt_line + marker, elided[i]
+            ref_line += marker
+            alt_line += marker
+            i = elided[i]
             continue
         xs[i] = len(ref_line)
-        ref_line, alt_line, i = ref_line + column.ref, alt_line + column.alt, i + 1
+        ref_line += column.ref
+        alt_line += column.alt
+        i += 1
     closing = "]" * (previous[0] == "exon") + " 3'"
-    ref_line, alt_line = ref_line + closing, alt_line + closing
+    ref_line += closing
+    alt_line += closing
 
     def x(found):
         column, offset = found
@@ -852,7 +877,8 @@ def render(transcript, change=None, marks=(), ruler=None, more_changes=(), equiv
 
     def arrow(first, last, label):
         """An arrow from x first to x last, with the label inside if it fits, else after it."""
-        width, inner = last - first + 1, f" {label} "
+        width = last - first + 1
+        inner = f" {label} "
         dashes = width - 2 - len(inner)
         if dashes >= 4:
             return " " * first + "<" + "-" * (dashes // 2) + inner + "-" * (dashes - dashes // 2) + ">"
@@ -880,7 +906,8 @@ def render(transcript, change=None, marks=(), ruler=None, more_changes=(), equiv
         if isinstance(item, Ruler):
             rows.append((_ruler_label(item), numbers(item)))
             continue
-        first, last = x(find(item.line, item.start)), x(find(item.line, item.end - 1))
+        first = x(find(item.line, item.start))
+        last = x(find(item.line, item.end - 1))
         rows.append(
             (
                 "",
