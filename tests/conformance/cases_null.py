@@ -1,6 +1,6 @@
 """
-Conformance cases of the null cases: each case pins a constellation where the column table of "Technical Notes.md"
-says "Null when", and some misannotations that make a column null. A CDS row outside the exon rows of its
+Conformance cases of the null cases: each case pins a constellation where the column tables of "Technical Notes.md"
+or "Input Defects.md" say "Null when", and some misannotations that make a column null. A CDS row outside the exon rows of its
 transcript is an error.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
@@ -431,8 +431,8 @@ TWO_EXONS = Layout(
     },
 )
 
-# The same transcript without exon rows in the GFF3: its CDS, start_codon and stop_codon rows stay. The column table
-# of "Technical Notes.md" makes every column of the transcript null then, and cds_in_transcript False.
+# The same transcript without exon rows in the GFF3: its CDS, start_codon and stop_codon rows stay. "Input
+# Defects.md" makes every column of the transcript null then, and cds_in_transcript False.
 TWO_EXONS_WITHOUT_EXON_ROWS = Layout(
     Transcript(TWO_EXONS_SEQUENCES, exon_rows=False),
     {
@@ -729,13 +729,13 @@ CASES = [
         },
         marks=(Mark("alt", 13, 16, "*", "PTC"), Span("alt", 13, 19, "ptc_to_intron = 6")),
     ),
-    # Pins the null clause of ptc_to_start_codon "the annotated start codon is a stop codon, such as TAG" ("Positions
-    # and terms": "A variant that leaves it unchanged gives a PTC row whose PTC is this start codon, and
-    # `ptc_to_start_codon` is null"). So ptc_less_than_150nt_to_start is False ("False if `ptc_to_start_codon` is
-    # null"), and so is nmd_start_proximal_rule. The row keeps the flags from the CDS: the ref transcript, read in
-    # frame, stops at the TAG and not at the annotated stop codon. likely_misannotated is False ("Positions and
-    # terms"): "`likely_misannotated` does not flag it, because its start codon check only asks for an annotated start
-    # codon at CDS position 0." NU-22 pins the other clause, a PTC row without an annotated start codon.
+    # Pins the null clause of ptc_to_start_codon "the annotated start codon is a stop codon, such as TAG" ("Input
+    # Defects.md": "A variant that leaves it unchanged gives a PTC row whose PTC is this start codon"). So
+    # ptc_less_than_150nt_to_start is False ("False if `ptc_to_start_codon` is null"), and so is
+    # nmd_start_proximal_rule. The row keeps the flags from the CDS: the ref transcript, read in frame, stops at the
+    # TAG and not at the annotated stop codon. likely_misannotated is False ("Input Defects.md": "`likely_misannotated`
+    # does not flag it, because its start codon check only asks for an annotated start codon at CDS position 0"). NU-22
+    # pins the other clause, a PTC row without an annotated start codon.
     Case(
         "missense_in_a_cds_whose_annotated_start_codon_is_tag_is_a_ptc_row_without_ptc_to_start_codon",
         """
