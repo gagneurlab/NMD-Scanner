@@ -4,7 +4,6 @@ import functools
 import json
 import logging
 import os
-import warnings
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -14,11 +13,7 @@ from pyfaidx import Fasta
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import detect_annotation_format, read_annotation, read_vcf
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS, _arrow_schema, to_arrow
-
-# Deprecated alias of schema.STOP_CODON_COLUMNS, kept for one release together with parquet_schema and
-# to_parquet_safe. It goes in a later release.
-from nmd_scanner.schema import STOP_CODON_COLUMNS as STOP_CODON_COLUMNS
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS, to_arrow
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
 
@@ -147,34 +142,6 @@ def _json_list(value):
     """Return a list value as JSON text. A numpy int, e.g. of a column read from Parquet, becomes a plain int."""
 
     return json.dumps(list(value), default=lambda item: item.item())
-
-
-def parquet_schema(results):
-    """
-    Deprecated: use ``nmd_scanner.to_arrow``, whose Table has this schema. This alias goes in a later release.
-
-    Return the pyarrow schema for the columns of ``results``, with the types of schema.KIND_ARROW_TYPES.
-    A column that OUTPUT_COLUMN_KINDS does not list raises a KeyError.
-    """
-
-    warnings.warn(
-        "nmd_scanner.cli.parquet_schema is deprecated, use nmd_scanner.to_arrow", DeprecationWarning, stacklevel=2
-    )
-    return _arrow_schema(results.columns)
-
-
-def to_parquet_safe(results):
-    """
-    Deprecated: use ``nmd_scanner.to_arrow``, which does this conversion. This alias goes in a later release.
-
-    Return ``results`` itself. Its stop codon columns (schema.STOP_CODON_COLUMNS) hold {"position": ..., "codon": ...}
-    records already, which this function made from (position, codon) tuples before 0.4.0.
-    """
-
-    warnings.warn(
-        "nmd_scanner.cli.to_parquet_safe is deprecated, use nmd_scanner.to_arrow", DeprecationWarning, stacklevel=2
-    )
-    return results
 
 
 def is_valid_output_path(path):

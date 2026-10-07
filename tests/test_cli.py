@@ -24,9 +24,7 @@ from nmd_scanner.schema import (
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
     SEQUENCE_COLUMNS,
-    STOP_CODON_COLUMNS,
     output_column_kinds,
-    to_arrow,
 )
 from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
@@ -240,26 +238,6 @@ def test_write_results_parquet_types_stop_codon_columns(tmp_path):
 
     # write_results does not change df
     assert df["ref_stop_codons"].iloc[0] == [{"position": 5442, "codon": "TGA"}, {"position": 10, "codon": "TAA"}]
-
-
-def test_the_deprecated_aliases_parquet_schema_and_to_parquet_safe_still_work():
-    df = pd.DataFrame(
-        {
-            "transcript_id": ["t1"],
-            "transcript_exons": [[{"exon_number": 1, "length": 36}]],
-            "ref_stop_codons": [[{"position": 5442, "codon": "TGA"}]],
-        }
-    )
-    original = df.copy()
-    # The stop codon columns hold records already, so to_parquet_safe returns its input
-    with pytest.warns(DeprecationWarning, match="to_arrow"):
-        assert cli_module.to_parquet_safe(df) is df
-    with pytest.warns(DeprecationWarning, match="to_arrow"):
-        schema = cli_module.parquet_schema(df)
-
-    pd.testing.assert_frame_equal(df, original)
-    assert schema.equals(to_arrow(df).schema)
-    assert cli_module.STOP_CODON_COLUMNS == STOP_CODON_COLUMNS
 
 
 @pytest.mark.parametrize("missing", [None, float("nan"), pd.NA])
