@@ -279,7 +279,7 @@ C_PTC = {
     "downstream_exon_count": 1,
     "ptc_to_start_codon": 150,
     "ptc_less_than_150nt_to_start": False,
-    "stop_codon_distance": 12,
+    "annotated_stop_distance": 12,
     **NO_RULE,
     "nmd_50nt_penultimate_rule": True,
     "nmd_escape": True,
@@ -365,8 +365,8 @@ L_PTC = {
     "downstream_exon_count": 1,
     "ptc_to_start_codon": 150,
     "ptc_less_than_150nt_to_start": False,
-    "stop_codon_distance": 270,
-    "ptc_to_intron": 253,
+    "annotated_stop_distance": 270,
+    "ptc_to_exon_end": 253,
 }
 
 # Layouts M: 2 exons, exon 2 is the last exon and has 432 nt
@@ -541,7 +541,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..54.. GAG]|[GCC GCC ..75.. GCC CAG TAG AGC GCC ..36.. GCC GCC]|[GCC GCC ..48.. GCC TAA gccgcc] 3'
                                                                   ^ T>A
                                                                  *** PTC
-                                                                 <-- ptc_to_intron = 51 -->
+                                                                 <------------------------> ptc_to_exon_end = 51
                      <------- ptc_to_start_codon = 150 -------->
         exon 1: 67 nt, exon 2: 138 nt, exon 3: 66 nt
         """,
@@ -567,15 +567,15 @@ CASES = [
             "ptc_to_start_codon": 150,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 138,
-            "stop_codon_distance": 108,
-            "ptc_to_intron": 51,
+            "annotated_stop_distance": 108,
+            "ptc_to_exon_end": 51,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 154, 157, "*", "PTC"),
-            Span("alt", 154, 205, "ptc_to_intron = 51"),
+            Span("alt", 154, 205, "ptc_to_exon_end = 51"),
             Span("alt", 4, 154, "ptc_to_start_codon = 150"),
         ),
         ruler=Ruler((-4, 0, 63, 147, 150, 201, 258, 267), "CDS"),
@@ -589,7 +589,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..54.. GAG]|[GCC GCC ..75.. GCC CAG TAG AGC GCC ..36.. GCC GC]|[C GCC ..51.. GCC TAA gccgcc] 3'
                                                                   ^ T>A
                                                                  *** PTC
-                                                                 <-----------------------> ptc_to_intron = 50
+                                                                 <-----------------------> ptc_to_exon_end = 50
         exon 1: 67 nt, exon 2: 137 nt, exon 3: 67 nt
         """,
         A200,
@@ -614,15 +614,15 @@ CASES = [
             "ptc_to_start_codon": 150,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 137,
-            "stop_codon_distance": 108,
-            "ptc_to_intron": 50,
+            "annotated_stop_distance": 108,
+            "ptc_to_exon_end": 50,
             **NO_RULE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 204, "ptc_to_intron = 50")),
+        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 204, "ptc_to_exon_end = 50")),
         ruler=Ruler((-4, 0, 63, 147, 150, 200, 258, 267), "CDS"),
     ),
     # NR-05 (0 nt, False): the PTC starts at the first base of the last exon, so the last exon rule fires instead
@@ -634,9 +634,9 @@ CASES = [
         alt 5' [gacc ATG GCC ..54.. GAG]|[GCC GCC ..75.. GCC CAG]|[TAG AGC GCC ..96.. GCC TAA gccgcc] 3'
                                                                     ^ T>A
                                                                    *** PTC
-                                                                   <----- ptc_to_intron = 117 ----->
+                                                                   <---- ptc_to_exon_end = 117 ---->
         exon 1: 67 nt, exon 2: 87 nt, exon 3: 117 nt
-        The PTC TAG is the first codon of exon 3, the last exon, so ptc_to_intron counts to the transcript end.
+        The PTC TAG is the first codon of exon 3, the last exon, so ptc_to_exon_end counts to the transcript end.
         """,
         A150,
         A_PTC_150,
@@ -660,15 +660,15 @@ CASES = [
             "ptc_to_start_codon": 150,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 117,
-            "stop_codon_distance": 108,
-            "ptc_to_intron": 117,
+            "annotated_stop_distance": 108,
+            "ptc_to_exon_end": 117,
             **NO_RULE,
             "nmd_last_exon_rule": True,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_intron = 117")),
+        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_exon_end = 117")),
         ruler=Ruler((-4, 0, 63, 147, 150, 258, 267), "CDS"),
     ),
     # NR-05 (1 nt, True): the PTC codon is split over the last exon junction, its first base lies in exon 2
@@ -680,7 +680,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..54.. GAG]|[GCC GCC ..75.. GCC CAG T]|[AG AGC GCC ..96.. GCC TAA gccgcc] 3'
                                                                      ^ T>A
                                                                  * PTC TAG
-                                                                 <> ptc_to_intron = 1
+                                                                 <> ptc_to_exon_end = 1
         exon 1: 67 nt, exon 2: 88 nt, exon 3: 116 nt
         The PTC TAG is split T|AG over the last exon junction. It lies in exon 2, the exon of its first base, 1 nt
         before the junction.
@@ -707,15 +707,15 @@ CASES = [
             "ptc_to_start_codon": 150,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 88,
-            "stop_codon_distance": 108,
-            "ptc_to_intron": 1,
+            "annotated_stop_distance": 108,
+            "ptc_to_exon_end": 1,
             **NO_RULE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 154, 155, "*", "PTC TAG"), Span("alt", 154, 155, "ptc_to_intron = 1")),
+        marks=(Mark("alt", 154, 155, "*", "PTC TAG"), Span("alt", 154, 155, "ptc_to_exon_end = 1")),
         ruler=Ruler((-4, 0, 63, 147, 150, 151, 258, 267), "CDS"),
     ),
     # NR-12 and PF-12 (147 nt, True), NR-17 (nmd_escape by the start-proximal rule only)
@@ -728,7 +728,7 @@ CASES = [
                                                                  ^ C>T
                                                                  *** PTC
                      <------- ptc_to_start_codon = 147 -------->
-                                                                 <-- ptc_to_intron = 54 -->
+                                                                 <------------------------> ptc_to_exon_end = 54
         exon 1: 67 nt, exon 2: 138 nt, exon 3: 66 nt
         """,
         A201,
@@ -753,8 +753,8 @@ CASES = [
             "ptc_to_start_codon": 147,
             "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 138,
-            "stop_codon_distance": 111,
-            "ptc_to_intron": 54,
+            "annotated_stop_distance": 111,
+            "ptc_to_exon_end": 54,
             **NO_RULE,
             "nmd_start_proximal_rule": True,
             "nmd_escape": True,
@@ -764,7 +764,7 @@ CASES = [
         marks=(
             Mark("alt", 151, 154, "*", "PTC"),
             Span("alt", 4, 151, "ptc_to_start_codon = 147"),
-            Span("alt", 151, 205, "ptc_to_intron = 54"),
+            Span("alt", 151, 205, "ptc_to_exon_end = 54"),
         ),
         ruler=Ruler((-4, 0, 63, 147, 201, 258, 267), "CDS"),
     ),
@@ -777,7 +777,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..54.. GAG]|[GCC GCC ..129.. GCC]|[GCC GCC ..12.. GCC GCC TGA GCC GCC ..21.. GCC TAA gccgcc] 3'
                                                                                          ^ G>A
                                                                                        *** PTC
-                                                                                       <----- ptc_to_intron = 42 ------>
+                                                                                       <---- ptc_to_exon_end = 42 ----->
         exon 1: 67 nt, exon 2: 138 nt, exon 3: 66 nt
         """,
         A201,
@@ -802,15 +802,15 @@ CASES = [
             "ptc_to_start_codon": 225,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 66,
-            "stop_codon_distance": 33,
-            "ptc_to_intron": 42,
+            "annotated_stop_distance": 33,
+            "ptc_to_exon_end": 42,
             **NO_RULE,
             "nmd_last_exon_rule": True,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 229, 232, "*", "PTC"), Span("alt", 229, 271, "ptc_to_intron = 42")),
+        marks=(Mark("alt", 229, 232, "*", "PTC"), Span("alt", 229, 271, "ptc_to_exon_end = 42")),
         ruler=Ruler((-4, 0, 63, 201, 225, 258, 267), "CDS"),
     ),
     # NR-08: the deletion moves the last exon junction from 201 to 200 in alt CDS coordinates. Measured to the
@@ -824,7 +824,7 @@ CASES = [
                                                 ^ A>-
         alt CDS                                                          62                  150                     200                257       266
                                                                                              * PTC TGA, in the alt frame
-                                                                                             <-------------------> ptc_to_intron = 50
+                                                                                             <-------------------> ptc_to_exon_end = 50
         exon 1: 67 nt, exon 2: 138 nt, exon 3: 66 nt
         A>- deletes one A of AAA at CDS 30 to 32 and moves the frame by 1. The alt frame reads the PTC TGA at alt
         CDS 150. The deletion moves the last exon junction from CDS 201 to alt CDS 200.
@@ -872,8 +872,8 @@ CASES = [
             "ptc_to_start_codon": 150,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 138,
-            "stop_codon_distance": 107,
-            "ptc_to_intron": 50,
+            "annotated_stop_distance": 107,
+            "ptc_to_exon_end": 50,
             **NO_RULE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
@@ -884,7 +884,7 @@ CASES = [
         marks=(
             Ruler((62, 150, 200, 257, 266), "CDS", "alt"),
             Mark("alt", 154, 155, "*", "PTC TGA, in the alt frame"),
-            Span("alt", 154, 204, "ptc_to_intron = 50"),
+            Span("alt", 154, 204, "ptc_to_exon_end = 50"),
         ),
         ruler=Ruler((-4, 0, 30, 63, 201, 258, 267), "CDS"),
     ),
@@ -921,7 +921,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..138.. GCC CAG TAG AGC GCC ..96.. GCC TAA gccgcc] 3'
                                               ^ T>A
                                              *** PTC
-                                             <----- ptc_to_intron = 117 ----->
+                                             <---- ptc_to_exon_end = 117 ---->
         exon 1: 271 nt, the only exon
         """,
         SINGLE,
@@ -946,8 +946,8 @@ CASES = [
             "ptc_to_start_codon": 150,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 271,
-            "stop_codon_distance": 108,
-            "ptc_to_intron": 117,
+            "annotated_stop_distance": 108,
+            "ptc_to_exon_end": 117,
             **NO_RULE,
             "nmd_last_exon_rule": True,
             "nmd_single_exon_rule": True,
@@ -955,7 +955,7 @@ CASES = [
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_intron = 117")),
+        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_exon_end = 117")),
         ruler=Ruler((-4, 0, 147, 150, 258, 267), "CDS"),
     ),
     # NR-20: a row that is not a PTC row has every rule False, also the single exon rule of a single exon transcript
@@ -986,7 +986,7 @@ CASES = [
             "alt_is_premature": False,
             "alt_transcript_seq": "GACC" + A_HEAD + A_MID + "GAGTTGAGC" + A_TAIL + "GCCGCC",
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1003,7 +1003,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..138.. GCC GCC TAG GCC GCC ..15.. GCC GCC]|[GCC GCC ..18.. GCC TAA g..25..cgcc]|[gccgccgccgcc] 3'
                                              ^ A>T
                                              *** PTC
-                                             <-- ptc_to_intron = 30 -->
+                                             <------------------------> ptc_to_exon_end = 30
                                              <-------------- 90 nt to the last exon junction -------------->
         exon 1: 184 nt, exon 2: 60 nt, exon 3: 12 nt
         """,
@@ -1035,15 +1035,15 @@ CASES = [
             "ptc_to_start_codon": 150,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 184,
-            "stop_codon_distance": 57,
-            "ptc_to_intron": 30,
+            "annotated_stop_distance": 57,
+            "ptc_to_exon_end": 30,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
         marks=(
             Mark("alt", 154, 157, "*", "PTC"),
-            Span("alt", 154, 184, "ptc_to_intron = 30"),
+            Span("alt", 154, 184, "ptc_to_exon_end = 30"),
             Span("alt", 154, 244, "90 nt to the last exon junction"),
         ),
         ruler=Ruler((-4, 0, 150, 180, 207, 240, 252), "CDS"),
@@ -1057,7 +1057,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..171.. GCC]|[GCC GCC GCC TAG GCC GCC GCC GCC GCC TAA g..25..cgcc]|[gccgccgccgcc] 3'
                                                        ^ C>T
                                                        *** PTC
-                                                       <-------- ptc_to_intron = 51 --------->
+                                                       <------- ptc_to_exon_end = 51 -------->
         exon 1: 184 nt, exon 2: 60 nt, exon 3: 12 nt
         """,
         U51,
@@ -1080,13 +1080,13 @@ CASES = [
             "ptc_to_start_codon": 189,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 60,
-            "stop_codon_distance": 18,
-            "ptc_to_intron": 51,
+            "annotated_stop_distance": 18,
+            "ptc_to_exon_end": 51,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 193, 196, "*", "PTC"), Span("alt", 193, 244, "ptc_to_intron = 51")),
+        marks=(Mark("alt", 193, 196, "*", "PTC"), Span("alt", 193, 244, "ptc_to_exon_end = 51")),
         ruler=Ruler((-4, 0, 180, 189, 207, 240, 252), "CDS"),
     ),
     # NR-06 (50 nt, True)
@@ -1098,7 +1098,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..171.. GCC]|[GCC GCC GCC TAG GCC GCC GCC GCC GCC TAA g..24..ccgc]|[gccgccgccgcc] 3'
                                                        ^ C>T
                                                        *** PTC
-                                                       <-------- ptc_to_intron = 50 --------->
+                                                       <------- ptc_to_exon_end = 50 -------->
         exon 1: 184 nt, exon 2: 59 nt, exon 3: 12 nt
         """,
         U50,
@@ -1124,15 +1124,15 @@ CASES = [
             "ptc_to_start_codon": 189,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 59,
-            "stop_codon_distance": 18,
-            "ptc_to_intron": 50,
+            "annotated_stop_distance": 18,
+            "ptc_to_exon_end": 50,
             **NO_RULE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 193, 196, "*", "PTC"), Span("alt", 193, 243, "ptc_to_intron = 50")),
+        marks=(Mark("alt", 193, 196, "*", "PTC"), Span("alt", 193, 243, "ptc_to_exon_end = 50")),
         ruler=Ruler((-4, 0, 180, 189, 207, 239, 251), "CDS"),
     ),
     # NR-07: the whole CDS in exon 1 of 2, followed by 3' UTR in exon 1
@@ -1144,7 +1144,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..138.. GCC GCC TAG GCC GCC GCC TAA g..15..ccgc]|[gccgccgccgcc] 3'
                                              ^ C>T
                                              *** PTC
-                                             <---- ptc_to_intron = 35 ----->
+                                             <--- ptc_to_exon_end = 35 ---->
         exon 1: 189 nt, exon 2: 12 nt
         """,
         C35,
@@ -1166,11 +1166,11 @@ CASES = [
             + "GCC" * 4,
             "alt_transcript_length": 201,
             "ptc_exon_length": 189,
-            "ptc_to_intron": 35,
+            "ptc_to_exon_end": 35,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 189, "ptc_to_intron = 35")),
+        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 189, "ptc_to_exon_end = 35")),
         ruler=Ruler((-4, 0, 150, 162, 185, 197), "CDS"),
     ),
     # NR-07: the whole CDS in exon 1 of 2, the stop codon ends at the end of exon 1
@@ -1182,7 +1182,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..138.. GCC GCC TAG GCC GCC GCC TAA]|[gccgccgccgcc] 3'
                                              ^ C>T
                                              *** PTC
-                                             <-----------------> ptc_to_intron = 15
+                                             <-----------------> ptc_to_exon_end = 15
         exon 1: 169 nt, exon 2: 12 nt
         """,
         C15,
@@ -1196,11 +1196,11 @@ CASES = [
             "alt_transcript_seq": "GACC" + "ATG" + "GCC" * 49 + "TAG" + "GCC" * 3 + "TAA" + "GCC" * 4,
             "alt_transcript_length": 181,
             "ptc_exon_length": 169,
-            "ptc_to_intron": 15,
+            "ptc_to_exon_end": 15,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 169, "ptc_to_intron = 15")),
+        marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 169, "ptc_to_exon_end = 15")),
         ruler=Ruler((-4, 0, 150, 162, 165, 177), "CDS"),
     ),
     # NR-11 (407 nt, False)
@@ -1276,7 +1276,7 @@ CASES = [
                                                                  ^ C>T
                                                                  *** PTC
                      <-------- ptc_to_start_codon = 93 -------->
-                                                                 <----- ptc_to_intron = 402 ------>
+                                                                 <---- ptc_to_exon_end = 402 ----->
                                           <---------------- ptc_exon_length = 432 ---------------->
         exon 1: 67 nt, exon 2: 432 nt
         """,
@@ -1298,8 +1298,8 @@ CASES = [
             "ptc_to_start_codon": 93,
             "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 432,
-            "stop_codon_distance": 393,
-            "ptc_to_intron": 402,
+            "annotated_stop_distance": 393,
+            "ptc_to_exon_end": 402,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": True,
@@ -1312,7 +1312,7 @@ CASES = [
         marks=(
             Mark("alt", 97, 100, "*", "PTC"),
             Span("alt", 4, 97, "ptc_to_start_codon = 93"),
-            Span("alt", 97, 499, "ptc_to_intron = 402"),
+            Span("alt", 97, 499, "ptc_to_exon_end = 402"),
             Span("alt", 67, 499, "ptc_exon_length = 432"),
         ),
         ruler=Ruler((-4, 0, 63, 93, 486, 495), "CDS"),
@@ -1328,7 +1328,7 @@ CASES = [
         alt 5' [gacc ATG GCC ..54.. GCC]|[GCC GCC ..225.. GCC GCC TGA GCC GCC ..174.. GCC TAA gccgcc] 3'
                                                                     ^ G>A
                                                                   *** PTC
-                                                                  <----- ptc_to_intron = 195 ------>
+                                                                  <---- ptc_to_exon_end = 195 ----->
                                           <---------------- ptc_exon_length = 432 ----------------->
         exon 1: 67 nt, exon 2: 432 nt
         The CDS rows of exon 2 say exon_number 9. The PTC TGA at CDS 300 lies in exon 2 of alt_transcript_exon_info,
@@ -1354,8 +1354,8 @@ CASES = [
             "ptc_to_start_codon": 300,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 432,
-            "stop_codon_distance": 186,
-            "ptc_to_intron": 195,
+            "annotated_stop_distance": 186,
+            "ptc_to_exon_end": 195,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": True,
@@ -1367,7 +1367,7 @@ CASES = [
         },
         marks=(
             Mark("alt", 304, 307, "*", "PTC"),
-            Span("alt", 304, 499, "ptc_to_intron = 195"),
+            Span("alt", 304, 499, "ptc_to_exon_end = 195"),
             Span("alt", 67, 499, "ptc_exon_length = 432"),
         ),
         ruler=Ruler((-4, 0, 63, 300, 486, 495), "CDS"),
@@ -1383,7 +1383,7 @@ CASES = [
                       ^ T>C
                                                                                      * PTC TGA, in the frame +1
                                                                   <-----------------> ptc_to_start_codon = 60, in the frame +1
-                                                                                     <-------------------> ptc_to_intron = 41
+                                                                                     <-------------------> ptc_to_exon_end = 41
         exon 1: 67 nt, exon 2: 138 nt, exon 3: 36 nt
         T>C turns the start codon ATG into ACG. The scan finds the ATG at CDS 100, in the frame +1, and reads on to
         the PTC TGA at CDS 160.
@@ -1438,8 +1438,8 @@ CASES = [
             "ptc_to_start_codon": 60,
             "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 138,
-            "stop_codon_distance": 68,
-            "ptc_to_intron": 41,
+            "annotated_stop_distance": 68,
+            "ptc_to_exon_end": 41,
             **NO_RULE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_start_proximal_rule": True,
@@ -1450,7 +1450,7 @@ CASES = [
         marks=(
             Mark("alt", 164, 165, "*", "PTC TGA, in the frame +1"),
             Span("alt", 104, 164, "ptc_to_start_codon = 60, in the frame +1"),
-            Span("alt", 164, 205, "ptc_to_intron = 41"),
+            Span("alt", 164, 205, "ptc_to_exon_end = 41"),
         ),
         ruler=Ruler((-4, 0, 63, 100, 160, 201, 228, 237), "CDS"),
     ),
@@ -1463,7 +1463,7 @@ CASES = [
         alt 5' [GCC GCC GCC TAG GCC GCC ..39.. GCC GCC]|[GCC GCC ..81.. GCC]|[GCC GCC GCC GCC GCC TAA gccgcc] 3'
                             ^ C>T
                             *** PTC
-                            <-- ptc_to_intron = 54 -->
+                            <------------------------> ptc_to_exon_end = 54
         exon 1: 63 nt, exon 2: 90 nt, exon 3: 24 nt
         cds_start_NF: the transcript has no start codon and no 5' UTR.
         """,
@@ -1502,13 +1502,13 @@ CASES = [
             "ptc_to_start_codon": None,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 63,
-            "stop_codon_distance": 159,
-            "ptc_to_intron": 54,
+            "annotated_stop_distance": 159,
+            "ptc_to_exon_end": 54,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_annotated_start",
         },
-        marks=(Mark("alt", 9, 12, "*", "PTC"), Span("alt", 9, 63, "ptc_to_intron = 54")),
+        marks=(Mark("alt", 9, 12, "*", "PTC"), Span("alt", 9, 63, "ptc_to_exon_end = 54")),
         ruler=Ruler((0, 9, 63, 153, 168, 177), "CDS"),
     ),
 ]

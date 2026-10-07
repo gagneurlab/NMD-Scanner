@@ -260,7 +260,7 @@ NULL_CASES = [
             *("alt_stop_codon_exons", "alt_is_premature", "start_loss", "stop_loss"),
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
             "alt_transcript_exon_info",
-            *("ptc_less_than_150nt_to_start", "stop_codon_distance"),
+            *("ptc_less_than_150nt_to_start", "annotated_stop_distance"),
             *("nmd_last_exon_rule", "nmd_50nt_penultimate_rule", "nmd_long_exon_rule", "nmd_start_proximal_rule"),
             *("nmd_single_exon_rule", "nmd_escape"),
         )
@@ -407,7 +407,7 @@ NULL_CASES = [
     ("utr5_length", CDS_START_IS_NULL, lambda row: row["cds_start_in_transcript"] is None),
     *[
         entry
-        for column in ("upstream_exon_count", "downstream_exon_count", "ptc_exon_length", "ptc_to_intron")
+        for column in ("upstream_exon_count", "downstream_exon_count", "ptc_exon_length", "ptc_to_exon_end")
         for entry in [
             (column, NOT_A_PTC_ROW, lambda row: row["alt_is_premature"] is False),
             (column, NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exon_info"] is None),
@@ -431,9 +431,9 @@ NULL_CASES = [
         "after a start loss: the row has no `alt_transcript_seq`",
         lambda row: _ptc_row(row) and row["start_loss"] and row["alt_transcript_seq"] is None,
     ),
-    ("stop_codon_distance", "`has_stop_codon` is False", lambda row: _known(row) and not row["has_stop_codon"]),
+    ("annotated_stop_distance", "`has_stop_codon` is False", lambda row: _known(row) and not row["has_stop_codon"]),
     (
-        "stop_codon_distance",
+        "annotated_stop_distance",
         "a nonstop: the alt transcript has no in-frame stop codon",
         lambda row: (
             _known(row)
@@ -445,12 +445,12 @@ NULL_CASES = [
         ),
     ),
     (
-        "stop_codon_distance",
+        "annotated_stop_distance",
         "after a start loss: the scan found no ATG, or one downstream of the annotated stop codon",
         _no_orf_overlaps_the_cds_after_a_start_loss,
     ),
     (
-        "stop_codon_distance",
+        "annotated_stop_distance",
         "on a row that keeps the flags from the CDS, the alt CDS has no in-frame stop codon",
         lambda row: (
             _keeps_the_flags_from_the_cds(row) and row["has_stop_codon"] and row["alt_num_stop_codons"] in (0, None)

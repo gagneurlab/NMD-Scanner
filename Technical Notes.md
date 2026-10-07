@@ -46,7 +46,7 @@ A null is pd.NA in an int, bool or string column. In a list column, it is None o
 - The start codon (`ref_start_codon_pos`, `alt_start_codon_pos`) is the annotated start codon at CDS position 0 (`has_start_codon`). It can be a non-ATG codon such as CTG, and an in-frame ATG downstream of it is an internal Met. A `cds_start_NF` transcript has no annotated start codon: its true start lies upstream of the CDS, at an unknown distance. For the rows of such a transcript, both positions and `ptc_to_start_codon` are null, `start_loss` and `nmd_start_proximal_rule` are False, and `likely_misannotated` is True.
 - The codon scans know only the stop codons TAA, TAG and TGA, also on the mitochondrial chromosome.
 - A PTC row is a row with `alt_is_premature` True. Its PTC is the first in-frame stop codon of the alt CDS, at `alt_first_stop_pos`. After a start loss, its PTC is the first in-frame stop codon after the ATG of the scan, at `transcript_first_stop_pos` (see [Stop codon classification](#stop-codon-classification)). The PTC exon is the exon of the alt transcript that holds the PTC.
-- The exon features of a PTC row read the exons of the alt transcript, the mRNA, from `alt_transcript_exon_info`: the PTC exon, `upstream_exon_count`, `downstream_exon_count`, `ptc_exon_length`, `ptc_to_intron`, `nmd_50nt_penultimate_rule` and `nmd_long_exon_rule`. An indel changes the length of the exon that holds it, also in the UTR next to the CDS. An exon that the variant deletes has length 0. It is not in the mRNA, so it is no upstream or downstream exon, and it adds no exon junction. `total_exon_count` counts the exons of the ref transcript, a deleted exon included.
+- The exon features of a PTC row read the exons of the alt transcript, the mRNA, from `alt_transcript_exon_info`: the PTC exon, `upstream_exon_count`, `downstream_exon_count`, `ptc_exon_length`, `ptc_to_exon_end`, `nmd_50nt_penultimate_rule` and `nmd_long_exon_rule`. An indel changes the length of the exon that holds it, also in the UTR next to the CDS. An exon that the variant deletes has length 0. It is not in the mRNA, so it is no upstream or downstream exon, and it adds no exon junction. `total_exon_count` counts the exons of the ref transcript, a deleted exon included.
 
 ### Variants at exon boundaries
 
@@ -79,7 +79,7 @@ An unknown alt transcript has no alt CDS. Its row is null in the alt CDS columns
 
 Without an annotated stop codon (`has_stop_codon` False), a first stop codon inside the alt CDS is a PTC, and one past its end is neither. `stop_loss` is then False.
 
-After a start loss, translation starts at the next ATG, the one that the scan of the alt transcript finds (see [PTC columns](#ptc-columns)). The flags then come from the first in-frame stop codon after that ATG (`rules.classify_rescued_orf`). This stop codon is classified by its position, as after a frameshift, also if it is out of frame with the annotated stop codon. So upstream of the annotated stop codon, it is a PTC. Without an ATG, or with the ATG downstream of the first base of the annotated stop codon, no ORF overlaps the CDS. Both flags are then False, and `stop_codon_distance` is null. A start-loss row never keeps the flags from the CDS, except without `alt_transcript_seq` or with one of fewer than 3 nt.
+After a start loss, translation starts at the next ATG, the one that the scan of the alt transcript finds (see [PTC columns](#ptc-columns)). The flags then come from the first in-frame stop codon after that ATG (`rules.classify_rescued_orf`). This stop codon is classified by its position, as after a frameshift, also if it is out of frame with the annotated stop codon. So upstream of the annotated stop codon, it is a PTC. Without an ATG, or with the ATG downstream of the first base of the annotated stop codon, no ORF overlaps the CDS. Both flags are then False, and `annotated_stop_distance` is null. A start-loss row never keeps the flags from the CDS, except without `alt_transcript_seq` or with one of fewer than 3 nt.
 
 Three kinds of rows keep the flags from the CDS: `alt_is_premature` from the codon scan of the alt CDS, and `stop_loss` from `ref_valid_stop` and `alt_valid_stop`.
 
@@ -164,7 +164,7 @@ A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcri
 
 ### NMD features
 
-`add_nmd_features` adds these 11 columns. The [figures](#figures-of-the-features-and-the-nmd-rules) below draw them on an example transcript, and each case of `ptc_to_intron`.
+`add_nmd_features` adds these 11 columns. The [figures](#figures-of-the-features-and-the-nmd-rules) below draw them on an example transcript, and each case of `ptc_to_exon_end`.
 
 | Column | Kind | Meaning | Null when |
 |---|---|---|---|
@@ -176,8 +176,8 @@ A second scan, of `alt_transcript_seq`, gives the last 9 columns, from `transcri
 | `ptc_to_start_codon` | int | Distance in nt from the start codon to the PTC. Without a start loss: from the annotated start codon, `alt_first_stop_pos - alt_start_codon_pos`. After a start loss, translation starts at the ATG of the scan: `transcript_first_stop_pos - transcript_start_codon_pos`, both positions in `alt_transcript_seq` | not a PTC row; the transcript has no annotated start codon; after a start loss: the row has no `alt_transcript_seq` |
 | `ptc_less_than_150nt_to_start` | bool | Whether `ptc_to_start_codon` is less than 150. False if `ptc_to_start_codon` is null. It is an alias of `nmd_start_proximal_rule`, kept because the NMD efficiency model takes both as inputs | `unknown_reason` is set |
 | `ptc_exon_length` | int | Length of the PTC exon in the alt transcript, as in the mRNA, from `alt_transcript_exon_info`, UTR included. An indel in the PTC exon changes it | as `upstream_exon_count` |
-| `stop_codon_distance` | int | Distance in nt from the first in-frame stop codon of the alt transcript to the annotated stop codon, both at their positions in `alt_transcript_seq`. Unless the row keeps the flags from the CDS, it compares the same two stop codons as the [stop codon classification](#stop-codon-classification), so its sign gives the class. Positive: a PTC upstream of the annotated stop codon. On a PTC row, the first stop codon is the PTC. 0: the annotated stop codon, also after an insertion inside it (TAA>TGAA) or an in-frame indel right before it. Negative: a stop loss, with the new stop codon downstream, e.g. -3 for ATAG>T in GTA TAG TAG CAT. On a row that keeps the flags from the CDS, the first stop codon is the one at `alt_first_stop_pos`. After a start loss, it is the first in-frame stop codon after the ATG of the scan, at `transcript_first_stop_pos`. Without `alt_transcript_seq`, both positions are in alt CDS coordinates, and the annotated stop codon starts at `alt_cds_len - 3` | `unknown_reason` is set; `has_stop_codon` is False; a nonstop: the alt transcript has no in-frame stop codon; after a start loss: the scan found no ATG, or one downstream of the annotated stop codon; on a row that keeps the flags from the CDS, the alt CDS has no in-frame stop codon |
-| `ptc_to_intron` | int | Distance in nt from the PTC to the 3' end of the PTC exon in the alt transcript, from `alt_transcript_exon_info`. That end is the downstream exon junction, or the transcript end for the last exon. A length change of the PTC exon downstream of the PTC counts, also in its 3' UTR | as `upstream_exon_count` |
+| `annotated_stop_distance` | int | Distance in nt from the first in-frame stop codon of the alt transcript to the annotated stop codon, both at their positions in `alt_transcript_seq`. Unless the row keeps the flags from the CDS, it compares the same two stop codons as the [stop codon classification](#stop-codon-classification), so its sign gives the class. Positive: a PTC upstream of the annotated stop codon. On a PTC row, the first stop codon is the PTC. 0: the annotated stop codon, also after an insertion inside it (TAA>TGAA) or an in-frame indel right before it. Negative: a stop loss, with the new stop codon downstream, e.g. -3 for ATAG>T in GTA TAG TAG CAT. On a row that keeps the flags from the CDS, the first stop codon is the one at `alt_first_stop_pos`. After a start loss, it is the first in-frame stop codon after the ATG of the scan, at `transcript_first_stop_pos`. Without `alt_transcript_seq`, both positions are in alt CDS coordinates, and the annotated stop codon starts at `alt_cds_len - 3` | `unknown_reason` is set; `has_stop_codon` is False; a nonstop: the alt transcript has no in-frame stop codon; after a start loss: the scan found no ATG, or one downstream of the annotated stop codon; on a row that keeps the flags from the CDS, the alt CDS has no in-frame stop codon |
+| `ptc_to_exon_end` | int | Distance in nt from the PTC to the 3' end of the PTC exon in the alt transcript, from `alt_transcript_exon_info`. That end is the downstream exon junction, or the transcript end for the last exon. A length change of the PTC exon downstream of the PTC counts, also in its 3' UTR | as `upstream_exon_count` |
 | `likely_misannotated` | bool | True if `cds_in_transcript` is False, `ref_start_codon_pos` is not 0, or `ref_valid_stop` is False. A null in one of these 3 columns gives True too, e.g. `ref_start_codon_pos` of a transcript without an annotated start codon | never |
 
 ### NMD rules
@@ -208,7 +208,7 @@ A row gets the first value whose condition holds, in this order (`MODEL_STATUSES
 | `unknown_effect` | `unknown_reason` is set: the alt transcript is unknown, so `alt_is_premature` and 15 of the 19 model inputs are null. `unknown_reason` says why |
 | `no_ptc` | `alt_is_premature` is not True: there is no PTC to score |
 | `ref_ptc` | `ref_is_premature` is True: the reference has a PTC already, so the variant does not create it |
-| `no_annotated_stop` | `has_stop_codon` is False, which makes `stop_codon_distance` and `utr3_length` null |
+| `no_annotated_stop` | `has_stop_codon` is False, which makes `annotated_stop_distance` and `utr3_length` null |
 | `no_annotated_start` | `has_start_codon` is False, which makes `ptc_to_start_codon` null. The true start codon lies upstream of the CDS, at an unknown distance (e.g. cds_start_NF) |
 | `start_lost` | `start_loss` is True and `ptc_to_start_codon` is null. After a start loss, the scan of `alt_transcript_seq` takes the next ATG, and `ptc_to_start_codon` runs from it to the PTC. A scanned row is a PTC row only if the scan finds an ATG and a stop codon after it, so it always has a `ptc_to_start_codon`. Only a start-loss row without `alt_transcript_seq` gets this value, e.g. one of a transcript without exon rows. It is not scanned and keeps the PTC of the alt CDS |
 | `missing_input` | another model input is null |
@@ -229,14 +229,14 @@ Features of a PTC in exon 2 of 3. The CDS starts at transcript position 50 and h
        <----->  utr5_length = 50
              <-------------------->  ptc_to_start_codon = 180
                           <------------------>  ptc_exon_length = 200
-                                  *----------->|  ptc_to_intron = 120
-                                  <------------------------->  stop_codon_distance = 177
+                                  *----------->|  ptc_to_exon_end = 120
+                                  <------------------------->  annotated_stop_distance = 177
                                                              <------------------>  utr3_length = 190
 ```
 
 The exon counts are total_exon_count = 3, upstream_exon_count = 1 and downstream_exon_count = 1. ptc_less_than_150nt_to_start is False, because ptc_to_start_codon is 180.
 
-ptc_to_intron runs to the 3' end of the PTC exon. Where that end lies depends on the PTC exon:
+ptc_to_exon_end runs to the 3' end of the PTC exon. Where that end lies depends on the PTC exon:
 
 PTC in an internal exon: to the downstream exon junction.
 

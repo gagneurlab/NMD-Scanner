@@ -115,8 +115,8 @@ NMD_FEATURE_COLUMN_KINDS = {
     "ptc_to_start_codon": "int",
     "ptc_less_than_150nt_to_start": "bool",
     "ptc_exon_length": "int",
-    "stop_codon_distance": "int",
-    "ptc_to_intron": "int",
+    "annotated_stop_distance": "int",
+    "ptc_to_exon_end": "int",
     "likely_misannotated": "bool",
 }
 
@@ -169,9 +169,9 @@ MODEL_INPUTS = [
     "downstream_exon_count",
     "nmd_last_exon_rule",
     "ptc_to_start_codon",
-    "stop_codon_distance",
+    "annotated_stop_distance",
     "ptc_exon_length",
-    "ptc_to_intron",
+    "ptc_to_exon_end",
     "upstream_exon_count",
     "nmd_50nt_penultimate_rule",
     "utr5_length",
@@ -184,7 +184,7 @@ MODEL_INPUTS = [
 #   inputs are null. unknown_reason says why.
 # - no_ptc: alt_is_premature is not True, so there is no PTC to score.
 # - ref_ptc: ref_is_premature is True. The reference has a PTC already, so the variant does not create it.
-# - no_annotated_stop: has_stop_codon is False, which makes stop_codon_distance and utr3_length null.
+# - no_annotated_stop: has_stop_codon is False, which makes annotated_stop_distance and utr3_length null.
 # - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
 #   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).
 # - start_lost: start_loss is True and ptc_to_start_codon is null. After a start loss, the scan of alt_transcript_seq

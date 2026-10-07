@@ -390,7 +390,7 @@ def test_calculate_ptc_to_downstream_ej():
     #           100 nt            200 nt              150 nt
     #     5' [==========]|[===============*====]|[===============] 3'
     #        0           100              250   300              450
-    #                                     *---->|  ptc_to_intron = 50
+    #                                     *---->|  ptc_to_exon_end = 50
     row1 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 250,  # PTC position
@@ -404,7 +404,7 @@ def test_calculate_ptc_to_downstream_ej():
     #           100 nt            200 nt              150 nt
     #     5' [======*===]|[====================]|[===============] 3'
     #        0      60   100                    300              450
-    #               *--->|  ptc_to_intron = 40
+    #               *--->|  ptc_to_exon_end = 40
     row2 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 60,
@@ -418,7 +418,7 @@ def test_calculate_ptc_to_downstream_ej():
     #           100 nt            200 nt                 200 nt
     #     5' [==========]|[====================]|[=============*======] 3'
     #        0           100                    300            430    500
-    #                                                          *----->|  ptc_to_intron = 70
+    #                                                          *----->|  ptc_to_exon_end = 70
     row3 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 430,
@@ -440,7 +440,7 @@ def test_calculate_ptc_to_downstream_ej():
     #                200 nt            100 nt         60 nt          300 nt
     #     5' [uuuu================]|[==========]|[====*===uuuu]|[uuuuuuuuuuuuuuu] 3'
     #        -40  0                160          260   280 300  320              620
-    #                                                 *------->|  ptc_to_intron = 40
+    #                                                 *------->|  ptc_to_exon_end = 40
     row6 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 280,
@@ -456,7 +456,7 @@ def test_calculate_ptc_to_downstream_ej():
     #        -40  0                160                    260       300  320
     # alt 5' [uuuu================]|[=================*==]|[========uuuu]|[uuuuuuuuuuuuuuu] 3'
     #        -40  0                159                250 259       299  319
-    #                                                 *-->|  ptc_to_intron = 9
+    #                                                 *-->|  ptc_to_exon_end = 9
     row7 = {
         **row6,
         "alt_first_stop_pos": 250,
@@ -471,7 +471,7 @@ def test_calculate_ptc_to_downstream_ej():
     #        -40  0                160          260   280 300  320
     # alt 5' [uuuu================]|[==========]|[====*===uuu]|[uuuuuuuuuuuuuuu] 3'
     #        -40  0                160          260   280 300 317
-    #                                                 *------>|  ptc_to_intron = 37
+    #                                                 *------>|  ptc_to_exon_end = 37
     row8 = {**row6, "alt_transcript_exon_info": [("1", 200), ("2", 100), ("3", 57), ("4", 300)]}
     # Exon 3 ends at alt transcript position 357, the PTC lies at 40 + 280 = 320: distance = 357 - 320 = 37
     assert calculate_ptc_to_downstream_ej(row8) == 37
@@ -484,7 +484,7 @@ def test_calculate_ptc_to_downstream_ej():
     #           100 nt            200 nt                    260 nt
     #     5' [==========]|[====================]|[=============*======uuuuuu] 3'
     #        0           100                    300            430    500   560
-    #                                                          *----------->|  ptc_to_intron = 130
+    #                                                          *----------->|  ptc_to_exon_end = 130
     #                                                          *----->|  70 to the CDS end, not measured
     row10 = {**row3, "alt_transcript_exon_info": [("1", 100), ("2", 200), ("3", 260)]}
     # The transcript ends at 560, distance = 560 - 430 = 130: the 3'UTR that the PTC creates, not the 70 nt to the CDS end
@@ -496,7 +496,7 @@ def test_calculate_ptc_to_downstream_ej():
     #        0           100                    300                   500   560
     # alt 5' [==========]|[====================]|[=============*======uuuuuu] 3'
     #        0           99                     299            429    499   559
-    #                                                          *----------->|  ptc_to_intron = 130
+    #                                                          *----------->|  ptc_to_exon_end = 130
     row11 = {**row10, "alt_first_stop_pos": 429, "alt_transcript_exon_info": [("1", 99), ("2", 200), ("3", 260)]}
     # The transcript ends at 560 - 1 = 559, distance = 559 - 429 = 130
     assert calculate_ptc_to_downstream_ej(row11) == 130
@@ -505,7 +505,7 @@ def test_calculate_ptc_to_downstream_ej():
     #                     300 nt
     #     5' [uuuuu==========*=========uuuuu] 3'
     #        -50   0         100       200  250
-    #                        *------------->|  ptc_to_intron = 150
+    #                        *------------->|  ptc_to_exon_end = 150
     row12 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 100,
@@ -583,12 +583,12 @@ _UNKNOWN_INPUTS = {
         ({"alt_is_premature": False}, "no_ptc"),
         ({"alt_is_premature": None}, "no_ptc"),
         ({"ref_is_premature": True}, "ref_ptc"),
-        ({"has_stop_codon": False, "stop_codon_distance": None, "utr3_length": None}, "no_annotated_stop"),
+        ({"has_stop_codon": False, "annotated_stop_distance": None, "utr3_length": None}, "no_annotated_stop"),
         ({"has_start_codon": False, "ptc_to_start_codon": None}, "no_annotated_start"),
         ({"start_loss": True, "ptc_to_start_codon": None}, "start_lost"),
         ({"start_loss": True}, "ok"),
         ({"ptc_to_start_codon": None}, "missing_input"),
-        ({"ptc_to_intron": None}, "missing_input"),
+        ({"ptc_to_exon_end": None}, "missing_input"),
         ({"ref_is_premature": None}, "ok"),
         # overlapping reasons: the first one in MODEL_STATUSES wins
         (
@@ -602,8 +602,8 @@ _UNKNOWN_INPUTS = {
             {"has_stop_codon": False, "has_start_codon": False, "utr3_length": None, "ptc_to_start_codon": None},
             "no_annotated_stop",
         ),
-        ({"has_start_codon": False, "ptc_to_start_codon": None, "ptc_to_intron": None}, "no_annotated_start"),
-        ({"start_loss": True, "ptc_to_start_codon": None, "ptc_to_intron": None}, "start_lost"),
+        ({"has_start_codon": False, "ptc_to_start_codon": None, "ptc_to_exon_end": None}, "no_annotated_start"),
+        ({"start_loss": True, "ptc_to_start_codon": None, "ptc_to_exon_end": None}, "start_lost"),
     ],
 )
 def test_nmd_model_status(values, status):

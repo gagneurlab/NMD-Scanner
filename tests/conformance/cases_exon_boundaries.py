@@ -98,7 +98,7 @@ KEEPS_THE_STOP_CODON = {
     **NOT_SCANNED,
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": 0,
+    "annotated_stop_distance": 0,
     **NO_RULE,
 }
 # The alt columns of a known row after a frameshift in the CDS of MAIN: the alt CDS ends in ...GCG TTA A, out of
@@ -130,7 +130,7 @@ FRAMESHIFT_NONSTOP = {
     "transcript_stop_codon_exons": [],
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": None,
+    "annotated_stop_distance": None,
     **NO_RULE,
 }
 DESTROYED = {**UNKNOWN_ALT, "unknown_reason": "splice_site_destroyed"}
@@ -533,7 +533,7 @@ CASES = [
         CA deleted: the last flank base and the A of the start codon
         a transcript start has no splice dinucleotide, so the placement is valid: exon 1 is TGGCTCT (7 nt)
         start loss; the alt transcript TGGCTCTAG... has no ATG: alt_is_premature and stop_loss False,
-        stop_codon_distance null
+        annotated_stop_distance null
         """,
         MAIN,
         Change("CCC[CA>]TGGCTCT"),
@@ -570,7 +570,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 7), (2, 16), (3, 18)],
             "nmd_model_status": "no_ptc",
@@ -943,7 +943,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "nmd_model_status": "no_ptc",
         },
@@ -999,7 +999,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "nmd_model_status": "no_ptc",
         },

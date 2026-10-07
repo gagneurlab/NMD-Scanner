@@ -1149,7 +1149,7 @@ def classify_rescued_orf(row, start, first_stop):
     :param row: A pd.Series row or dict with the columns that classify_first_stop and annotated_stop_distance read
     :param start: Position of the ATG in the alternative transcript, or None if the scan found none
     :param first_stop: Position of the first in-frame stop codon after the ATG, or None
-    :return: Tuple (alt_is_premature, stop_loss, stop_codon_distance). The distance is None without an annotated stop
+    :return: Tuple (alt_is_premature, stop_loss, annotated_stop_distance). The distance is None without an annotated stop
              codon (has_stop_codon False).
     """
 

@@ -501,7 +501,7 @@ MISSENSE_ALT_CDS = {
     **NOT_SCANNED,
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": 0,
+    "annotated_stop_distance": 0,
     **NO_RULE,
 }
 
@@ -614,7 +614,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -674,7 +674,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -688,7 +688,7 @@ CASES = [
         alt 5' [gacc ATG GCC]|[AAG TGA GGC]|[TCC TAA gccgcc] 3'
                                      ^ G>A
                                    *** PTC
-                                   <-----> ptc_to_intron = 6
+                                   <-----> ptc_to_exon_end = 6
         The GFF3 has no start_codon rows, so has_start_codon is False. G>A changes TGG to TGA, the PTC at CDS 9.
         """,
         NO_START_CODON,
@@ -719,8 +719,8 @@ CASES = [
             "ptc_to_start_codon": None,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 9,
-            "stop_codon_distance": 9,
-            "ptc_to_intron": 6,
+            "annotated_stop_distance": 9,
+            "ptc_to_exon_end": 6,
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": True,
             "nmd_long_exon_rule": False,
@@ -730,7 +730,7 @@ CASES = [
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_annotated_start",
         },
-        marks=(Mark("alt", 13, 16, "*", "PTC"), Span("alt", 13, 19, "ptc_to_intron = 6")),
+        marks=(Mark("alt", 13, 16, "*", "PTC"), Span("alt", 13, 19, "ptc_to_exon_end = 6")),
     ),
     # Pins the null clause of ptc_to_start_codon "the annotated start codon is a stop codon, such as TAG" ("Input
     # Defects.md": "A variant that leaves it unchanged gives a PTC row whose PTC is this start codon"). So
@@ -747,11 +747,11 @@ CASES = [
         alt 5' [gcc TAG GAC AAG CTG TAA gcc] 3'
                          ^ C>A
                     *** PTC
-                    <---------------------> ptc_to_intron = 18
+                    <---------------------> ptc_to_exon_end = 18
         C>A at CDS 4: GCC>GAC. The start_codon rows mark TAG at CDS 0, a stop codon. It is the first in-frame stop
         codon of the alt CDS, so it is the PTC, and ptc_to_start_codon is null. The ref transcript, read in frame
         from tx 3, stops at this TAG, so the row keeps the flags from the CDS: alt_is_premature is True.
-        stop_codon_distance = 15 - 3 = 12. likely_misannotated is False: its start codon check only asks for an
+        annotated_stop_distance = 15 - 3 = 12. likely_misannotated is False: its start codon check only asks for an
         annotated start codon at CDS position 0.
         """,
         TAG_START_CODON,
@@ -789,8 +789,8 @@ CASES = [
             "ptc_to_start_codon": None,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 21,
-            "stop_codon_distance": 12,
-            "ptc_to_intron": 18,
+            "annotated_stop_distance": 12,
+            "ptc_to_exon_end": 18,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
@@ -800,7 +800,7 @@ CASES = [
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ref_ptc",
         },
-        marks=(Mark("alt", 3, 6, "*", "PTC"), Span("alt", 3, 21, "ptc_to_intron = 18")),
+        marks=(Mark("alt", 3, 6, "*", "PTC"), Span("alt", 3, 21, "ptc_to_exon_end = 18")),
         ruler=Ruler((0, 3, 15)),
     ),
     # NU-03
@@ -843,7 +843,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -897,7 +897,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 9)],
             "nmd_model_status": "no_ptc",
@@ -957,7 +957,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 10)],
             "nmd_model_status": "no_ptc",
@@ -1012,7 +1012,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 2)],
             "nmd_model_status": "no_ptc",
@@ -1022,7 +1022,7 @@ CASES = [
     ),
     # Pins the threshold of the scan ("PTC columns"): "An `alt_transcript_seq` of exactly 3 nt is scanned, and
     # `transcript_last_codon` is all of it." The row is a start loss, and the scan finds no ATG: "Without an ATG, ...
-    # Both flags are then False, and `stop_codon_distance` is null." The case before leaves 2 nt, which are not
+    # Both flags are then False, and `annotated_stop_distance` is null." The case before leaves 2 nt, which are not
     # scanned.
     Case(
         "deletion_that_leaves_three_nt_of_the_transcript_is_scanned_and_they_are_its_last_codon",
@@ -1032,7 +1032,7 @@ CASES = [
         alt 5' [g--- --- --- --- -cc] 3'
                  ^^^^^^^^^^^^^^^^^ 13 nt>-
         Deleting tx 1 to 13 leaves the alt transcript GCC of 3 nt and an empty alt CDS at alt tx 1. It is a start
-        loss, and 3 nt are scanned. The scan finds no ATG, so both flags are False and stop_codon_distance is null.
+        loss, and 3 nt are scanned. The scan finds no ATG, so both flags are False and annotated_stop_distance is null.
         transcript_last_codon is GCC, all of the alt transcript.
         """,
         SHORT_TRANSCRIPT,
@@ -1074,7 +1074,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 3)],
             "nmd_model_status": "no_ptc",
@@ -1084,7 +1084,7 @@ CASES = [
     ),
     # NU-05, NU-18, NU-25
     Case(
-        "cds_without_stop_codon_rows_and_without_in_frame_stop_has_no_utr3_length_and_no_stop_codon_distance",
+        "cds_without_stop_codon_rows_and_without_in_frame_stop_has_no_utr3_length_and_no_annotated_stop_distance",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TCA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TTG GGC]|[TCC TCA gccgcc] 3'
@@ -1115,7 +1115,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1171,7 +1171,7 @@ CASES = [
             "transcript_stop_codon_exons": [3],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -4,
+            "annotated_stop_distance": -4,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 10), (2, 8), (3, 15)],
             "nmd_model_status": "no_ptc",
@@ -1225,7 +1225,7 @@ CASES = [
             "transcript_stop_codon_exons": [3],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1273,7 +1273,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1281,7 +1281,7 @@ CASES = [
     ),
     # NU-27 (ATG downstream of the first base of the annotated stop codon)
     Case(
-        "start_loss_with_the_next_atg_on_the_last_base_of_the_stop_codon_has_no_stop_codon_distance",
+        "start_loss_with_the_next_atg_on_the_last_base_of_the_stop_codon_has_no_annotated_stop_distance",
         """
         tx      0    4                           22         32
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TGA tgccgcc] 3'
@@ -1327,7 +1327,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1426,7 +1426,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": None,
             "nmd_model_status": "no_ptc",
@@ -1480,7 +1480,7 @@ CASES = [
             "transcript_stop_codon_exons": [3],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -6,
+            "annotated_stop_distance": -6,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1489,7 +1489,7 @@ CASES = [
     ),
     # NU-16, NU-26
     Case(
-        "nonstop_stop_loss_has_no_first_stop_codon_and_no_stop_codon_distance",
+        "nonstop_stop_loss_has_no_first_stop_codon_and_no_annotated_stop_distance",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAC gccgcc] 3'
@@ -1528,7 +1528,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1542,7 +1542,7 @@ CASES = [
         alt 5' [gacc ATG GCC]|[AAG TGG GGC]|[TAG TAA gccgcc] 3'
                                               ^ C>A
                                              *** PTC
-                                             <------------> ptc_to_intron = 12
+                                             <------------> ptc_to_exon_end = 12
         The CDS row of exon 3 has exon_number 4. C>A changes TCG to TAG, the PTC at CDS 15, in "exon 4".
         The exon features read the exons of the alt transcript: the PTC at tx 19 lies in exon 3, the last exon.
         So upstream_exon_count = 2, downstream_exon_count = 0 and ptc_exon_length = 12.
@@ -1580,8 +1580,8 @@ CASES = [
             "ptc_to_start_codon": 15,
             "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 12,
-            "stop_codon_distance": 3,
-            "ptc_to_intron": 12,
+            "annotated_stop_distance": 3,
+            "ptc_to_exon_end": 12,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
@@ -1591,11 +1591,11 @@ CASES = [
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
         },
-        marks=(Mark("alt", 19, 22, "*", "PTC"), Span("alt", 19, 31, "ptc_to_intron = 12")),
+        marks=(Mark("alt", 19, 22, "*", "PTC"), Span("alt", 19, 31, "ptc_to_exon_end = 12")),
     ),
     # NU-28
     Case(
-        "missense_on_a_cds_whose_stop_codon_is_out_of_frame_has_no_stop_codon_distance",
+        "missense_on_a_cds_whose_stop_codon_is_out_of_frame_has_no_annotated_stop_distance",
         """
         CDS          0            10
         ref 5' [gacc GCC CGG GAA ATG A gcc] 3'
@@ -1635,7 +1635,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1691,7 +1691,7 @@ CASES = [
             "transcript_stop_codon_exons": [],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 9)],
             "nmd_model_status": "no_ptc",
@@ -1760,8 +1760,8 @@ CASES = [
             "ptc_to_start_codon": 9,
             "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": None,
-            "stop_codon_distance": 9,
-            "ptc_to_intron": None,
+            "annotated_stop_distance": 9,
+            "ptc_to_exon_end": None,
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
@@ -1772,19 +1772,19 @@ CASES = [
         },
         marks=(Mark("alt", 13, 16, "*", "PTC"),),
     ),
-    # Pins the null clause of stop_codon_distance "on a row that keeps the flags from the CDS, the alt CDS has no
+    # Pins the null clause of annotated_stop_distance "on a row that keeps the flags from the CDS, the alt CDS has no
     # in-frame stop codon" on a row without alt_transcript_seq. The other cases of the clause have alt_transcript_seq.
     # The transcript has no exon rows, so the row keeps the flags from the CDS: stop_loss is True, because
     # ref_valid_stop is True and alt_valid_stop is False.
     Case(
-        "stop_loss_in_a_transcript_without_exon_rows_has_no_stop_codon_distance",
+        "stop_loss_in_a_transcript_without_exon_rows_has_no_annotated_stop_distance",
         """
         ref 5' [gacc ATG GAT G]|[TA AGC TAA gc] 3'
         alt 5' [gacc ATG GAT G]|[TA AGC CAA gc] 3'
                                         ^ T>C
         The GFF3 has CDS rows only, no exon rows. T>C changes the stop codon TAA to CAA, and the alt CDS has no
         in-frame stop codon. alt_transcript_seq is null, so the row keeps the flags from the CDS: stop_loss is
-        True, and stop_codon_distance is null.
+        True, and annotated_stop_distance is null.
         """,
         TWO_EXONS_WITHOUT_EXON_ROWS,
         Change("AGC[T>C]AAGC"),
@@ -1818,7 +1818,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "nmd_model_status": "no_ptc",
         },
@@ -1836,7 +1836,7 @@ CASES = [
         no alt_transcript_seq, so the scan of the alt transcript does not run, and the row keeps the flags from the
         alt CDS. Its first in-frame stop codon is the TAG at CDS 0, upstream of the annotated stop codon at CDS 18: a
         PTC. No ATG of a scan starts the ORF, so ptc_to_start_codon is null, and nmd_model_status is start_lost.
-        stop_codon_distance is 18 - 0 = 18, in alt CDS coordinates.
+        annotated_stop_distance is 18 - 0 = 18, in alt CDS coordinates.
         """,
         THREE_EXONS_WITHOUT_EXON_ROWS,
         Change("GACC[AT>TA]GGCC"),
@@ -1871,8 +1871,8 @@ CASES = [
             "ptc_to_start_codon": None,
             "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": None,
-            "stop_codon_distance": 18,
-            "ptc_to_intron": None,
+            "annotated_stop_distance": 18,
+            "ptc_to_exon_end": None,
             **NO_RULE,
             "nmd_model_status": "start_lost",
         },
@@ -1933,7 +1933,7 @@ CASES = [
             "transcript_stop_codon_exons": None,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -19,
+            "annotated_stop_distance": -19,
             **NO_RULE,
             "nmd_model_status": "no_ptc",
         },

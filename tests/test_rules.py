@@ -431,7 +431,7 @@ def test_extract_ptc_of_a_transcript_without_exon_rows(tmp_path, strand):
         "utr5_length": None,
         "utr3_length": None,
         "total_exon_count": None,
-        "stop_codon_distance": 0,
+        "annotated_stop_distance": 0,
         "likely_misannotated": True,
         "nmd_escape": False,
     }

@@ -95,7 +95,7 @@ THREE_EXONS_UNCHANGED_STOP = {
     **NOT_SCANNED,
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": 0,
+    "annotated_stop_distance": 0,
     **NO_RULE,
 }
 # The layout block of the SNV T>A at the second T of TTC in THREE_EXONS, tx 23, CDS 19. A case adds its prose.
@@ -162,7 +162,7 @@ STOP_ALT_CDS_UNCHANGED = {
     **NOT_SCANNED,
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": 0,
+    "annotated_stop_distance": 0,
     **NO_RULE,
 }
 
@@ -426,7 +426,7 @@ MISSENSE_ALT_CDS = {
     **NOT_SCANNED,
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": 0,
+    "annotated_stop_distance": 0,
     **NO_RULE,
 }
 
@@ -752,7 +752,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC T-- --cctgacctagccc] 3'
                                                                  ^^^^^ AACC>-
                                                                         *** TGA, the first stop codon in frame
-                                                                <------> stop_codon_distance = -3
+                                                                <------> annotated_stop_distance = -3
         AAcc deleted at tx 41-44: alt GCC TCC TGA.
         Descriptions: TAACC>T anchored on tx 40 (CDS) and AACCC>C anchored on tx 45 (3'UTR), each on both
         strands. Read in frame, the TGA of the 3'UTR is the first stop codon, 3 nt downstream of the annotated
@@ -797,7 +797,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "transcript_stop_codon_exons": [2],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -3,
+            "annotated_stop_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 29)],
             "nmd_model_status": "no_ptc",
@@ -805,7 +805,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         equivalent=(Change("GCC[TAACC>T]CCTGA"), Change("GCCT[AACCC>C]CTGA")),
         marks=(
             Mark("alt", 43, 46, "*", "TGA, the first stop codon in frame"),
-            Span("alt", 40, 43, "stop_codon_distance = -3"),
+            Span("alt", 40, 43, "annotated_stop_distance = -3"),
         ),
         ruler=Ruler((40, 45)),
     ),
@@ -851,10 +851,10 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GTT --- tagcatccc] 3'
                                                               ^^^^^ ATAG>T
                                                                     *** TAG, the first stop codon in frame
-                                                            <-> stop_codon_distance = -3
+                                                            <-> annotated_stop_distance = -3
         ATAG>T at tx 39-42: alt GTT tag cat ccc.
         Descriptions: ATAG>T, TATAG>TT and ATAGT>TT. The annotated stop codon maps to tx 37 of the alt
-        transcript, and the first stop codon in frame is the TAG at tx 40: stop_codon_distance -3.
+        transcript, and the first stop codon in frame is the TAG at tx 40: annotated_stop_distance -3.
         """,
         STOP_GTA_TAG_TAG,
         Change("GT[ATAG>T]TAGCAT"),
@@ -895,7 +895,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "transcript_stop_codon_exons": [2],
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -3,
+            "annotated_stop_distance": -3,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 25), (2, 24)],
             "nmd_model_status": "no_ptc",
@@ -903,7 +903,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         equivalent=(Change("G[TATAG>TT]TAGCAT"), Change("GT[ATAGT>TT]AGCAT")),
         marks=(
             Mark("alt", 40, 43, "*", "TAG, the first stop codon in frame"),
-            Span("alt", 37, 40, "stop_codon_distance = -3"),
+            Span("alt", 37, 40, "annotated_stop_distance = -3"),
         ),
     ),
     # VD-13: the placements of a deletion in a run stop at the end of the chromosome. Some of them lie inside the

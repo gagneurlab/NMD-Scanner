@@ -118,7 +118,7 @@ MISSENSE_ROW = {
     **NOT_SCANNED,
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": 0,
+    "annotated_stop_distance": 0,
     **NO_RULE,
 }
 
@@ -519,7 +519,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",

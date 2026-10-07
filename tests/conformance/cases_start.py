@@ -129,7 +129,7 @@ CASES = [
         alt 5' [ggg ACG AA]|[A CCC GAC TAA ggggg] 3'
                      ^ T>C
         ATG>ACG changes the start codon. From tx 3 on, the alt transcript has no ATG, so the scan reads no stop codon.
-        No ORF overlaps the CDS: stop_codon_distance = null.
+        No ORF overlaps the CDS: annotated_stop_distance = null.
         """,
         ATG_START,
         Change("gggA[T>C]GAA"),
@@ -162,7 +162,7 @@ CASES = [
             **NO_ATG_FOUND,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -210,7 +210,7 @@ CASES = [
             **NO_ATG_FOUND,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -258,7 +258,7 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -531,7 +531,7 @@ CASES += [
                                                                                      ^ G>A
                                                                                     *** PTC
                     <------------ ptc_to_start_codon = 159, not < 150 ------------>
-                                                                                    <---------------> ptc_to_intron = 14
+                                                                                    <---------------> ptc_to_exon_end = 14
         exon 1: 103 nt, exon 2: 73 nt
         TGG>TAG is a PTC in the last exon. The ATG at CDS 30 is an internal Met: from it, the PTC would be 129 nt away.
         """,
@@ -554,7 +554,7 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 1, 0, 159, False, 73, 14),
-            "stop_codon_distance": 6,
+            "annotated_stop_distance": 6,
             **columns(RULE_COLUMNS, True, False, False, False, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
@@ -562,7 +562,7 @@ CASES += [
         marks=(
             Mark("alt", 162, 165, "*", "PTC"),
             Span("alt", 3, 162, "ptc_to_start_codon = 159, not < 150"),
-            Span("alt", 162, 176, "ptc_to_intron = 14"),
+            Span("alt", 162, 176, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 30, 159, 165), "CDS"),
     ),
@@ -575,7 +575,7 @@ CASES += [
         alt 5' [gg CTG AA]|[A ATG CCC CAA gggtagcc] 3'
                                       ^ T>C
         TAA>CAA loses the stop codon. The scan reads on in the frame of the CDS to the TAG at tx 20. Its start codon
-        is the annotated CTG at tx 2, not the in-frame ATG at tx 8. stop_codon_distance = 14 - 20 = -6.
+        is the annotated CTG at tx 2, not the in-frame ATG at tx 8. annotated_stop_distance = 14 - 20 = -6.
         """,
         CTG_THEN_ATG,
         Change("CCC[T>C]AAggg"),
@@ -596,7 +596,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 2, 1, "GCC", False, "TAG", 20, 1, [(20, "TAG")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -6,
+            "annotated_stop_distance": -6,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -614,7 +614,7 @@ CASES += [
                             aaa ATG of the scan
                                 *** PTC
                             <-> ptc_to_start_codon = 3
-                                <-- ptc_to_intron = 51 -->
+                                <------------------------> ptc_to_exon_end = 51
         exon 1: 63 nt, exon 2: 60 nt, exon 3: 11 nt
         One MNV changes ATG>ACG and CAG>TAG. The scan finds the ATG at tx 9, and its first stop codon is the TAG at
         tx 12: a PTC, 114 nt upstream of the stop codon at tx 126. From the CDS start, the PTC would be 9 nt away.
@@ -643,7 +643,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 9, 1, "GGG", False, "TAG", 12, 2, [(12, "TAG"), (126, "TAA")], [1, 3]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 2, 3, True, 63, 51),
-            "stop_codon_distance": 114,
+            "annotated_stop_distance": 114,
             **columns(RULE_COLUMNS, False, False, False, True, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
@@ -652,7 +652,7 @@ CASES += [
             Mark("alt", 9, 12, "a", "ATG of the scan"),
             Mark("alt", 12, 15, "*", "PTC"),
             Span("alt", 9, 12, "ptc_to_start_codon = 3"),
-            Span("alt", 12, 63, "ptc_to_intron = 51"),
+            Span("alt", 12, 63, "ptc_to_exon_end = 51"),
         ),
         ruler=Ruler((0, 3, 9, 12, 63, 123, 126, 134)),
     ),
@@ -667,8 +667,8 @@ CASES += [
                          aaaa ATG of the scan
                                  **** PTC
                          <------> ptc_to_start_codon = 6
-                                 <--------------------- stop_codon_distance = 155 --------------------->
-                                 <-----------------------> ptc_to_intron = 50
+                                 <------------------- annotated_stop_distance = 155 ------------------->
+                                 <-----------------------> ptc_to_exon_end = 50
         exon 1: 63 nt, exon 2: 60 nt, exon 3: 53 nt
         ATG>ACG is a start loss. The scan finds the ATG at tx 7, out of frame with the stop codon. Its ORF ATG CCC TAA
         ends at tx 13, upstream of the stop codon at tx 168: a PTC in exon 1.
@@ -692,7 +692,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 7, 1, "GGG", False, "TAA", 13, 1, [(13, "TAA")], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 2, 6, True, 63, 50),
-            "stop_codon_distance": 155,
+            "annotated_stop_distance": 155,
             **columns(RULE_COLUMNS, False, False, False, True, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
@@ -701,8 +701,8 @@ CASES += [
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 13, 16, "*", "PTC"),
             Span("alt", 7, 13, "ptc_to_start_codon = 6"),
-            Span("alt", 13, 168, "stop_codon_distance = 155"),
-            Span("alt", 13, 63, "ptc_to_intron = 50"),
+            Span("alt", 13, 168, "annotated_stop_distance = 155"),
+            Span("alt", 13, 63, "ptc_to_exon_end = 50"),
         ),
         ruler=Ruler((0, 3, 7, 13, 63, 123, 168, 176)),
     ),
@@ -718,7 +718,7 @@ CASES += [
                                       aaa ATG of the scan
                                                       sss the annotated stop codon
         No placement of the deletion keeps an ATG at the CDS start. The scan finds the ATG at tx 11, which is the Met
-        at CDS 9 of the ref CDS. Its ORF ends at the annotated stop codon at tx 23: stop_codon_distance = 0.
+        at CDS 9 of the ref CDS. Its ORF ends at the annotated stop codon at tx 23: annotated_stop_distance = 0.
         """,
         FRAMESHIFT_RESCUE,
         Change("gggA[T>]GGT"),
@@ -739,7 +739,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 11, 2, "GGG", False, "TAA", 23, 1, [(23, "TAA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 7), (2, 24)],
             "nmd_model_status": "no_ptc",
@@ -764,7 +764,7 @@ CASES += [
                                              aaa ATG of the scan
                                                    sss the stop codon of the scan
         The scan finds the ATG at tx 20, downstream of the first base of the stop codon at tx 15. Its ORF does not
-        overlap the CDS: neither flag, stop_codon_distance = null. The scan columns are set.
+        overlap the CDS: neither flag, annotated_stop_distance = null. The scan columns are set.
         """,
         ATG_IN_THE_3UTR,
         Change("gggA[T>C]GCC"),
@@ -785,7 +785,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 20, 2, "AGG", False, "TGA", 26, 1, [(26, "TGA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -808,7 +808,7 @@ CASES += [
                          aaaa ATG of the scan
                                                sss the annotated stop codon
                                                     sss the stop codon of the scan
-                                               <---> stop_codon_distance = 21 - 25 = -4
+                                               <---> annotated_stop_distance = 21 - 25 = -4
         The scan finds the ATG at tx 7, out of frame with the stop codon at tx 21. Its frame reads past it to the TGA
         at tx 25 in the 3' UTR: a stop loss.
         """,
@@ -831,7 +831,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 7, 1, "ACC", False, "TGA", 25, 1, [(25, "TGA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -4,
+            "annotated_stop_distance": -4,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -840,7 +840,7 @@ CASES += [
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 21, 24, "s", "the annotated stop codon"),
             Mark("alt", 25, 28, "s", "the stop codon of the scan"),
-            Span("alt", 21, 25, "stop_codon_distance = 21 - 25 = -4"),
+            Span("alt", 21, 25, "annotated_stop_distance = 21 - 25 = -4"),
         ),
         ruler=Ruler((0, 3, 7, 11, 21, 25, 30)),
     ),
@@ -856,7 +856,7 @@ CASES += [
                                        sss the annotated stop codon
                                              sss the stop codon of the scan
         The scan finds the ATG at tx 14, 1 nt before the first base of the stop codon TGA at tx 15. So its ORF is
-        classified: its frame reads to the TAG at tx 20, a stop loss. stop_codon_distance = 15 - 20 = -5.
+        classified: its frame reads to the TAG at tx 20, a stop loss. annotated_stop_distance = 15 - 20 = -5.
         """,
         ATG_BEFORE_THE_STOP_CODON,
         Change("gggA[T>C]GCC"),
@@ -877,7 +877,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 14, 2, "GGG", False, "TAG", 20, 1, [(20, "TAG")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -5,
+            "annotated_stop_distance": -5,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -902,7 +902,7 @@ CASES += [
                                                 sss the stop codon of the scan
         The scan finds the ATG at tx 17, 2 nt after the first base of the stop codon at tx 15. An ATG 1 nt after it
         would need TAT, which is no stop codon. So this is the nearest ATG on this side: its ORF does not overlap the
-        CDS, neither flag, stop_codon_distance = null.
+        CDS, neither flag, annotated_stop_distance = null.
         """,
         ATG_AT_THE_LAST_STOP_CODON_BASE,
         Change("gggA[T>C]GCC"),
@@ -923,7 +923,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 17, 2, "AGG", False, "TGA", 23, 1, [(23, "TGA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1139,7 +1139,7 @@ CASES += [
                                                   sss the annotated stop codon, shifted
                                                         sss the stop codon of the scan
         A>ATGAT keeps an ATG at the CDS start, so it is no start loss. The 4 nt frameshift reads past the shifted stop
-        codon at tx 22 to the TGA at tx 27 in the 3' UTR: a stop loss, stop_codon_distance = 22 - 27 = -5.
+        codon at tx 22 to the TGA at tx 27 in the 3' UTR: a stop loss, annotated_stop_distance = 22 - 27 = -5.
         The insertion also fits after AT (GATT) and after ATG (ATTG).
         """,
         ATG_C12,
@@ -1161,7 +1161,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 3, 1, "ACC", False, "TGA", 27, 1, [(27, "TGA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -5,
+            "annotated_stop_distance": -5,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 15), (2, 17)],
             "nmd_model_status": "no_ptc",
@@ -1207,7 +1207,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 19, 1, "CCC", False, "TGA", 31, 2, [(31, "TGA"), (40, "TAG")], [1, 2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1253,7 +1253,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 19, 2, "CCC", False, "TGA", 31, 2, [(31, "TGA"), (40, "TAG")], [2, 3]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1300,7 +1300,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 4, 1, "ACC", False, "TGA", 10, 1, [(10, "TGA")], [1]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": [(1, 15)],
             "nmd_model_status": "no_ptc",
@@ -1323,10 +1323,10 @@ CASES += [
                          aaaa ATG of the scan
                                  **** PTC
                          <------> ptc_to_start_codon = 6
-                                 <----> ptc_to_intron = 5
+                                 <----> ptc_to_exon_end = 5
         exon 1: 18 nt, exon 2: 13 nt; cds_end_NF, no stop_codon rows
         Without an annotated stop codon, the TAA at tx 13 of the rescued ORF is a PTC because it lies inside the alt
-        CDS, which ends at tx 27. stop_codon_distance = null.
+        CDS, which ends at tx 27. annotated_stop_distance = null.
         """,
         NO_STOP_CODON_PTC,
         Change("gggA[T>C]GGATG"),
@@ -1347,7 +1347,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 7, 1, "CCC", False, "TAA", 13, 1, [(13, "TAA")], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 1, 6, True, 18, 5),
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **columns(RULE_COLUMNS, False, True, False, True, False, True),
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_annotated_stop",
@@ -1356,7 +1356,7 @@ CASES += [
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 13, 16, "*", "PTC"),
             Span("alt", 7, 13, "ptc_to_start_codon = 6"),
-            Span("alt", 13, 18, "ptc_to_intron = 5"),
+            Span("alt", 13, 18, "ptc_to_exon_end = 5"),
         ),
         ruler=Ruler((0, 3, 7, 13, 18, 27, 31)),
     ),
@@ -1372,7 +1372,7 @@ CASES += [
                                                        sss the stop codon of the scan
         exon 1: 18 nt, exon 2: 15 nt; cds_end_NF, no stop_codon rows
         The frame of the ATG at tx 7 reads its first stop codon at tx 28, past the end of the alt CDS at tx 27:
-        neither flag, stop_codon_distance = null.
+        neither flag, annotated_stop_distance = null.
         """,
         NO_STOP_CODON_STOP_PAST_THE_CDS,
         Change("gggA[T>C]GGATG"),
@@ -1393,7 +1393,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 7, 1, "ACC", False, "TAA", 28, 1, [(28, "TAA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1412,7 +1412,7 @@ CASES += [
                          aaaa ATG of the scan
                                                  **** PTC
                          <----------------------> ptc_to_start_codon = 150, not < 150
-                                                 <-------------------> ptc_to_intron = 16
+                                                 <-------------------> ptc_to_exon_end = 16
         exon 1: 173 nt, exon 2: 70 nt, exon 3: 17 nt
         The frame of the ATG at tx 7 reads CTA AAA as TAA at tx 157: a PTC 150 nt after the ATG, so no NMD escape rule
         applies.
@@ -1436,7 +1436,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 7, 1, "GGG", False, "TAA", 157, 1, [(157, "TAA")], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 2, 150, False, 173, 16),
-            "stop_codon_distance": 95,
+            "annotated_stop_distance": 95,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "ok",
@@ -1445,7 +1445,7 @@ CASES += [
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 157, 160, "*", "PTC"),
             Span("alt", 7, 157, "ptc_to_start_codon = 150, not < 150"),
-            Span("alt", 157, 173, "ptc_to_intron = 16"),
+            Span("alt", 157, 173, "ptc_to_exon_end = 16"),
         ),
         ruler=Ruler((0, 3, 7, 157, 173, 243, 252, 260)),
     ),
@@ -1461,7 +1461,7 @@ CASES += [
                                        **** PTC
                                                              sss the annotated stop codon
                                <------> ptc_to_start_codon = 6
-                                       <------> ptc_to_intron = 6
+                                       <------> ptc_to_exon_end = 6
         exon 1: 22 nt, exon 2: 16 nt in the ref transcript; exon 1: 17 nt in the alt transcript, the PTC exon
         The 5' UTR loses 2 nt, so alt_cds_start_in_transcript = 4. From there, the scan finds the ATG at tx 5. Its ORF
         ends at the TAA at tx 11: a PTC, 14 nt upstream of the stop codon at tx 25.
@@ -1485,7 +1485,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 5, 1, "GGG", False, "TAA", 11, 1, [(11, "TAA")], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 1, 6, True, 17, 6),
-            "stop_codon_distance": 14,
+            "annotated_stop_distance": 14,
             **columns(RULE_COLUMNS, False, True, False, True, False, True),
             "alt_transcript_exon_info": [(1, 17), (2, 16)],
             "nmd_model_status": "ok",
@@ -1497,7 +1497,7 @@ CASES += [
             Mark("alt", 11, 14, "*", "PTC"),
             Mark("alt", 25, 28, "s", "the annotated stop codon"),
             Span("alt", 5, 11, "ptc_to_start_codon = 6"),
-            Span("alt", 11, 17, "ptc_to_intron = 6"),
+            Span("alt", 11, 17, "ptc_to_exon_end = 6"),
         ),
     ),
 ]
@@ -1584,7 +1584,7 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1624,7 +1624,7 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1664,7 +1664,7 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1702,7 +1702,7 @@ CASES += [
             **NO_ATG_FOUND,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -1804,7 +1804,7 @@ def frame_snv_row(frame):
         **NOT_SCANNED,
         "unknown_reason": None,
         **NO_PTC_FEATURES,
-        "stop_codon_distance": 0,
+        "annotated_stop_distance": 0,
         **NO_RULE,
     }
 
@@ -1840,7 +1840,7 @@ def frame_ptc_row(frame):
         **NOT_SCANNED,
         "unknown_reason": None,
         **columns(PTC_FEATURE_COLUMNS, 1, 0, None, False, 18 + frame, 14),
-        "stop_codon_distance": 6,
+        "annotated_stop_distance": 6,
         **columns(RULE_COLUMNS, True, False, False, False, False, True),
     }
 
@@ -1873,10 +1873,10 @@ CASES += [
                                    ^ C>T
                                    *** PTC
                                            sss the annotated stop codon
-                                   <---------------> ptc_to_intron = 14
+                                   <---------------> ptc_to_exon_end = 14
         cds_frame 0, cds_start_NF
         CAA>TAA is a PTC at CDS 9. The annotated TAA at CDS 15 follows 6 nt later. The PTC lies in the last exon, so
-        the last exon rule applies and NMD escapes. ptc_to_intron = 14 is the distance to the end of the last exon. The
+        the last exon rule applies and NMD escapes. ptc_to_exon_end = 14 is the distance to the end of the last exon. The
         transcript has no annotated start codon: ptc_to_start_codon = null.
         """,
         frame_layout(0),
@@ -1885,7 +1885,7 @@ CASES += [
         marks=(
             Mark("alt", 12, 15, "*", "PTC"),
             Mark("alt", 18, 21, "s", "the annotated stop codon"),
-            Span("alt", 12, 26, "ptc_to_intron = 14"),
+            Span("alt", 12, 26, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 12, 18, 21)),
     ),
@@ -1916,10 +1916,10 @@ CASES += [
                                      ^ C>T
                                      *** PTC
                                              sss the annotated stop codon
-                                     <---------------> ptc_to_intron = 14
+                                     <---------------> ptc_to_exon_end = 14
         cds_frame 1, phases 1 and 2 of the CDS rows
         The frame 1 codons start at CDS 1. CAA>TAA is a PTC at CDS 10. The annotated TAA at CDS 16 follows 6 nt
-        later. ptc_to_intron = 14 is the distance to the end of the last exon.
+        later. ptc_to_exon_end = 14 is the distance to the end of the last exon.
         """,
         frame_layout(1),
         Change("CCC[C>T]AAGG"),
@@ -1927,7 +1927,7 @@ CASES += [
         marks=(
             Mark("alt", 13, 16, "*", "PTC"),
             Mark("alt", 19, 22, "s", "the annotated stop codon"),
-            Span("alt", 13, 27, "ptc_to_intron = 14"),
+            Span("alt", 13, 27, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
@@ -1958,10 +1958,10 @@ CASES += [
                                      ^ C>T
                                      *** PTC
                                              sss the annotated stop codon
-                                     <---------------> ptc_to_intron = 14
+                                     <---------------> ptc_to_exon_end = 14
         cds_frame 2, phases 2 and 0 of the CDS rows
         The frame 2 codons start at CDS 2. CAA>TAA is a PTC at CDS 11. The annotated TAA at CDS 17 follows 6 nt
-        later. ptc_to_intron = 14 is the distance to the end of the last exon.
+        later. ptc_to_exon_end = 14 is the distance to the end of the last exon.
         """,
         frame_layout(2),
         Change("CCC[C>T]AAGG"),
@@ -1969,7 +1969,7 @@ CASES += [
         marks=(
             Mark("alt", 14, 17, "*", "PTC"),
             Mark("alt", 20, 23, "s", "the annotated stop codon"),
-            Span("alt", 14, 28, "ptc_to_intron = 14"),
+            Span("alt", 14, 28, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 14, 20, 23)),
     ),
@@ -1983,7 +1983,7 @@ CASES += [
                                      ^ C>T
                                      *** PTC
                                              sss the annotated stop codon
-                                     <---------------> ptc_to_intron = 14
+                                     <---------------> ptc_to_exon_end = 14
         phase 1 on the exon 1 CDS row, 0 on the exon 2 CDS row
         The GFF3 gives the exon 2 CDS row the phase 0 instead of 2. Only the 5'-most row counts, so cds_frame = 1 and
         the row is the PTC row of the case above.
@@ -1994,7 +1994,7 @@ CASES += [
         marks=(
             Mark("alt", 13, 16, "*", "PTC"),
             Mark("alt", 19, 22, "s", "the annotated stop codon"),
-            Span("alt", 13, 27, "ptc_to_intron = 14"),
+            Span("alt", 13, 27, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
@@ -2029,7 +2029,7 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -2159,7 +2159,7 @@ CASES += [
         cds_frame 1, cds_start_NF
         TAA>CAA loses the annotated stop codon at tx 13. The scan starts at the first complete codon, tx 4, so it reads
         the codons at 13, 16, 19, 22 and reaches the TGA at tx 25 in the 3' UTR. The transcript has no annotated start
-        codon, so transcript_start_codon_pos = null. stop_codon_distance = 13 - 25 = -12.
+        codon, so transcript_start_codon_pos = null. annotated_stop_distance = 13 - 25 = -12.
         """,
         FRAME_1_STOP_LOSS,
         Change("CCC[T>C]AAggg"),
@@ -2180,7 +2180,7 @@ CASES += [
             **columns(SCAN_COLUMNS, None, None, "ACC", False, "TGA", 25, 1, [(25, "TGA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -12,
+            "annotated_stop_distance": -12,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -2204,7 +2204,7 @@ CASES += [
         cds_frame 0, cds_start_NF
         TAA>CAA loses the annotated stop codon at tx 15. The CDS has no ATG at its start and no annotated start codon.
         The scan reads in the CDS frame from tx 3 and reaches the TAG at tx 21 in the 3' UTR.
-        transcript_start_codon_pos = null. stop_codon_distance = 15 - 21 = -6.
+        transcript_start_codon_pos = null. annotated_stop_distance = 15 - 21 = -6.
         """,
         NO_START_STOP_LOSS,
         Change("GAC[T>C]AAggg"),
@@ -2225,7 +2225,7 @@ CASES += [
             **columns(SCAN_COLUMNS, None, None, "CGG", False, "TAG", 21, 1, [(21, "TAG")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -6,
+            "annotated_stop_distance": -6,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -2249,7 +2249,7 @@ CASES += [
         The CDS of 15 nt does not fit the phase 1: the codons CCA AAC CCG ACT end with AA. The annotated TAA at CDS 12
         is out of frame, so the ref CDS has no in-frame stop codon. The missense CCG>GCG reads no stop codon either.
         The row keeps the flags from the CDS: alt_is_premature = False, stop_loss = False. It is not scanned, and
-        stop_codon_distance = null.
+        annotated_stop_distance = null.
         """,
         STOP_OUT_OF_FRAME,
         Change("AC[C>G]CGAC"),
@@ -2270,7 +2270,7 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",
@@ -2312,7 +2312,7 @@ CASES += [
             **columns(SCAN_COLUMNS, 7, 1, "GGG", False, "TAA", 16, 1, [(16, "TAA")], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
             "alt_transcript_exon_info": SAME_EXONS,
             "nmd_model_status": "no_ptc",

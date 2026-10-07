@@ -91,8 +91,8 @@ def add_nmd_features(row):
             "ptc_to_start_codon": None,
             "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": None,
-            "stop_codon_distance": None,
-            "ptc_to_intron": None,
+            "annotated_stop_distance": None,
+            "ptc_to_exon_end": None,
             "likely_misannotated": add_likely_misannotated_flag(row),
         }
 
@@ -116,10 +116,10 @@ def add_nmd_features(row):
     ptc_exon_length = calculate_ptc_exon_length(row)
 
     # Distance PTC to normal stop codon
-    stop_codon_distance = calculate_stop_codon_dist(row)
+    stop_distance = calculate_stop_codon_dist(row)
 
     # Distance PTC to the 3' end of the PTC exon: the downstream exon junction, or the transcript end
-    ptc_to_intron = calculate_ptc_to_downstream_ej(row)
+    ptc_to_exon_end = calculate_ptc_to_downstream_ej(row)
 
     # Add likely_misannotated flag
     likely_misannotated = add_likely_misannotated_flag(row)
@@ -134,8 +134,8 @@ def add_nmd_features(row):
         "ptc_to_start_codon": ptc_to_start_codon,
         "ptc_less_than_150nt_to_start": ptc_less_than_150nt_to_start,
         "ptc_exon_length": ptc_exon_length,
-        "stop_codon_distance": stop_codon_distance,
-        "ptc_to_intron": ptc_to_intron,
+        "annotated_stop_distance": stop_distance,
+        "ptc_to_exon_end": ptc_to_exon_end,
         "likely_misannotated": likely_misannotated,
     }
 

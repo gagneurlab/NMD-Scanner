@@ -107,7 +107,7 @@ NO_PTC_FEATURES = {
     "ptc_to_start_codon": None,
     "ptc_less_than_150nt_to_start": False,
     "ptc_exon_length": None,
-    "ptc_to_intron": None,
+    "ptc_to_exon_end": None,
 }
 NO_RULE = {
     "nmd_last_exon_rule": False,
@@ -147,8 +147,8 @@ UNKNOWN_ALT = {
     "ptc_to_start_codon": None,
     "ptc_less_than_150nt_to_start": None,
     "ptc_exon_length": None,
-    "stop_codon_distance": None,
-    "ptc_to_intron": None,
+    "annotated_stop_distance": None,
+    "ptc_to_exon_end": None,
     "nmd_last_exon_rule": None,
     "nmd_50nt_penultimate_rule": None,
     "nmd_long_exon_rule": None,
@@ -386,7 +386,7 @@ class Mark:
 class Span:
     """
     An arrow <---> under the bases start to end of the ref or the alt line of a drawing, with a label, e.g.
-    Span("alt", 44, 56, "ptc_to_intron = 12"). The arrow covers end - start bases: < stands under the first one and
+    Span("alt", 44, 56, "ptc_to_exon_end = 12"). The arrow covers end - start bases: < stands under the first one and
     > under the last one.
 
     :param line: "ref" or "alt": the line whose transcript positions start and end are
