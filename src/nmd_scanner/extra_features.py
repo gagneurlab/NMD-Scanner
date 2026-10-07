@@ -44,15 +44,34 @@ def _plain_values(row):
     return values
 
 
-def ptc_in_alt_transcript(row):
+def ptc_pos_in_alt_transcript(row):
     """
-    Locate the PTC in the exons of the alt transcript, the mRNA.
+    Return the position of the PTC in alt_transcript_seq: the position of its first base.
 
     The PTC is the first in-frame stop codon of the alt CDS, at alt_first_stop_pos in alt CDS coordinates. Its position
     in the alt transcript adds alt_cds_start_in_transcript. After a start loss, translation starts at the ATG of the
     scan, and the PTC is the first in-frame stop codon after it, at alt_scan_first_stop_pos in the alt transcript.
-    alt_transcript_exons gives the exons of the alt transcript, with the length changes of the variant in the CDS
-    and in the UTRs. An exon that the variant deletes has length 0. It is not in the mRNA, so it is left out.
+
+    :param row: A dict of plain values (see _plain_values)
+    :return: The position, or None if the row is not a PTC row or has no alt_transcript_seq
+    """
+
+    if not row.get("alt_has_ptc"):
+        return None
+    if row.get("start_loss"):
+        return row.get("alt_scan_first_stop_pos")
+    stop = row.get("alt_first_stop_pos")
+    cds_start = row.get("alt_cds_start_in_transcript")
+    return None if stop is None or cds_start is None else cds_start + stop
+
+
+def ptc_in_alt_transcript(row):
+    """
+    Locate the PTC in the exons of the alt transcript, the mRNA.
+
+    The PTC position comes from ptc_pos_in_alt_transcript. alt_transcript_exons gives the exons of the alt transcript,
+    with the length changes of the variant in the CDS and in the UTRs. An exon that the variant deletes has length 0.
+    It is not in the mRNA, so it is left out.
 
     :param row: A dict of plain values (see _plain_values)
     :return: Tuple (position, exons, index): the position of the PTC in the alt transcript, (exon_number, start, end)
@@ -61,14 +80,7 @@ def ptc_in_alt_transcript(row):
              the PTC position or alt_transcript_exons is null.
     """
 
-    if not row.get("alt_has_ptc"):
-        return None
-    if row.get("start_loss"):
-        position = row.get("alt_scan_first_stop_pos")
-    else:
-        stop = row.get("alt_first_stop_pos")
-        cds_start = row.get("alt_cds_start_in_transcript")
-        position = None if stop is None or cds_start is None else cds_start + stop
+    position = ptc_pos_in_alt_transcript(row)
     exon_info = row.get("alt_transcript_exons")
     if position is None or not exon_info:
         return None
@@ -101,6 +113,8 @@ def add_nmd_features(row):
         return {
             **calculate_utr_lengths(row),
             "total_exon_count": calculate_exon_features(row)["total_exon_count"],
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
             "upstream_exon_count": None,
             "downstream_exon_count": None,
             "ptc_to_start_codon": None,
@@ -121,6 +135,10 @@ def add_nmd_features(row):
     total_exon_count = exon_features["total_exon_count"]
     upstream_exon_count = exon_features["upstream_exon_count"]
     downstream_exon_count = exon_features["downstream_exon_count"]
+
+    # The PTC in alt_transcript_seq, and the exon number of its exon
+    ptc_position = ptc_pos_in_alt_transcript(row)
+    ptc_exon_number = calculate_ptc_exon_number(row)
 
     # Distance between PTC to start codon
     ptc_to_start_codon = calculate_ptc_to_start_distance(row)
@@ -143,6 +161,8 @@ def add_nmd_features(row):
         "utr3_length": utr3_length,
         "utr5_length": utr5_length,
         "total_exon_count": total_exon_count,
+        "ptc_pos_in_alt_transcript": ptc_position,
+        "ptc_exon_number": ptc_exon_number,
         "upstream_exon_count": upstream_exon_count,
         "downstream_exon_count": downstream_exon_count,
         # "ptc_pos_codon": ptc_pos_codon,
@@ -239,6 +259,19 @@ def calculate_ptc_to_start_distance(row):
         return None
 
     return stop - start  # distance between the PTC to start codon in nt
+
+
+def calculate_ptc_exon_number(row):
+    """
+    Return the exon number of the PTC exon, from alt_transcript_exons (see ptc_in_alt_transcript). None if there is no
+    PTC exon.
+    """
+
+    ptc = ptc_in_alt_transcript(row)
+    if ptc is None:
+        return None
+    _, exons, index = ptc
+    return exons[index][0]
 
 
 def calculate_ptc_exon_length(row):

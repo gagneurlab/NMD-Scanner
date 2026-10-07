@@ -202,6 +202,8 @@ VALUES = {
     "alt_has_ptc": {True, False, None},
     "start_loss": {True, False, None},
     "stop_loss": {True, False, None},
+    # None: a row with unknown_reason
+    "stop_classification": {"alt_transcript", "start_loss_scan", "alt_cds", None},
     "alt_scan_first_stop_codon": {"TAA", "TAG", "TGA", None},
     "unknown_reason": {"splice_site_destroyed", "exon_boundary_ambiguous", None},
     "ptc_less_than_150nt_to_start": {True, False, None},
@@ -321,7 +323,7 @@ NULL_CASES = [
         for column in (
             *("alt_cds_seq", "alt_cds_length", "alt_cds_exons", "alt_last_codon", "alt_valid_stop"),
             *("alt_first_stop_codon", "alt_first_stop_pos", "alt_stop_codon_count", "alt_stop_codons"),
-            *("alt_stop_codon_exons", "alt_has_ptc", "start_loss", "stop_loss"),
+            *("alt_stop_codon_exons", "alt_has_ptc", "start_loss", "stop_loss", "stop_classification"),
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
             *("alt_transcript_exons", "annotated_stop_distance"),
         )
@@ -451,6 +453,14 @@ NULL_CASES = [
             (column, NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exons"] is None),
         ]
     ],
+    ("ptc_pos_in_alt_transcript", NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
+    (
+        "ptc_pos_in_alt_transcript",
+        "`alt_transcript_seq` is null",
+        lambda row: _ptc_row(row) and row["alt_transcript_seq"] is None,
+    ),
+    ("ptc_exon_number", NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
+    ("ptc_exon_number", NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exons"] is None),
     ("ptc_to_start_codon", NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
     (
         "ptc_to_start_codon",

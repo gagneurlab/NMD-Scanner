@@ -1064,6 +1064,8 @@ _ROW_WITHOUT_EXON_ROWS = {
     "alt_has_ptc": False,
     "start_loss": False,
     "stop_loss": False,
+    # keeps the flags from the CDS: no alt_transcript_seq, and the alt transcript is known
+    "stop_classification": "alt_cds",
     "transcript_start": None,
     "transcript_end": None,
     "transcript_seq": None,
@@ -1086,6 +1088,9 @@ _ROW_WITHOUT_EXON_ROWS = {
     "utr3_length": None,
     "utr5_length": None,
     "total_exon_count": None,
+    # not a PTC row
+    "ptc_pos_in_alt_transcript": None,
+    "ptc_exon_number": None,
     "upstream_exon_count": None,
     "downstream_exon_count": None,
     "ptc_to_start_codon": None,

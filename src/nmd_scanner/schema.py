@@ -39,12 +39,18 @@ MODEL_STATUSES = (
     "ok",
 )
 
+# The values of stop_classification: the path of rules.analyze_transcript that set alt_has_ptc, stop_loss and
+# annotated_stop_distance. alt_transcript: the first in-frame stop codon of the alt transcript. start_loss_scan: the
+# rescued ORF after a start loss. alt_cds: the codon scan of the alt CDS, for a row that keeps the flags from the CDS.
+STOP_CLASSIFICATIONS = ("alt_transcript", "start_loss_scan", "alt_cds")
+
 # The categories of each categorical kind: the closed value set of the column whose name the kind has. A categorical
 # column holds one of these values or a null, and it has all of them as categories, also if a value does not occur.
 CATEGORIES = {
     "strand": ("+", "-"),
     "unknown_reason": (SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS),
     "nmd_model_status": MODEL_STATUSES,
+    "stop_classification": STOP_CLASSIFICATIONS,
 }
 
 # pandas dtype of each column kind. The int, bool and string dtypes are nullable, so a missing value is
@@ -122,6 +128,7 @@ PTC_COLUMN_KINDS = {
     "alt_has_ptc": "bool",
     "start_loss": "bool",
     "stop_loss": "bool",
+    "stop_classification": "stop_classification",
     "transcript_start": "int",
     "transcript_end": "int",
     "transcript_seq": "string",
@@ -148,6 +155,8 @@ NMD_FEATURE_COLUMN_KINDS = {
     "utr3_length": "int",
     "utr5_length": "int",
     "total_exon_count": "int",
+    "ptc_pos_in_alt_transcript": "int",
+    "ptc_exon_number": "int",
     "upstream_exon_count": "int",
     "downstream_exon_count": "int",
     "ptc_to_start_codon": "int",
@@ -253,7 +262,7 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
 def output_column_kinds(sequences=True):
     """
     Return the kind of every output column, in output order. With ``sequences=False``, the 4 columns of
-    SEQUENCE_COLUMNS are left out, and the other 73 columns keep their order. Pass the result to
+    SEQUENCE_COLUMNS are left out, and the other 76 columns keep their order. Pass the result to
     ``apply_schema`` or ``empty_table``.
 
     :param sequences: whether to keep the columns of SEQUENCE_COLUMNS

@@ -1218,6 +1218,8 @@ def analyze_transcript(results_df):
                        alt_transcript_exons), and the columns that classify_first_stop reads
     :return: pandas DataFrame with additional columns for rescued start / stop codon information. The exon numbers
              of the scan come from alt_transcript_exons, because the scan reads positions in the alt transcript.
+             stop_classification names the path that set alt_has_ptc and stop_loss, and it is None with
+             unknown_reason.
     """
 
     valid_stop_codons = {"TAA", "TAG", "TGA"}
@@ -1233,6 +1235,8 @@ def analyze_transcript(results_df):
     df["alt_scan_stop_codon_count"] = None
     df["alt_scan_stop_codons"] = None
     df["alt_scan_stop_codon_exons"] = None  # for exon number
+    # The path that sets alt_has_ptc and stop_loss (see schema.STOP_CLASSIFICATIONS)
+    df["stop_classification"] = None
 
     for idx, row in df.iterrows():
         seq = row["alt_transcript_seq"]
@@ -1241,8 +1245,11 @@ def analyze_transcript(results_df):
         # The scan positions lie in the alt transcript, so its exon lengths give their exon numbers
         exon_info = row["alt_transcript_exons"]
 
-        # Skip rows with invalid or too-short sequences, or without a CDS position in the transcript
+        # Skip rows with invalid or too-short sequences, or without a CDS position in the transcript. Such a row keeps
+        # the flags from the CDS, unless the alt transcript is unknown.
         if not isinstance(seq, str) or len(seq) < 3 or pd.isna(cds_start):
+            if pd.isna(row.get("unknown_reason")):
+                df.at[idx, "stop_classification"] = "alt_cds"
             continue
 
         # Read codons in frame from the first complete codon of the CDS to the end of the transcript
@@ -1265,6 +1272,7 @@ def analyze_transcript(results_df):
             is_premature, stop_loss, _ = classify_rescued_orf(row, start_pos, first_stop)
             df.at[idx, "alt_has_ptc"] = is_premature
             df.at[idx, "stop_loss"] = stop_loss
+            df.at[idx, "stop_classification"] = "start_loss_scan"
 
         # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on
         else:
@@ -1274,11 +1282,13 @@ def analyze_transcript(results_df):
             # Otherwise, e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the row keeps the flags
             # from the CDS.
             stop_loss = row["stop_loss"]
+            df.at[idx, "stop_classification"] = "alt_cds"
             if not row["has_stop_codon"] or ends_at_annotated_stop(row):
                 first_stop = stop_codons_in_frame[0][0] if stop_codons_in_frame else None
                 is_premature, stop_loss = classify_first_stop(row, first_stop)
                 df.at[idx, "alt_has_ptc"] = is_premature
                 df.at[idx, "stop_loss"] = stop_loss
+                df.at[idx, "stop_classification"] = "alt_transcript"
 
             # only analyze rows flagged with a stop codon loss: skip the others and fill with None values
             if not stop_loss:

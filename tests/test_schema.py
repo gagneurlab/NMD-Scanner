@@ -111,8 +111,8 @@ def test_empty_table_has_the_schema():
 def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_columns():
     reduced = output_column_kinds(sequences=False)
 
-    assert len(OUTPUT_COLUMN_KINDS) == 77
-    assert len(reduced) == 73
+    assert len(OUTPUT_COLUMN_KINDS) == 80
+    assert len(reduced) == 76
     assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
     assert reduced == {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
     assert list(reduced) == [column for column in OUTPUT_COLUMN_KINDS if column not in SEQUENCE_COLUMNS]
@@ -120,11 +120,11 @@ def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_co
     assert output_column_kinds() is not OUTPUT_COLUMN_KINDS
 
 
-def test_empty_table_without_sequences_has_the_80_columns_and_their_dtypes():
+def test_empty_table_without_sequences_has_the_76_columns_and_their_dtypes():
     table = empty_table(output_column_kinds(sequences=False))
 
     assert len(table) == 0
-    assert len(table.columns) == 73
+    assert len(table.columns) == 76
     assert_schema(table, output_column_kinds(sequences=False))
 
 
