@@ -1,7 +1,8 @@
 """
 Schema of the result table: its columns, their order and their dtypes.
 
-Each function that returns results gives them this schema, also for a table without rows.
+Each function that returns results gives them this schema, also for a table without rows. The section "Output
+columns" of "Technical Notes.md" gives the meaning of each column and says when it is null.
 """
 
 import pandas as pd
@@ -36,7 +37,9 @@ PTC_COLUMN_KINDS = {
     "chromosome": "string",
     "gene_id": "string",
     "strand": "string",
+    "has_start_codon": "bool",
     "has_stop_codon": "bool",
+    "cds_frame": "int",
     "ref": "string",
     "alt": "string",
     "start_variant": "int",
@@ -74,7 +77,9 @@ PTC_COLUMN_KINDS = {
     "cds_end_in_transcript": "int",
     "alt_transcript_seq": "string",
     "alt_transcript_length": "int",
+    "alt_cds_start_in_transcript": "int",
     "transcript_exon_info": "pair_list",
+    "alt_transcript_exon_info": "pair_list",
     "transcript_start_codon_pos": "int",
     "transcript_start_codon_exon": "int",
     "transcript_last_codon": "string",
@@ -84,6 +89,7 @@ PTC_COLUMN_KINDS = {
     "transcript_num_stop_codons": "int",
     "transcript_all_stop_codons": "stop_codon_list",
     "transcript_stop_codon_exons": "int_list",
+    "unknown_reason": "string",
 }
 
 # Kind of every column that add_nmd_features returns, in output order

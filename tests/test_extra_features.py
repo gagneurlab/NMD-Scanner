@@ -1,3 +1,12 @@
+"""
+The transcript drawings show a transcript 5' to 3' and are not to scale. `u` is UTR, `=` is CDS, `[...]` is an exon,
+`|` between two exons is an exon junction, and `*` is the PTC. The numbers under a transcript are positions in CDS
+coordinates, as alt_first_stop_pos: 0 is the first base of the start codon. A row labelled tx gives transcript
+coordinates instead. The numbers under an alt transcript are in alt CDS coordinates. `*--->|` is the distance from the
+PTC to an exon junction or to the transcript end, and `<--->` is a length. "Technical Notes.md" defines the features
+and the NMD escape rules with figures in the same style.
+"""
+
 import pandas as pd
 import pytest
 
@@ -120,113 +129,93 @@ def test_calculate_utr_lengths_cds_inside_one_exon():
     assert result["utr3_length"] == 170
 
 
+# Exons of a TCGA example (TXNL1), in transcript order. The CDS starts at transcript position 152, in exon 1.
+TXNL1_EXONS = [(1, 250), (2, 97), (3, 174), (4, 123), (5, 70), (6, 173), (7, 105), (8, 5848)]
+
+
+def ptc_row(ptc_pos, exons=TXNL1_EXONS, alt_exons=None, cds_start=152):
+    """A PTC row without a start loss: the PTC at alt CDS position ``ptc_pos``, and the alt exons ``alt_exons``."""
+
+    return {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": ptc_pos,
+        "alt_cds_start_in_transcript": cds_start,
+        "transcript_exon_info": exons,
+        "alt_transcript_exon_info": exons if alt_exons is None else alt_exons,
+    }
+
+
 def test_calculate_exon_features():
-
-    # Example from tcga
-    row = {
-        "alt_is_premature": True,
-        "strand": "+",
-        "alt_stop_codon_exons": [1, 1],
-        "transcript_exon_info": [
-            ("1", 250),
-            ("2", 97),
-            ("3", 174),
-            ("4", 123),
-            ("5", 70),
-            ("6", 173),
-            ("7", 105),
-            ("8", 5848),
-        ],
+    # PTC in exon 1, at transcript position 152 + 50 = 202
+    assert calculate_exon_features(ptc_row(50)) == {
+        "total_exon_count": 8,
+        "upstream_exon_count": 0,
+        "downstream_exon_count": 7,
     }
 
-    result = calculate_exon_features(row)
-    assert result["total_exon_count"] == 8
-    assert result["upstream_exon_count"] == 0
-    assert result["downstream_exon_count"] == 7
-
-    # Example 1: + strand, PTC in middle exon
-    row1 = {
-        "alt_is_premature": True,
-        "strand": "+",
-        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120), ("4", 110)],
-        "alt_stop_codon_exons": [2],
-    }
-    result1 = calculate_exon_features(row1)
-    assert result1 == {"total_exon_count": 4, "upstream_exon_count": 1, "downstream_exon_count": 2}
-
-    # Example 2: - strand, PTC in exon 2 (which is second in reverse)
-    row2 = {
-        "alt_is_premature": True,
-        "strand": "-",
-        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120), ("4", 110)],
-        "alt_stop_codon_exons": [2],
-    }
-    result2 = calculate_exon_features(row2)
-    assert result2 == {
-        "total_exon_count": 4,
-        "upstream_exon_count": 1,  # reversed: [4,3,2,1] → index 1
-        "downstream_exon_count": 2,
+    # PTC in exon 2, at transcript position 152 + 100 = 252: exon 1 ends at 250
+    assert calculate_exon_features(ptc_row(100)) == {
+        "total_exon_count": 8,
+        "upstream_exon_count": 1,
+        "downstream_exon_count": 6,
     }
 
-    # Example 3: PTC in first exon on + strand
-    row3 = {
-        "alt_is_premature": True,
-        "strand": "+",
-        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120)],
-        "alt_stop_codon_exons": [1],
+    # PTC in the last exon, at transcript position 152 + 900 = 1052: exon 7 ends at 992
+    assert calculate_exon_features(ptc_row(900)) == {
+        "total_exon_count": 8,
+        "upstream_exon_count": 7,
+        "downstream_exon_count": 0,
     }
-    result3 = calculate_exon_features(row3)
-    assert result3 == {"total_exon_count": 3, "upstream_exon_count": 0, "downstream_exon_count": 2}
 
-    # Example 4: PTC in last exon on - strand
-    row4 = {
-        "alt_is_premature": True,
-        "strand": "-",
-        "transcript_exon_info": [("1", 100), ("2", 150), ("3", 120)],
-        "alt_stop_codon_exons": [1],
+    # Single exon transcript
+    row = ptc_row(90, exons=[(1, 500)], cds_start=100)
+    assert calculate_exon_features(row) == {"total_exon_count": 1, "upstream_exon_count": 0, "downstream_exon_count": 0}
+
+    # After a start loss, the PTC lies at transcript_first_stop_pos, in alt transcript positions: 260 is in exon 2
+    row = {**ptc_row(None), "start_loss": True, "transcript_first_stop_pos": 260}
+    assert calculate_exon_features(row) == {"total_exon_count": 8, "upstream_exon_count": 1, "downstream_exon_count": 6}
+
+    # The counts take the alt exons. After a 3 nt deletion in exon 1, transcript position 152 + 95 = 247 is the first
+    # base of exon 2. With the ref exon lengths, it would lie in exon 1.
+    alt_exons = [(1, 247), *TXNL1_EXONS[1:]]
+    assert calculate_exon_features(ptc_row(95, alt_exons=alt_exons)) == {
+        "total_exon_count": 8,
+        "upstream_exon_count": 1,
+        "downstream_exon_count": 6,
     }
-    result4 = calculate_exon_features(row4)
-    assert result4 == {"total_exon_count": 3, "upstream_exon_count": 0, "downstream_exon_count": 2}
 
-    # Example 5: Single exon transcript
-    row5 = {"alt_is_premature": True, "strand": "+", "transcript_exon_info": [("1", 500)], "alt_stop_codon_exons": [1]}
-    result5 = calculate_exon_features(row5)
-    assert result5 == {"total_exon_count": 1, "upstream_exon_count": 0, "downstream_exon_count": 0}
-
-    # Example 7: PTC exon not present in transcript
-    row6 = {
-        "alt_is_premature": True,
-        "strand": "-",
-        "transcript_exon_info": [("1", 100), ("2", 200)],
-        "alt_stop_codon_exons": [99],
+    # An exon that the variant deletes (length 0) is not in the mRNA, so it is no upstream or downstream exon. It
+    # still counts in total_exon_count, the exons of the ref transcript.
+    alt_exons = [(1, 250), (2, 97), (3, 0), *TXNL1_EXONS[3:]]
+    assert calculate_exon_features(ptc_row(100, alt_exons=alt_exons)) == {
+        "total_exon_count": 8,
+        "upstream_exon_count": 1,
+        "downstream_exon_count": 5,
     }
-    result6 = calculate_exon_features(row6)
-    assert result6 == {"total_exon_count": 2, "upstream_exon_count": None, "downstream_exon_count": None}
 
-    # Example 7: Missing stop codon exons
-    row7 = {
-        "alt_is_premature": True,
-        "strand": "+",
-        "transcript_exon_info": [("1", 100), ("2", 200)],
-        "alt_stop_codon_exons": [],
+    # Without the PTC position, or without the alt exons (no alt transcript): no counts
+    for row in [ptc_row(None), {**ptc_row(50), "alt_transcript_exon_info": None}]:
+        assert calculate_exon_features(row) == {
+            "total_exon_count": 8,
+            "upstream_exon_count": None,
+            "downstream_exon_count": None,
+        }
+
+    # Not a PTC row
+    row = {**ptc_row(50), "alt_is_premature": False}
+    assert calculate_exon_features(row) == {
+        "total_exon_count": 8,
+        "upstream_exon_count": None,
+        "downstream_exon_count": None,
     }
-    result7 = calculate_exon_features(row7)
-    assert result7 == {"total_exon_count": 2, "upstream_exon_count": None, "downstream_exon_count": None}
 
-    # Example 8: is not PTC
-    row8 = {
-        "alt_is_premature": False,
-        "strand": "-",
-        "transcript_exon_info": [("1", 100), ("2", 200)],
-        "alt_stop_codon_exons": [99],
+    # Transcript without exons
+    row = {"alt_is_premature": False, "transcript_exon_info": [], "alt_transcript_exon_info": None}
+    assert calculate_exon_features(row) == {
+        "total_exon_count": None,
+        "upstream_exon_count": None,
+        "downstream_exon_count": None,
     }
-    result8 = calculate_exon_features(row8)
-    assert result8 == {"total_exon_count": 2, "upstream_exon_count": None, "downstream_exon_count": None}
-
-    # Example 9: Transcript with no exons
-    row9 = {"alt_is_premature": False, "strand": "+", "transcript_exon_info": [], "alt_stop_codon_exons": []}
-    result9 = calculate_exon_features(row9)
-    assert result9 == {"total_exon_count": None, "upstream_exon_count": None, "downstream_exon_count": None}
 
 
 def test_calculate_ptc_to_start_distance():
@@ -281,69 +270,24 @@ def test_calculate_ptc_to_start_distance():
 
 
 def test_calculate_ptc_exon_length():
-    row = {
-        "alt_is_premature": True,
-        "alt_stop_codon_exons": [1, 1],
-        "transcript_exon_info": [
-            ("1", 250),
-            ("2", 97),
-            ("3", 174),
-            ("4", 123),
-            ("5", 70),
-            ("6", 173),
-            ("7", 105),
-            ("8", 5848),
-        ],
-    }
-    assert calculate_ptc_exon_length(row) == 250
+    # PTC in exon 1, at transcript position 152 + 50 = 202
+    assert calculate_ptc_exon_length(ptc_row(50)) == 250
 
-    row2 = {
-        "alt_is_premature": True,
-        "alt_stop_codon_exons": [2, 3, 4],
-        "transcript_exon_info": [
-            ("1", 250),
-            ("2", 97),
-            ("3", 174),
-            ("4", 123),
-            ("5", 70),
-            ("6", 173),
-            ("7", 105),
-            ("8", 5848),
-        ],
-    }
-    assert calculate_ptc_exon_length(row2) == 97
+    # PTC in exon 2, at transcript position 152 + 100 = 252
+    assert calculate_ptc_exon_length(ptc_row(100)) == 97
 
-    row3 = {
-        "alt_is_premature": False,
-        "alt_stop_codon_exons": [2, 3, 4],
-        "transcript_exon_info": [
-            ("1", 250),
-            ("2", 97),
-            ("3", 174),
-            ("4", 123),
-            ("5", 70),
-            ("6", 173),
-            ("7", 105),
-            ("8", 5848),
-        ],
-    }
-    assert calculate_ptc_exon_length(row3) is None
+    # The alt exons locate the PTC: after a 3 nt deletion in exon 1, transcript position 152 + 95 = 247 is the first
+    # base of exon 2
+    alt_exons = [(1, 247), *TXNL1_EXONS[1:]]
+    assert calculate_ptc_exon_length(ptc_row(95, alt_exons=alt_exons)) == 97
 
-    row4 = {
-        "alt_is_premature": True,
-        "alt_stop_codon_exons": [],
-        "transcript_exon_info": [
-            ("1", 250),
-            ("2", 97),
-            ("3", 174),
-            ("4", 123),
-            ("5", 70),
-            ("6", 173),
-            ("7", 105),
-            ("8", 5848),
-        ],
-    }
-    assert calculate_ptc_exon_length(row4) is None
+    # The length is the one in the alt transcript: a 3 nt deletion in exon 2 shortens it to 94 nt
+    alt_exons = [(1, 250), (2, 94), *TXNL1_EXONS[2:]]
+    assert calculate_ptc_exon_length(ptc_row(100, alt_exons=alt_exons)) == 94
+
+    # Not a PTC row, no PTC position
+    assert calculate_ptc_exon_length({**ptc_row(100), "alt_is_premature": False}) is None
+    assert calculate_ptc_exon_length(ptc_row(None)) is None
 
 
 def _analyzed(ref_cds_seq, alt_cds_seq):
@@ -357,7 +301,9 @@ def _analyzed(ref_cds_seq, alt_cds_seq):
                 "alt_cds_len": len(alt_cds_seq),
                 "ref_cds_info": [(1, len(ref_cds_seq))],
                 "alt_cds_info": [(1, len(alt_cds_seq))],
+                "has_start_codon": True,
                 "has_stop_codon": True,
+                "cds_frame": 0,
             }
         ]
     )
@@ -403,17 +349,54 @@ def test_calculate_stop_codon_dist():
     assert row6["alt_first_stop_pos"] == 6
     assert calculate_stop_codon_dist(row6) == 8
 
+    # Case 7: TAA>TGAA, an insertion inside the stop codon: TGA sits at the position of the reference stop codon,
+    #         although the alt CDS is 1 nt longer. Without the alt transcript or the CDS position in the transcript, the
+    #         last codon of the alt CDS stands in.
+    row7 = {
+        "alt_cds_len": 13,
+        "alt_first_stop_pos": 9,
+        "has_stop_codon": True,
+        "transcript_seq": "CCATGAAACCCTAAGG",
+        "alt_transcript_seq": "CCATGAAACCCTGAAGG",
+        "cds_start_in_transcript": 2,
+        "alt_cds_start_in_transcript": 2,
+        "cds_frame": 0,
+        "cds_end_in_transcript": 14,
+    }
+    assert calculate_stop_codon_dist(row7) == 0
+    assert calculate_stop_codon_dist({**row7, "alt_transcript_seq": None}) == 1
+    assert (
+        calculate_stop_codon_dist({**row7, "cds_start_in_transcript": None, "alt_cds_start_in_transcript": None}) == 1
+    )
+
+    # Case 8: TA>T deletes one A of the stop codon TAA before a 3'UTR A. The alt CDS ends in TA and has no stop codon,
+    #         but the alt transcript still reads TAA at the annotated position.
+    row8 = {
+        "alt_cds_len": 11,
+        "alt_first_stop_pos": None,
+        "has_stop_codon": True,
+        "transcript_seq": "CCATGAAATGGTAAACTGG",
+        "alt_transcript_seq": "CCATGAAATGGTAACTGG",
+        "cds_start_in_transcript": 2,
+        "alt_cds_start_in_transcript": 2,
+        "cds_frame": 0,
+        "cds_end_in_transcript": 14,
+    }
+    assert calculate_stop_codon_dist(row8) == 0
+
 
 def test_evaluate_nmd_escape_rules():
 
     # Example 1: Single exon rule
+    #                100 nt
+    #     5' [=================*==] 3'
+    #        0                 90 100
+    #        <----------------->  90 nt from the start codon, < 150
     row2 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 90,
-        "alt_stop_codon_exons": [1],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100)],
-        "alt_cds_info": [(1, 100)],
+        "alt_transcript_exon_info": [(1, 100)],
         "total_exon_count": 1,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -428,15 +411,16 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_escape"] == True
 
     # Example 2: Last exon rule
+    #           100 nt       100 nt       100 nt
+    #     5' [==========]|[==========]|[=====*====] 3'
+    #        0           100          200    250  300
+    #                                        *  in the last exon, past the last exon junction at 200
     row = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 250,
-        "alt_stop_codon_exons": [3],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
-        "ref_cds_info": [(1, 100), (2, 100), (3, 100)],
-        "alt_cds_info": [(1, 100), (2, 100), (3, 100)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
+        "alt_cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -451,15 +435,16 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_escape"] == True
 
     # Example 3: 50nt from penultimate exon end
+    #           100 nt       100 nt       100 nt
+    #     5' [==========]|[======*===]|[==========] 3'
+    #        0           100     160  200         300
+    #                            *--->|  40 nt to the last exon junction, <= 50
     row = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 160,
-        "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
-        "ref_cds_info": [(1, 100), (2, 100), (3, 100)],
-        "alt_cds_info": [(1, 100), (2, 100), (3, 100)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [(1, 100), (2, 100), (3, 100)],
+        "alt_cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 1,
         "ptc_exon_length": 100,
@@ -474,15 +459,16 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_escape"] == True
 
     # Example 4: Long exon rule
+    #           100 nt              500 nt               100 nt
+    #     5' [==========]|[==========*==============]|[==========] 3'
+    #        0           100         300             600         700
+    #                      <----------------------->  ptc_exon_length = 500, > 407
     row = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 300,
-        "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100), (2, 500), (3, 100)],
-        "ref_cds_info": [(1, 100), (2, 500), (3, 100)],
-        "alt_cds_info": [(1, 100), (2, 500), (3, 100)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [(1, 100), (2, 500), (3, 100)],
+        "alt_cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 1,
         "ptc_exon_length": 500,
@@ -497,15 +483,17 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_escape"] == True
 
     # Example 5: Start-proximal rule. The PTC lies at the last exon junction, not upstream of it: no 50 nt rule.
+    # The PTC is the first base of exon 2, at 100.
+    #           100 nt       100 nt
+    #     5' [==========]|[*=========] 3'
+    #        0           100         200
+    #        <------------->  100 nt from the start codon, < 150
     row = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 100,
-        "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100), (2, 100)],
-        "ref_cds_info": [(1, 100), (2, 100)],
-        "alt_cds_info": [(1, 100), (2, 100)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [(1, 100), (2, 100)],
+        "alt_cds_start_in_transcript": 0,
         "total_exon_count": 2,
         "downstream_exon_count": 0,
         "ptc_exon_length": 100,
@@ -519,16 +507,19 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_start_proximal_rule"] == True
     assert result["nmd_escape"] == True
 
-    # Example 6: multiple escape rules
+    # Example 6: multiple escape rules. The PTC lies in the last exon, which is longer than 407 nt, and less than 150 nt
+    # from the start codon. It lies past the last exon junction at 100, so the 50 nt rule does not fire.
+    #         50 nt   50 nt            500 nt
+    #     5' [=====]|[=====]|[==*=======================] 3'
+    #        0      50      100 120                     600
+    #        <------------------>  120 nt from the start codon, < 150
+    #                         <------------------------>  ptc_exon_length = 500, > 407
     row = {
         "alt_is_premature": True,
-        "alt_first_stop_pos": 145,
-        "alt_stop_codon_exons": [3],
+        "alt_first_stop_pos": 120,
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100), (2, 100), (3, 500)],
-        "ref_cds_info": [(1, 100), (2, 100), (3, 500)],
-        "alt_cds_info": [(1, 100), (2, 100), (3, 500)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [(1, 50), (2, 50), (3, 500)],
+        "alt_cds_start_in_transcript": 0,
         "total_exon_count": 3,
         "downstream_exon_count": 0,
         "ptc_exon_length": 500,
@@ -546,10 +537,8 @@ def test_evaluate_nmd_escape_rules():
     row3 = {
         "alt_is_premature": False,
         "alt_first_stop_pos": 150,
-        "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 100), (2, 100)],
-        "alt_cds_info": [(1, 100), (2, 100)],
+        "alt_transcript_exon_info": [(1, 100), (2, 100)],
         "total_exon_count": 2,
         "downstream_exon_count": 1,
         "ptc_exon_length": 100,
@@ -563,20 +552,22 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_start_proximal_rule"] == False
     assert result["nmd_escape"] == False
 
-    # Example 8: 50nt rule uses CDS-relative coordinates, not transcript-relative.
+    # Example 8: the PTC position in the alt transcript adds alt_cds_start_in_transcript to alt_first_stop_pos.
     # Transcript has a 200nt 5'UTR in exon 1; CDS spans only part of exon 1 and all of exons 2,3.
-    # PTC at CDS pos 160 is in the last 50nt of the penultimate CDS exon (exon 2, CDS-end at 200).
-    # Measured in transcript coordinates, without subtracting cds_start_in_transcript, the junction would lie at 400
-    # and the rule would not fire.
+    # PTC at CDS pos 160, transcript position 360, is in the last 50nt of the penultimate exon (exon 2, ends at 400).
+    # Without adding alt_cds_start_in_transcript, the PTC would lie 240 nt upstream of the junction, and the rule would
+    # not fire.
+    #                     300 nt                 100 nt            200 nt
+    #     5' [uuuuuuuuuuuuuuuuuuuu==========]|[======*===]|[====================] 3'
+    # tx     0                               300     360  400                   600
+    # CDS    -200                 0          100     160  200                   400
+    #                                                *--->|  40 nt to the last exon junction, <= 50
     row_cds_offset = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 160,
-        "alt_stop_codon_exons": [2],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 300), (2, 100), (3, 200)],
-        "ref_cds_info": [(1, 100), (2, 100), (3, 200)],
-        "alt_cds_info": [(1, 100), (2, 100), (3, 200)],
-        "cds_start_in_transcript": 200,
+        "alt_transcript_exon_info": [(1, 300), (2, 100), (3, 200)],
+        "alt_cds_start_in_transcript": 200,
         "total_exon_count": 3,
         "downstream_exon_count": 1,
         "ptc_exon_length": 100,
@@ -586,19 +577,20 @@ def test_evaluate_nmd_escape_rules():
     assert result["nmd_50nt_penultimate_rule"] == True
     assert result["nmd_escape"] == True
 
-    # Example 9: PTC sits at CDS pos that would falsely fire without subtracting cds_start_in_transcript.
+    # Example 9: PTC sits at a CDS pos that would falsely fire without adding alt_cds_start_in_transcript.
     # Transcript: exon1 300nt (200 UTR + 100 CDS), exon2 100nt CDS, exon3 200nt CDS.
-    # Transcript-relative pen_end would be 400; CDS pos 360 is in [350, 400) → false positive.
-    # CDS-relative pen_end is 200; CDS pos 360 is past it → rule must NOT fire.
+    # The last exon junction lies at transcript position 400. CDS pos 360 is in [350, 400) → false positive.
+    # The PTC lies at transcript position 560, past the junction → rule must NOT fire.
+    #                     300 nt                 100 nt            200 nt
+    #     5' [uuuuuuuuuuuuuuuuuuuu==========]|[==========]|[================*===] 3'
+    # tx     0                               300          400               560 600
+    # CDS    -200                 0          100          200               360 400
     row_false_positive_guard = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 360,
-        "alt_stop_codon_exons": [3],
         "alt_start_codon_pos": 0,
-        "transcript_exon_info": [(1, 300), (2, 100), (3, 200)],
-        "ref_cds_info": [(1, 100), (2, 100), (3, 200)],
-        "alt_cds_info": [(1, 100), (2, 100), (3, 200)],
-        "cds_start_in_transcript": 200,
+        "alt_transcript_exon_info": [(1, 300), (2, 100), (3, 200)],
+        "alt_cds_start_in_transcript": 200,
         "total_exon_count": 3,
         "downstream_exon_count": 0,
         "ptc_exon_length": 200,
@@ -612,51 +604,59 @@ def test_nmd_rules_with_utr_only_last_exon():
     # Exon numbers in transcript order. The CDS ends in exon 3; exon 4 holds only 3'UTR.
     # Exon 1: 200 nt (40 5'UTR + 160 CDS), exon 2: 100 nt CDS, exon 3: 60 nt (40 CDS with the stop codon + 20 3'UTR),
     # exon 4: 300 nt 3'UTR. In CDS coordinates, exon 2 ends at 260 and exon 3 ends at 320: the last exon junction.
+    # The rows give the PTC in CDS coordinates; its transcript position adds alt_cds_start_in_transcript, 40.
+    #                200 nt            100 nt         60 nt          300 nt
+    #     5' [uuuu================]|[==========]|[========uuuu]|[uuuuuuuuuuuuuuu] 3'
+    #        -40  0                160          260       300  320              620
+    #                                       *-->|  PTC at 230: 30 nt to the end of exon 2
+    #                                       *----------------->|  PTC at 230: 90 nt to the last exon junction, > 50
+    #                                                 *------->|  PTC at 280: 40 nt, <= 50
+    #                                               *--------->|  PTC at 270: 50 nt, <= 50
+    #                                              *---------->|  PTC at 269: 51 nt, > 50
     transcript = {
         "alt_is_premature": True,
         "alt_start_codon_pos": 0,
         "has_stop_codon": True,
-        "transcript_exon_info": [("1", 200), ("2", 100), ("3", 60), ("4", 300)],
-        "ref_cds_info": [(1, 160), (2, 100), (3, 40)],
-        "alt_cds_info": [(1, 160), (2, 100), (3, 40)],
-        "cds_start_in_transcript": 40,
+        "alt_transcript_exon_info": [("1", 200), ("2", 100), ("3", 60), ("4", 300)],
+        "alt_cds_start_in_transcript": 40,
     }
 
-    def evaluate(stop_pos, stop_exons):
-        row = {**transcript, "alt_first_stop_pos": stop_pos, "alt_stop_codon_exons": stop_exons}
+    def evaluate(stop_pos):
+        row = {**transcript, "alt_first_stop_pos": stop_pos}
         row.update(add_nmd_features(row))
         return evaluate_nmd_escape_rules(row)
 
     # PTC 30 nt before the end of exon 2, but 90 nt before the last exon junction: no escape
-    result = evaluate(230, [2, 3])
+    result = evaluate(230)
     assert result["nmd_last_exon_rule"] == False
     assert result["nmd_50nt_penultimate_rule"] == False
     assert result["nmd_escape"] == False
 
     # PTC in exon 3, 40 nt before the last exon junction: escape by the 50 nt rule, not by the last exon rule
-    result = evaluate(280, [3, 3])
+    result = evaluate(280)
     assert result["nmd_last_exon_rule"] == False
     assert result["nmd_50nt_penultimate_rule"] == True
     assert result["nmd_escape"] == True
 
     # The 50 nt rule includes its boundary: a PTC 50 nt before the last exon junction escapes, one 51 nt before it not
-    assert evaluate(270, [3])["nmd_50nt_penultimate_rule"] == True
-    assert evaluate(269, [3])["nmd_50nt_penultimate_rule"] == False
+    assert evaluate(270)["nmd_50nt_penultimate_rule"] == True
+    assert evaluate(269)["nmd_50nt_penultimate_rule"] == False
 
 
 def test_nmd_features_with_cds_inside_one_exon():
     # Exons of 300/500 nt. Exon 1 holds 100 nt of 5'UTR, the whole CDS (180 nt with the stop codon) and 20 nt of 3'UTR.
     # Exon 2 holds only 3'UTR. In CDS coordinates, the last exon junction lies at 300 - 100 = 200.
+    #                            300 nt                           500 nt
+    #     5' [uuuuu================================*===uuuu]|[uuuuuuuuuuuuuuu] 3'
+    #        -100  0                               165 180  200              700
+    #                                              *------->|  ptc_to_intron = 35, the last exon junction: <= 50
     row = {
         "alt_is_premature": True,
         "alt_start_codon_pos": 0,
         "has_stop_codon": True,
         "alt_first_stop_pos": 165,
-        "alt_stop_codon_exons": [1, 1],
-        "transcript_exon_info": [("1", 300), ("2", 500)],
-        "ref_cds_info": [(1, 180)],
-        "alt_cds_info": [(1, 180)],
-        "cds_start_in_transcript": 100,
+        "alt_transcript_exon_info": [("1", 300), ("2", 500)],
+        "alt_cds_start_in_transcript": 100,
         "cds_end_in_transcript": 280,
     }
     row.update(add_nmd_features(row))
@@ -665,16 +665,17 @@ def test_nmd_features_with_cds_inside_one_exon():
     assert evaluate_nmd_escape_rules(row)["nmd_50nt_penultimate_rule"] == True
 
     # Exons of 200/300 nt. The CDS (150 nt) ends exactly at the end of exon 1; exon 2 holds only 3'UTR.
+    #                       200 nt                      300 nt
+    #     5' [uuuuu===========================*==]|[uuuuuuuuuuuuuuu] 3'
+    #        -50   0                          135 150              450
+    #                                         *-->|  ptc_to_intron = 15, the last exon junction: <= 50
     row = {
         "alt_is_premature": True,
         "alt_start_codon_pos": 0,
         "has_stop_codon": True,
         "alt_first_stop_pos": 135,
-        "alt_stop_codon_exons": [1, 1],
-        "transcript_exon_info": [("1", 200), ("2", 300)],
-        "ref_cds_info": [(1, 150)],
-        "alt_cds_info": [(1, 150)],
-        "cds_start_in_transcript": 50,
+        "alt_transcript_exon_info": [("1", 200), ("2", 300)],
+        "alt_cds_start_in_transcript": 50,
         "cds_end_in_transcript": 200,
     }
     row.update(add_nmd_features(row))
@@ -685,91 +686,133 @@ def test_nmd_features_with_cds_inside_one_exon():
 
 def test_calculate_ptc_to_downstream_ej():
     # Case 1: PTC in exon 2, simple transcript
+    #           100 nt            200 nt              150 nt
+    #     5' [==========]|[===============*====]|[===============] 3'
+    #        0           100              250   300              450
+    #                                     *---->|  ptc_to_intron = 50
     row1 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 250,  # PTC position
-        "alt_stop_codon_exons": [2],
-        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 150)],
-        "ref_cds_info": [(1, 100), (2, 200), (3, 150)],
-        "alt_cds_info": [(1, 100), (2, 200), (3, 150)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [("1", 100), ("2", 200), ("3", 150)],
+        "alt_cds_start_in_transcript": 0,
     }
     # End of exon 2: 100 + 200 = 300, distance = 300 - 250 = 50
     assert calculate_ptc_to_downstream_ej(row1) == 50
 
     # Case 2: PTC in first exon
+    #           100 nt            200 nt              150 nt
+    #     5' [======*===]|[====================]|[===============] 3'
+    #        0      60   100                    300              450
+    #               *--->|  ptc_to_intron = 40
     row2 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 60,
-        "alt_stop_codon_exons": [1],
-        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 150)],
-        "ref_cds_info": [(1, 100), (2, 200), (3, 150)],
-        "alt_cds_info": [(1, 100), (2, 200), (3, 150)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [("1", 100), ("2", 200), ("3", 150)],
+        "alt_cds_start_in_transcript": 0,
     }
     # End of exon 1: 100, distance = 100 - 60 = 40
     assert calculate_ptc_to_downstream_ej(row2) == 40
 
-    # Case 3: PTC in the last exon, which has no downstream exon junction
+    # Case 3: PTC in the last exon, which ends at the transcript end
+    #           100 nt            200 nt                 200 nt
+    #     5' [==========]|[====================]|[=============*======] 3'
+    #        0           100                    300            430    500
+    #                                                          *----->|  ptc_to_intron = 70
     row3 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 430,
-        "alt_stop_codon_exons": [3],
-        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 200)],
-        "ref_cds_info": [(1, 100), (2, 200), (3, 200)],
-        "alt_cds_info": [(1, 100), (2, 200), (3, 200)],
-        "cds_start_in_transcript": 0,
+        "alt_transcript_exon_info": [("1", 100), ("2", 200), ("3", 200)],
+        "alt_cds_start_in_transcript": 0,
     }
-    assert calculate_ptc_to_downstream_ej(row3) is None
+    # The transcript ends at 100 + 200 + 200 = 500, distance = 500 - 430 = 70
+    assert calculate_ptc_to_downstream_ej(row3) == 70
 
-    # Case 4: Multiple stop codons, take the smallest exon number
-    row4 = {
-        "alt_is_premature": True,
-        "alt_first_stop_pos": 250,
-        "alt_stop_codon_exons": [2, 3],
-        "transcript_exon_info": [("1", 100), ("2", 200), ("3", 200)],
-        "ref_cds_info": [(1, 100), (2, 200), (3, 200)],
-        "alt_cds_info": [(1, 100), (2, 200), (3, 200)],
-        "cds_start_in_transcript": 0,
-    }
-    # PTC in exon 2, normal stop codon in exon 3. Smallest exon = 2, end of exon 2: 100 + 200 = 300,
-    # distance = 300 - 250 = 50. Exon 3 is the last exon and would give None.
-    assert calculate_ptc_to_downstream_ej(row4) == 50
+    # Case 4: Not premature → should return None
+    row4 = {**row1, "alt_is_premature": False}
+    assert calculate_ptc_to_downstream_ej(row4) is None
 
-    # Case 5: Not premature → should return None
-    row5 = {**row1, "alt_is_premature": False}
+    # Case 5: PTC position missing → should return None
+    row5 = {**row1, "alt_first_stop_pos": None}
     assert calculate_ptc_to_downstream_ej(row5) is None
 
-    # Case 6: PTC position missing → should return None
-    row6 = {**row1, "alt_first_stop_pos": None}
-    assert calculate_ptc_to_downstream_ej(row6) is None
-
-    # Case 7: PTC in the last CDS exon, followed by a UTR-only exon
-    row7 = {
+    # Case 6: PTC in the last CDS exon, followed by a UTR-only exon
+    #                200 nt            100 nt         60 nt          300 nt
+    #     5' [uuuu================]|[==========]|[====*===uuuu]|[uuuuuuuuuuuuuuu] 3'
+    #        -40  0                160          260   280 300  320              620
+    #                                                 *------->|  ptc_to_intron = 40
+    row6 = {
         "alt_is_premature": True,
         "alt_first_stop_pos": 280,
-        "alt_stop_codon_exons": [3, 3],
-        "transcript_exon_info": [("1", 200), ("2", 100), ("3", 60), ("4", 300)],
-        "ref_cds_info": [(1, 160), (2, 100), (3, 40)],
-        "alt_cds_info": [(1, 160), (2, 100), (3, 40)],
-        "cds_start_in_transcript": 40,
+        "alt_transcript_exon_info": [("1", 200), ("2", 100), ("3", 60), ("4", 300)],
+        "alt_cds_start_in_transcript": 40,
     }
     # The CDS ends at 300, and exon 3 goes on with 20 nt of 3'UTR: the junction is at 320, distance = 320 - 280 = 40
-    assert calculate_ptc_to_downstream_ej(row7) == 40
+    assert calculate_ptc_to_downstream_ej(row6) == 40
 
-    # Case 8: same transcript, a 1 nt deletion in exon 1 moves the junctions 1 nt upstream in alt CDS coordinates
-    row8 = {
-        **row7,
+    # Case 7: same transcript, a 1 nt deletion in exon 1 moves the junctions 1 nt upstream in alt CDS coordinates
+    #                200 nt                 100 nt              60 nt          300 nt
+    # ref 5' [uuuu================]|[====================]|[========uuuu]|[uuuuuuuuuuuuuuu] 3'
+    #        -40  0                160                    260       300  320
+    # alt 5' [uuuu================]|[=================*==]|[========uuuu]|[uuuuuuuuuuuuuuu] 3'
+    #        -40  0                159                250 259       299  319
+    #                                                 *-->|  ptc_to_intron = 9
+    row7 = {
+        **row6,
         "alt_first_stop_pos": 250,
-        "alt_stop_codon_exons": [2, 3],
-        "alt_cds_info": [(1, 159), (2, 100), (3, 40)],
+        "alt_transcript_exon_info": [("1", 199), ("2", 100), ("3", 60), ("4", 300)],
     }
-    # Exon 2 ends at transcript position 300, i.e. at 300 - 40 - 1 = 259 in alt CDS coordinates: distance = 259 - 250 = 9
-    assert calculate_ptc_to_downstream_ej(row8) == 9
+    # Exon 2 ends at alt transcript position 299, the PTC lies at 40 + 250 = 290: distance = 299 - 290 = 9
+    assert calculate_ptc_to_downstream_ej(row7) == 9
 
-    # Case 9: transcript exons unknown
-    row9 = {**row1, "transcript_exon_info": None}
+    # Case 8: same transcript, a 3 nt deletion in the 3'UTR of exon 3 moves the end of exon 3 3 nt upstream
+    #                200 nt            100 nt         60 nt          300 nt
+    # ref 5' [uuuu================]|[==========]|[====*===uuuu]|[uuuuuuuuuuuuuuu] 3'
+    #        -40  0                160          260   280 300  320
+    # alt 5' [uuuu================]|[==========]|[====*===uuu]|[uuuuuuuuuuuuuuu] 3'
+    #        -40  0                160          260   280 300 317
+    #                                                 *------>|  ptc_to_intron = 37
+    row8 = {**row6, "alt_transcript_exon_info": [("1", 200), ("2", 100), ("3", 57), ("4", 300)]}
+    # Exon 3 ends at alt transcript position 357, the PTC lies at 40 + 280 = 320: distance = 357 - 320 = 37
+    assert calculate_ptc_to_downstream_ej(row8) == 37
+
+    # Case 9: alt transcript exons unknown
+    row9 = {**row1, "alt_transcript_exon_info": None}
     assert calculate_ptc_to_downstream_ej(row9) is None
+
+    # Case 10: PTC in the last exon, which goes on with 60 nt of 3'UTR after the CDS
+    #           100 nt            200 nt                    260 nt
+    #     5' [==========]|[====================]|[=============*======uuuuuu] 3'
+    #        0           100                    300            430    500   560
+    #                                                          *----------->|  ptc_to_intron = 130
+    #                                                          *----->|  70 to the CDS end, not measured
+    row10 = {**row3, "alt_transcript_exon_info": [("1", 100), ("2", 200), ("3", 260)]}
+    # The transcript ends at 560, distance = 560 - 430 = 130: the 3'UTR that the PTC creates, not the 70 nt to the CDS end
+    assert calculate_ptc_to_downstream_ej(row10) == 130
+
+    # Case 11: same transcript, a 1 nt deletion in exon 1 moves the transcript end 1 nt upstream in alt CDS coordinates
+    #           100 nt            200 nt                    260 nt
+    # ref 5' [==========]|[====================]|[====================uuuuuu] 3'
+    #        0           100                    300                   500   560
+    # alt 5' [==========]|[====================]|[=============*======uuuuuu] 3'
+    #        0           99                     299            429    499   559
+    #                                                          *----------->|  ptc_to_intron = 130
+    row11 = {**row10, "alt_first_stop_pos": 429, "alt_transcript_exon_info": [("1", 99), ("2", 200), ("3", 260)]}
+    # The transcript ends at 560 - 1 = 559, distance = 559 - 429 = 130
+    assert calculate_ptc_to_downstream_ej(row11) == 130
+
+    # Case 12: single exon transcript of 300 nt, with 50 nt of 5'UTR and a CDS of 200 nt
+    #                     300 nt
+    #     5' [uuuuu==========*=========uuuuu] 3'
+    #        -50   0         100       200  250
+    #                        *------------->|  ptc_to_intron = 150
+    row12 = {
+        "alt_is_premature": True,
+        "alt_first_stop_pos": 100,
+        "alt_transcript_exon_info": [("1", 300)],
+        "alt_cds_start_in_transcript": 50,
+    }
+    # The transcript ends at 300 - 50 = 250 in CDS coordinates, distance = 250 - 100 = 150
+    assert calculate_ptc_to_downstream_ej(row12) == 150
 
 
 def test_add_likely_misannotated_flag():

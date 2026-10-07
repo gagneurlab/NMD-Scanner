@@ -18,6 +18,7 @@ from nmd_scanner.cli import (
     write_results,
 )
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
+from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
 RESOURCES = Path(__file__).resolve().parent.parent / "resources"
 
@@ -363,7 +364,13 @@ def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, cap
 
 
 def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp_path, intergenic_vcf):
+    """
+    The full run has rows with an unknown alt transcript. Their start and stop loss and NMD rules are null, and
+    those columns stay bool in Parquet, as in the empty run.
+    """
+
     pytest.importorskip("pyarrow")
+    import pyarrow as pa
     import pyarrow.parquet as pq
 
     empty_out = tmp_path / "empty.parquet"
@@ -382,7 +389,18 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     )
 
     assert pq.read_table(empty_out).num_rows == 0
-    assert pq.read_schema(str(empty_out)).equals(pq.read_schema(str(full_out)))
+    schema = pq.read_schema(str(full_out))
+    assert pq.read_schema(str(empty_out)).equals(schema)
+
+    loaded = pd.read_parquet(full_out)
+    unknown = loaded["unknown_reason"].notna()
+    assert unknown.any() and not unknown.all()
+    assert set(loaded.loc[unknown, "unknown_reason"]) <= {SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS}
+    assert schema.field("unknown_reason").type.equals(pa.string())
+    for column in ["start_loss", "stop_loss"] + [column for column in OUTPUT_COLUMN_KINDS if column.startswith("nmd_")]:
+        assert schema.field(column).type.equals(pa.bool_()), column
+        assert loaded.loc[unknown, column].isna().all(), column
+        assert loaded.loc[~unknown, column].notna().any(), column
 
 
 def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, caplog):
@@ -501,6 +519,26 @@ def test_main_end_to_end_reassign_exons(tmp_path):
     pd.testing.assert_frame_equal(results, annotated)
 
 
+def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
+    """Variants over a splice site get a row without prediction, and unknown_reason says why."""
+
+    results = main(
+        vcf_path="resources/test_files/variants.vcf",
+        annotation_path="resources/chr18.gff3.gz",
+        fasta_path="resources/chr18.fa.gz",
+        output=str(tmp_path / "results.csv"),
+    )
+
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+    unknown = results[results["unknown_reason"].notna()]
+    assert not unknown.empty
+    assert set(unknown["unknown_reason"]) <= {SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS}
+    assert unknown["ref_cds_seq"].notna().all()
+    for column in ["alt_cds_seq", "alt_is_premature", "start_loss", "stop_loss", "nmd_escape"]:
+        assert unknown[column].isna().all(), column
+    assert results.loc[results["unknown_reason"].isna(), "nmd_escape"].notna().all()
+
+
 @pytest.fixture(scope="module")
 def cli_stderr(tmp_path_factory):
     """stderr of the CLI in its own process, on the bundled chr18 test data"""
@@ -530,7 +568,7 @@ def cli_stderr(tmp_path_factory):
 
 def test_main_cli_logs_the_info_messages_of_nmd_scanner_in_its_format(cli_stderr):
     assert "INFO nmd_scanner.cli: Reading VCF file" in cli_stderr
-    assert "WARNING nmd_scanner.rules: Skipping 76 variant-transcript pairs" in cli_stderr
+    assert "WARNING nmd_scanner.rules: Skipping 88 variant-transcript pairs" in cli_stderr
     # polars-bio's Rust code logs at INFO too
     info = [line for line in cli_stderr.splitlines() if " INFO " in line]
     assert all(" INFO nmd_scanner." in line for line in info)
@@ -686,6 +724,72 @@ def test_annotate_without_cds_overlap_returns_all_columns_and_no_rows(intergenic
     results = annotate(intergenic_vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
     assert isinstance(results, pd.DataFrame)
+    assert results.empty
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+
+
+# Each symbolic allele and breakend sits at the position of v1, inside the GREB1L CDS. Before they were skipped, a
+# symbolic allele with a padding base went into the alt CDS as text, e.g. "<DEL>".
+SYMBOLIC_ALTS = ["<DEL>", "<DUP>", "<INS>", "<INV>", "<CNV>", "<DUP:TANDEM>", "G]chr2:100]", "[chr2:100[G", "G.", ".G"]
+
+
+def _symbolic_vcf(tmp_path, with_snv):
+    records = [f"chr18\t21383521\tsv{i}\tG\t{alt}\t.\t.\t.\n" for i, alt in enumerate(SYMBOLIC_ALTS)]
+    if with_snv:
+        records.append("chr18\t21383521\tv1\tG\tGT\t.\t.\t.\n")
+    vcf = tmp_path / "symbolic.vcf"
+    vcf.write_text("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" + "".join(records))
+    return str(vcf)
+
+
+def test_annotate_skips_symbolic_alleles_and_breakends_with_a_warning(tmp_path, caplog):
+    with caplog.at_level(logging.INFO):
+        results = annotate(_symbolic_vcf(tmp_path, True), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    assert not results.empty
+    assert set(results["variant_id"]) == {"v1"}
+    assert not results["alt_cds_seq"].str.contains("<|>|\\[|\\]|\\.").any()
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert any(
+        message.startswith(f"Skipping {len(SYMBOLIC_ALTS)} variant(s) with a symbolic ALT") for message in warnings
+    )
+
+
+def test_annotate_with_only_symbolic_alleles_returns_all_columns_and_no_rows(tmp_path):
+    results = annotate(_symbolic_vcf(tmp_path, False), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    assert results.empty
+    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
+
+
+def test_annotate_without_symbolic_alleles_does_not_warn_about_them(caplog):
+    with caplog.at_level(logging.INFO):
+        annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
+    assert "symbolic ALT" not in caplog.text
+
+
+def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_rows(tmp_path):
+    fasta = tmp_path / "chr1.fa"
+    fasta.write_text(">chr1\nACGT\n")
+
+    with pytest.raises(ValueError) as error:
+        annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", str(fasta))
+
+    assert str(error.value) == (
+        "The FASTA has no sequence for 1 chromosome(s) with variants and CDS rows: chr18. Each chromosome with "
+        "variants and CDS rows needs a sequence of the same name in the FASTA."
+    )
+
+
+def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp_path):
+    vcf = tmp_path / "chrZ.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrZ\t1000\tz1\tA\tT\t.\t.\t.\n"
+    )
+
+    results = annotate(str(vcf), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+
     assert results.empty
     assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
 

@@ -44,7 +44,8 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
 
     :param vcf_path: path to the input VCF file
     :param annotation_path: path to the input gene annotation file (GFF3, optionally gzip-compressed)
-    :param fasta_path: path to the reference FASTA file. It also shows whether a CDS ends in a stop codon.
+    :param fasta_path: path to the reference FASTA file. It also shows whether a CDS ends in a stop codon, and for
+                       an Ensembl GFF3 whether it starts with one.
     :param reassign_exons: recompute the exon numbers of the annotation (recommended for hg19; may be slow)
     :return: DataFrame summarizing all annotated variants, with the columns and dtypes of OUTPUT_COLUMN_KINDS
              (see nmd_scanner.schema). It has zero rows if no variant gives a result.
@@ -59,7 +60,8 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
     logger.info("Reading FASTA file: %s", fasta_path)
     fasta = Fasta(fasta_path)
 
-    # read gene annotation file (GFF3) into exon rows and coding regions (CDS rows with has_stop_codon).
+    # read gene annotation file (GFF3) into exon rows and coding regions (CDS rows with has_start_codon and
+    # has_stop_codon).
     # reassign_exons recomputes the exon numbers (recommended for hg19).
     logger.info("Reading annotation file: %s", annotation_path)
     annotation = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
@@ -215,7 +217,10 @@ def main_cli():
     parser.add_argument(
         "--fasta",
         required=True,
-        help="Path to reference genome FASTA file. It also shows whether a CDS ends in a stop codon.",
+        help=(
+            "Path to reference genome FASTA file. It also shows whether a CDS ends in a stop codon, "
+            "and for an Ensembl GFF3 whether it starts with one."
+        ),
     )
     parser.add_argument(
         "--output",

@@ -10,7 +10,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
 - Detects start / stop-loss and premature termination codons (PTCs) with the exact position in the CDS and in which exon it lies
 - Computes different NMD-related features:
   - Total, upstream and downstream exon count
-  - Distance of PTC to original stop codon
+  - Distance of PTC to original stop codon (0 for the original stop codon, negative for the new stop codon after a stop loss, empty for a nonstop)
   - Distance of PTC to start codon
   - Transcript length
   - 3' and 5' UTR lengths
@@ -20,7 +20,9 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 78 columns and dtypes for every input
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 83 columns and dtypes for every input
+
+[Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
 ## Installation
 Requires Python >= 3.12.
@@ -50,18 +52,13 @@ nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa
 The equivalent `python -m nmd_scanner.cli ...` invocation also works without installing the console script.
 
 Arguments:
-- `--vcf`: Path to input VCF, plain or gzip-compressed (SNVs / Indels supported; frameshifts handled). It needs its header, at least the `##fileformat` and `#CHROM` lines, and one ALT allele per record: split multi-allelic records first, e.g. with `bcftools norm -m-`. QUAL, FILTER and INFO are not read.
-- `--annotation`: Path to gene annotation file in GFF3, optionally gzip-compressed, with the suffix `.gff3` or `.gff`. Both GENCODE and Ensembl GFF3 flavors are supported.
-- `--fasta`: Path to reference genome FASTA. It also shows whether a CDS ends in a stop codon.
+- `--vcf`: Path to input VCF, plain or gzip-compressed, with one ALT allele per record. Split multi-allelic records first, e.g. with `bcftools norm -m-`. Records with a symbolic, breakend, `.` or `*` ALT are skipped with a warning.
+- `--annotation`: Path to the gene annotation in GFF3 (GENCODE or Ensembl flavor), optionally gzip-compressed, with the suffix `.gff3` or `.gff`.
+- `--fasta`: Path to reference genome FASTA.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
 
 The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `chr1` or all `1`.
-
-The coding region of a transcript is its CDS plus the stop codon. A GFF3 CDS includes the stop codon. Ensembl
-GFF3 has no `stop_codon` rows; whether a transcript ends in a stop codon comes from the last 3 CDS bases in the
-FASTA. Ensembl GFF3 has no `cds_end_NF` tag either. So a `cds_end_NF` transcript gets a stop codon if its CDS
-ends in stop codon bases (13 transcripts in Ensembl 108, none on chr22).
 
 Output:
 - The file specified by `--output`, containing:
@@ -69,8 +66,9 @@ Output:
   - PTC detection and start / stop-loss flags
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.
+  - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
 
-`nmd_scanner.schema` lists the 78 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows.
+`nmd_scanner.schema` lists the 83 output columns and their dtypes. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 Instead of running the entire pipeline, you can import NMD-Scanner in Python and call only specific components.
@@ -100,8 +98,8 @@ import nmd_scanner
 
 vcf = nmd_scanner.read_vcf("input.vcf")
 fasta = Fasta("reference.fa")
-# exon rows and coding regions: CDS rows that include the stop codon, with the column has_stop_codon.
-# The FASTA shows whether a CDS ends in a stop codon.
+# exon rows and coding regions: CDS rows that include the stop codon, with the columns has_start_codon and
+# has_stop_codon.
 # Optional: reassign_exons=True recomputes the exon numbers (recommended for hg19).
 annotation = nmd_scanner.read_annotation("annotation.gff3.gz", fasta, reassign_exons=False)
 
@@ -111,6 +109,8 @@ exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
 
 results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 ```
+
+`results` has one row per VCF record and transcript where the variant of the record touches the coding region (CDS plus stop codon) or the splice dinucleotide next to one of its exon edges. An indel in a repeat counts with every equivalent placement, not only the one in the VCF. If the variant destroys a splice site or leaves an exon boundary ambiguous, the alt transcript is unknown. Then `unknown_reason` says why, and the alt columns and the predictions are empty. [Variants at exon boundaries](Technical%20Notes.md#variants-at-exon-boundaries) in the Technical Notes gives the rules.
 
 Add the extra NMD-related features (utr lengths, exon counts, ptc-related features) and the NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results. The columns, column order and dtypes are the same for every input, also for a result without rows (see `nmd_scanner.schema`):
 ```python

@@ -644,7 +644,8 @@ def test_read_gff3_stop_codon_from_sequence(tmp_path):
         ("MT", 100, "MT_AGA", 60, -1, "AGA"),
         ("MT", 300, "MT_TGA", 60, -1, "TGA"),
     ]
-    rows, bases = [], {}
+    rows = []
+    bases = {}
     for chrom, start, tx, length, end_phase, codon in cases:
         rows += [
             f"{chrom}\tensembl\tmRNA\t{start}\t{start + 100}\t.\t+\t.\tID=transcript:{tx};Parent=gene:G{tx};biotype=protein_coding",
@@ -732,9 +733,11 @@ _ENSEMBL_RESULTS = [
 )
 def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected):
     """Variants in every fixture transcript, e.g. the split stop codon and the cds_end_NF ones."""
-    _fasta(tmp_path)
+    # In a run of C, a deletion shifts up to the exon edge, and its placements put the edge at different positions.
+    # The planted A bases keep the deletion of v0 in place.
+    _fasta(tmp_path, {**_FIXTURE_BASES, ("chr1", 1100): "ACA"})
     variants = [
-        ("chr1", 1100, "CC", "C"),
+        ("chr1", 1100, "AC", "A"),
         ("chr1", 1600, "C", "A"),
         ("chr1", 4100, "C", "T"),
         ("chr1", 5200, "C", "A"),
@@ -899,6 +902,296 @@ def test_read_gff3_raises_for_a_start_after_the_end(tmp_path, start, end, shown)
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
 
 
+# One CDS row of each strand in the GENCODE fixture, and one of the Ensembl fixture, with the transcript and the
+# location that an error names
+_CDS_ROWS_TO_BREAK = pytest.mark.parametrize(
+    ("gff3", "line", "transcript", "location"),
+    [
+        (_GENCODE_GFF3, _CDS_LINE, "ENST001.1", "chr1:1051-1200"),
+        (_GENCODE_GFF3, "chr1\tHAVANA\tCDS\t5100\t5299\t.\t-\t0\tID=CDS:ENST002.1;", "ENST002.1", "chr1:5100-5299"),
+        (_ENSEMBL_GFF3, "chr1\tensembl\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENSPE001;", "ENSTE001", "chr1:1051-1200"),
+    ],
+    ids=["gencode_plus", "gencode_minus", "ensembl_plus"],
+)
+
+
+def _with_column(gff3, line, column, value):
+    """The GFF3 with ``value`` in the column (0-based) of the one row that starts with ``line``."""
+    assert gff3.count(line) == 1
+    fields = line.split("\t")
+    fields[column] = value
+    return gff3.replace(line, "\t".join(fields))
+
+
+@_CDS_ROWS_TO_BREAK
+def test_read_gff3_raises_for_a_cds_row_with_strand_dot(tmp_path, gff3, line, transcript, location):
+    gff3_path = _write(tmp_path, "unstranded.gff3", _with_column(gff3, line, 6, "."))
+
+    with pytest.raises(ValueError) as error:
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    assert str(error.value) == (
+        f"Cannot use {gff3_path!r}: 1 exon or CDS row(s) have a strand other than + or -. The first is the CDS row "
+        f"of transcript {transcript} at {location}, with strand '.'. NMD-Scanner needs strand + or - on each exon "
+        "and CDS row."
+    )
+
+
+@_CDS_ROWS_TO_BREAK
+def test_read_gff3_raises_for_a_cds_row_with_phase_dot(tmp_path, gff3, line, transcript, location):
+    gff3_path = _write(tmp_path, "unphased.gff3", _with_column(gff3, line, 7, "."))
+
+    with pytest.raises(ValueError) as error:
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    assert str(error.value) == (
+        f"Cannot use {gff3_path!r}: 1 CDS row(s) have a phase other than 0, 1 or 2. The first is the CDS row of "
+        f"transcript {transcript} at {location}, with phase '.'. GFF3 requires a phase on each CDS row."
+    )
+
+
+# One CDS row of each strand in the GENCODE fixture, and one of the Ensembl fixture, moved 3 nt into the intron after
+# its exon: the column (0-based) and its new value, and the transcript and the location that an error names. ENST002.1
+# lies on the minus strand, so the intron after its 5' exon at 5100-5300 lies left of it.
+_CDS_ROWS_OUTSIDE_EXONS = pytest.mark.parametrize(
+    ("gff3", "line", "column", "value", "transcript", "location"),
+    [
+        (_GENCODE_GFF3, _CDS_LINE, 4, "1203", "ENST001.1", "chr1:1051-1203"),
+        (
+            _GENCODE_GFF3,
+            "chr1\tHAVANA\tCDS\t5100\t5299\t.\t-\t0\tID=CDS:ENST002.1;",
+            3,
+            "5097",
+            "ENST002.1",
+            "chr1:5097-5299",
+        ),
+        (
+            _ENSEMBL_GFF3,
+            "chr1\tensembl\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENSPE001;",
+            4,
+            "1203",
+            "ENSTE001",
+            "chr1:1051-1203",
+        ),
+    ],
+    ids=["gencode_plus", "gencode_minus", "ensembl_plus"],
+)
+
+# The same for the CDS row of the 3' exon, moved 3 nt past the transcript end. On the minus strand, the 3' exon of
+# ENST002.1 at 4000-4300 ends the transcript at its left end.
+_CDS_ROWS_PAST_THE_TRANSCRIPT_END = pytest.mark.parametrize(
+    ("gff3", "line", "column", "value", "transcript", "location"),
+    [
+        (
+            _GENCODE_GFF3,
+            "chr1\tHAVANA\tCDS\t1500\t2000\t.\t+\t0\tID=CDS:ENST001.1;",
+            4,
+            "2003",
+            "ENST001.1",
+            "chr1:1500-2003",
+        ),
+        (
+            _GENCODE_GFF3,
+            "chr1\tHAVANA\tCDS\t4000\t4300\t.\t-\t1\tID=CDS:ENST002.1;",
+            3,
+            "3997",
+            "ENST002.1",
+            "chr1:3997-4300",
+        ),
+        (
+            _ENSEMBL_GFF3,
+            "chr1\tensembl\tCDS\t1500\t2000\t.\t+\t0\tID=CDS:ENSPE001;",
+            4,
+            "2003",
+            "ENSTE001",
+            "chr1:1500-2003",
+        ),
+    ],
+    ids=["gencode_plus", "gencode_minus", "ensembl_plus"],
+)
+
+
+def _assert_raises_for_a_cds_row_outside_the_exons(tmp_path, gff3, line, column, value, transcript, location):
+    gff3_path = _write(tmp_path, "outside.gff3", _with_column(gff3, line, column, value))
+
+    with pytest.raises(ValueError) as error:
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    assert str(error.value) == (
+        f"Cannot use {gff3_path!r}: 1 CDS row(s) do not lie inside an exon row of their transcript. The first is the "
+        f"CDS row of transcript {transcript} at {location}. NMD-Scanner needs each CDS row inside an exon row of its "
+        "transcript."
+    )
+
+
+@_CDS_ROWS_OUTSIDE_EXONS
+def test_read_gff3_raises_for_a_cds_row_that_reaches_3_nt_into_the_intron(
+    tmp_path, gff3, line, column, value, transcript, location
+):
+    _assert_raises_for_a_cds_row_outside_the_exons(tmp_path, gff3, line, column, value, transcript, location)
+
+
+@_CDS_ROWS_PAST_THE_TRANSCRIPT_END
+def test_read_gff3_raises_for_a_cds_row_that_reaches_past_the_transcript_end(
+    tmp_path, gff3, line, column, value, transcript, location
+):
+    _assert_raises_for_a_cds_row_outside_the_exons(tmp_path, gff3, line, column, value, transcript, location)
+
+
+# The columns of a row whose transcript has no exon rows that do not depend on the strand: a missense variant C>A that
+# changes no stop codon. The GENCODE fixture has no start_codon rows, so the transcript has no annotated start codon.
+_ROW_WITHOUT_EXON_ROWS = {
+    "variant_id": "v0",
+    "chromosome": "chr1",
+    "has_start_codon": False,
+    "has_stop_codon": True,
+    "cds_frame": 0,
+    "ref": "C",
+    "alt": "A",
+    "cds_in_transcript": False,
+    "ref_start_codon_pos": None,
+    "ref_start_codon_exon": None,
+    "ref_last_codon": "TAA",
+    "ref_valid_stop": True,
+    "ref_first_stop_codon": "TAA",
+    "ref_num_stop_codons": 1,
+    "ref_stop_codon_exons": [2],
+    "ref_is_premature": False,
+    "alt_start_codon_pos": None,
+    "alt_start_codon_exon": None,
+    "alt_last_codon": "TAA",
+    "alt_valid_stop": True,
+    "alt_first_stop_codon": "TAA",
+    "alt_num_stop_codons": 1,
+    "alt_stop_codon_exons": [2],
+    "alt_is_premature": False,
+    "start_loss": False,
+    "stop_loss": False,
+    "transcript_start": None,
+    "transcript_end": None,
+    "transcript_seq": None,
+    "transcript_length": None,
+    "cds_start_in_transcript": None,
+    "cds_end_in_transcript": None,
+    "alt_transcript_seq": None,
+    "alt_transcript_length": None,
+    "alt_cds_start_in_transcript": None,
+    "transcript_exon_info": None,
+    "alt_transcript_exon_info": None,
+    "transcript_start_codon_pos": None,
+    "transcript_start_codon_exon": None,
+    "transcript_last_codon": None,
+    "transcript_valid_stop": None,
+    "transcript_first_stop_codon": None,
+    "transcript_first_stop_pos": None,
+    "transcript_num_stop_codons": None,
+    "transcript_all_stop_codons": None,
+    "transcript_stop_codon_exons": None,
+    "unknown_reason": None,
+    "utr3_length": None,
+    "utr5_length": None,
+    "total_exon_count": None,
+    "upstream_exon_count": None,
+    "downstream_exon_count": None,
+    "ptc_to_start_codon": None,
+    "ptc_less_than_150nt_to_start": False,
+    "ptc_exon_length": None,
+    "stop_codon_distance": 0,
+    "ptc_to_intron": None,
+    "likely_misannotated": True,
+    "nmd_last_exon_rule": False,
+    "nmd_50nt_penultimate_rule": False,
+    "nmd_long_exon_rule": False,
+    "nmd_start_proximal_rule": False,
+    "nmd_single_exon_rule": False,
+    "nmd_escape": False,
+}
+
+
+# The transcript whose exon rows the GENCODE fixture loses, the position (1-based) of the C>A variant in its CDS, and
+# the columns of its row that depend on the strand. On the + strand, the variant lies at CDS position 250 in exon 2.
+# On the - strand, it lies at CDS position 99 in exon 1, and the CDS reads G>T.
+@pytest.mark.parametrize(
+    ("transcript", "position", "expected"),
+    [
+        (
+            "ENST001.1",
+            1600,
+            {
+                "transcript_id": "ENST001.1",
+                "gene_id": "ENSG001.1",
+                "strand": "+",
+                "ref_cds_start": 1050,
+                "ref_cds_stop": 2000,
+                "ref_cds_seq": "C" * 648 + "TAA",
+                "ref_cds_len": 651,
+                "alt_cds_start": 1050,
+                "alt_cds_stop": 2000,
+                "alt_cds_seq": "C" * 250 + "A" + "C" * 397 + "TAA",
+                "alt_cds_len": 651,
+                "start_variant": 1599,
+                "end_variant": 1600,
+                "ref_cds_info": [(1, 150), (2, 501)],
+                "alt_cds_info": [(1, 150), (2, 501)],
+                "ref_first_stop_pos": 648,
+                "ref_all_stop_codons": [(648, "TAA")],
+                "alt_first_stop_pos": 648,
+                "alt_all_stop_codons": [(648, "TAA")],
+            },
+        ),
+        (
+            "ENST002.1",
+            5200,
+            {
+                "transcript_id": "ENST002.1",
+                "gene_id": "ENSG002.1",
+                "strand": "-",
+                "ref_cds_start": 3999,
+                "ref_cds_stop": 5299,
+                "ref_cds_seq": "G" * 498 + "TAA",
+                "ref_cds_len": 501,
+                "alt_cds_start": 3999,
+                "alt_cds_stop": 5299,
+                "alt_cds_seq": "G" * 99 + "T" + "G" * 398 + "TAA",
+                "alt_cds_len": 501,
+                "start_variant": 5199,
+                "end_variant": 5200,
+                "ref_cds_info": [(1, 200), (2, 301)],
+                "alt_cds_info": [(1, 200), (2, 301)],
+                "ref_first_stop_pos": 498,
+                "ref_all_stop_codons": [(498, "TAA")],
+                "alt_first_stop_pos": 498,
+                "alt_all_stop_codons": [(498, "TAA")],
+            },
+        ),
+    ],
+    ids=["gencode_plus", "gencode_minus"],
+)
+def test_main_gives_null_transcript_columns_for_a_gff3_transcript_without_exon_rows(
+    tmp_path, transcript, position, expected
+):
+    """
+    read_gff3 checks the CDS rows only of a transcript with exon rows. So a transcript with CDS rows but no exon rows
+    gives a row with null transcript columns: cds_in_transcript is False and likely_misannotated is True, and the
+    flags come from the alt CDS.
+    """
+    lines = _GENCODE_GFF3.splitlines(True)
+    without_exons = [line for line in lines if not ("\texon\t" in line and f"transcript_id={transcript};" in line)]
+    assert len(lines) - len(without_exons) == 2
+    _fasta(tmp_path)
+    vcf = _write(tmp_path, "variants.vcf", VCF_HEADER + f"chr1\t{position}\tv0\tC\tA\t.\tPASS\t.\n")
+    gff3_path = _write(tmp_path, "a.gff3", "".join(without_exons))
+
+    results = main(vcf, gff3_path, str(tmp_path / "genome.fa"), str(tmp_path / "out.csv"))
+
+    assert len(results) == 1
+    row = {
+        column: None if pd.api.types.is_scalar(value) and pd.isna(value) else value
+        for column, value in results.iloc[0].items()
+    }
+    assert row == {**_ROW_WITHOUT_EXON_ROWS, **expected}
+
+
 def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_rows(tmp_path, caplog):
     without_stop_codons = "".join(line for line in _GENCODE_GFF3.splitlines(True) if "\tstop_codon\t" not in line)
     fasta = _fasta(tmp_path)
@@ -911,6 +1204,87 @@ def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_rows(tmp_path, capl
     with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
         nmd_scanner.scan.read_gff3(_write(tmp_path, "stop.gff3", _GENCODE_GFF3), fasta)
     assert "No stop_codon rows" not in caplog.text
+
+
+def test_read_gff3_has_start_codon_from_gencode_start_codon_rows(tmp_path, caplog):
+    """
+    A GENCODE transcript has a start codon if it has start_codon rows. ENST001.1 (+ strand) gets a start codon at the
+    first 3 CDS bases 1051-1053, ENST002.1 (- strand) at 5297-5299. The other transcripts have none. The result has no
+    start_codon rows.
+
+                 1051                                5297
+    ENST001.1 +  [sss=====...   ENST002.1 -  ...=====sss]
+    """
+    attributes = "gene_type=protein_coding;transcript_type=protein_coding;exon_number=1"
+    start_codon_rows = [
+        f"chr1\tHAVANA\tstart_codon\t1051\t1053\t.\t+\t0\tID=start_codon:ENST001.1;Parent=ENST001.1;"
+        f"gene_id=ENSG001.1;transcript_id=ENST001.1;{attributes}\n",
+        f"chr1\tHAVANA\tstart_codon\t5297\t5299\t.\t-\t0\tID=start_codon:ENST002.1;Parent=ENST002.1;"
+        f"gene_id=ENSG002.1;transcript_id=ENST002.1;{attributes}\n",
+    ]
+    fasta = _fasta(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
+        df = nmd_scanner.scan.read_gff3(
+            _write(tmp_path, "start.gff3", _GENCODE_GFF3 + "".join(start_codon_rows)), fasta
+        )
+
+    assert set(df["Feature"]) == {"exon", "CDS"}
+    assert df.loc[df["Feature"] == "exon", "has_start_codon"].isna().all()
+    cds = df[df["Feature"] == "CDS"]
+    assert set(cds.loc[cds["has_start_codon"].astype(bool), "transcript_id"]) == {"ENST001.1", "ENST002.1"}
+    assert "No start_codon rows" not in caplog.text
+
+    # Without start_codon rows, no transcript has a start codon
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
+        df = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_start.gff3", _GENCODE_GFF3), fasta)
+    assert "No start_codon rows found next to the CDS rows" in caplog.text
+    assert not df["has_start_codon"].any()
+
+
+def test_read_gff3_start_codon_from_sequence(tmp_path):
+    """
+    An Ensembl GFF3 has no start_codon rows. A transcript has a start codon if its CDS starts with ATG and its 5'-most
+    CDS row has phase 0. MINUS_SPLIT reads its ATG across an intron on the minus strand: AT from the 5'-most CDS row,
+    at 761 and 760, and G from the next one, at 750. The drawing is in transcript orientation.
+
+                   exon 1      exon 2
+                   800-760     750-700
+    MINUS_SPLIT 5' [uuuuuAT]|[G=====uuuu] 3'
+    """
+    # transcript, transcript start, phase of the CDS row, first 3 CDS bases
+    cases = [("ATG", 100, 0, "ATG"), ("CTG", 300, 0, "CTG"), ("PHASE_1", 500, 1, "ATG")]
+    rows = []
+    bases = {}
+    for tx, start, phase, codon in cases:
+        rows += [
+            f"chr1\tensembl\tmRNA\t{start}\t{start + 100}\t.\t+\t.\tID=transcript:{tx};Parent=gene:G{tx};biotype=protein_coding",
+            f"chr1\tensembl\texon\t{start}\t{start + 100}\t.\t+\t.\tParent=transcript:{tx};rank=1",
+            f"chr1\tensembl\tCDS\t{start + 1}\t{start + 60}\t.\t+\t{phase}\tID=CDS:P{tx};Parent=transcript:{tx}",
+        ]
+        bases[("chr1", start + 1)] = codon
+    rows += [
+        "chr1\tensembl\tmRNA\t700\t800\t.\t-\t.\tID=transcript:MINUS_SPLIT;Parent=gene:GMINUS;biotype=protein_coding",
+        "chr1\tensembl\texon\t760\t800\t.\t-\t.\tParent=transcript:MINUS_SPLIT;rank=1",
+        "chr1\tensembl\texon\t700\t750\t.\t-\t.\tParent=transcript:MINUS_SPLIT;rank=2",
+        "chr1\tensembl\tCDS\t760\t761\t.\t-\t0\tID=CDS:PMINUS;Parent=transcript:MINUS_SPLIT",
+        "chr1\tensembl\tCDS\t720\t750\t.\t-\t1\tID=CDS:PMINUS;Parent=transcript:MINUS_SPLIT",
+    ]
+    # the plus strand bases AT at 760-761 and C at 750 read ATG on the minus strand
+    bases[("chr1", 760)] = "AT"
+    bases[("chr1", 750)] = "C"
+    gff3_path = _write(tmp_path, "ensembl.gff3", "##gff-version 3\n" + "\n".join(rows) + "\n")
+
+    df = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path, bases))
+
+    assert df.loc[df["Feature"] == "exon", "has_start_codon"].isna().all()
+    cds = df[df["Feature"] == "CDS"]
+    assert dict(zip(cds["transcript_id"], cds["has_start_codon"])) == {
+        "ATG": True,
+        "CTG": False,
+        "PHASE_1": False,
+        "MINUS_SPLIT": True,
+    }
 
 
 def test_read_gff3_raises_an_error_naming_the_file_if_polars_bio_cannot_read_it(tmp_path):
