@@ -13,7 +13,7 @@ The files in this directory are not required for normal usage of the NMD-Scanner
 
 ### `TCGA_benchmark/`
 
-- **`tcga_dataset.vcf`** : VCF file generated from the TCGA dataset as described in the original study (<https://github.com/hjkng/nmdeff>)
+- **`tcga_dataset.vcf`** : VCF file built from the TCGA dataset of the original study (<https://github.com/hjkng/nmdeff>) by `scripts/make_tcga_vcf.py`, with REF and ALT on the forward strand of GRCh38
   used for NMD efficiency benchmarking and for model training.
 
 ---

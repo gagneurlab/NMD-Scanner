@@ -96,6 +96,24 @@ uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh
 
 ---
 
+### 6. `make_tcga_vcf.py`
+
+Builds `resources/TCGA_benchmark/tcga_dataset.vcf` from the NMDEff study table, so that the VCF is reproducible.
+The output equals the committed file byte for byte.
+
+```bash
+uv run scripts/make_tcga_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
+```
+
+- It downloads `tcga_dataset.csv` at the commit that `train_model.py` pins and checks its sha256. `--csv` reads a
+  local copy instead, with the same check.
+- It parses the substitution from HGVSc, which has the alleles on the transcript strand. It takes the strand from
+  the GENCODE GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses
+  the orientation whose REF matches the FASTA.
+- It fails if a row is not a single-base substitution or if a REF does not match the FASTA.
+
+---
+
 ## Notes
 
 - None of the notebooks are required for end users of the package.
