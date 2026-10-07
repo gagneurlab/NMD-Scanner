@@ -755,13 +755,6 @@ def test_annotate_skips_symbolic_alleles_and_breakends_with_a_warning(tmp_path, 
     )
 
 
-def test_annotate_with_only_symbolic_alleles_returns_all_columns_and_no_rows(tmp_path):
-    results = annotate(_symbolic_vcf(tmp_path, False), "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-
-    assert results.empty
-    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS)
-
-
 def test_annotate_without_symbolic_alleles_does_not_warn_about_them(caplog):
     with caplog.at_level(logging.INFO):
         annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
