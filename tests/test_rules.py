@@ -9,6 +9,7 @@ features and the NMD escape rules with figures in the same style.
 
 # Import dependencies
 import logging
+from dataclasses import replace
 
 import pandas as pd
 import pytest
@@ -18,6 +19,8 @@ from pyfaidx import Fasta
 import nmd_scanner.rules
 from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from nmd_scanner.rules import (
+    SpliceRow,
+    StartCodonRow,
     analyze_sequence,
     analyze_transcript,
     annotated_stop_in_alt,
@@ -33,6 +36,7 @@ from nmd_scanner.rules import (
     start_stop_loss,
     starts_with_annotated_start_codon,
 )
+from nmd_scanner.schema import records
 
 
 def run_pipeline_on_transcript(
@@ -461,7 +465,7 @@ def test_analyze_sequence():
         ]
     )
     analyzed = analyze_sequence(df)
-    assert starts_with_annotated_start_codon(analyzed.loc[0], "ref")
+    assert starts_with_annotated_start_codon(records(analyzed, StartCodonRow)[0], "ref")
     assert analyzed.loc[0, "ref_valid_stop"] == True
     assert analyzed.loc[0, "alt_valid_stop"] == True
 
@@ -598,7 +602,7 @@ def test_start_codon_pos_is_the_annotated_start_codon():
 
     result = analyze_sequence(df)
 
-    rows = [row for _, row in result.iterrows()]
+    rows = records(result, StartCodonRow)
     assert [starts_with_annotated_start_codon(row, "ref") for row in rows] == [True, True, False, False]
     assert result["start_codon_exon"].tolist() == [1, 1, None, None]
     # ATG>ACG changes the annotated start codon, so the alt CDS has none
@@ -607,44 +611,49 @@ def test_start_codon_pos_is_the_annotated_start_codon():
 
 def test_splice_alt_cds_into_transcript():
     # Single exon transcripts; the variant lies inside the CDS
-    row = {
-        "ref_cds_seq": "AAAGGGCCC",
-        "alt_cds_seq": "AAATTTCCC",
-        "cds_start_in_transcript": 3,
-        "cds_end_in_transcript": 12,
-    }
-    transcript_seq = "TTTAAAGGGCCCGGG"
+    row = SpliceRow(
+        transcript_seq="TTTAAAGGGCCCGGG",
+        ref_cds_seq="AAAGGGCCC",
+        alt_cds_seq="AAATTTCCC",
+        cds_start_in_transcript=3,
+        cds_end_in_transcript=12,
+        utr5_change=("", ""),
+        utr3_change=("", ""),
+    )
 
-    result = splice_alt_cds_into_transcript(row, transcript_seq)
+    result = splice_alt_cds_into_transcript(row)
     assert result == "TTTAAATTTCCCGGG"
 
     # The 5'UTR repeats the CDS sequence: splice at the CDS position, not at the first match
-    row = {
-        "ref_cds_seq": "ATGAAATAA",
-        "alt_cds_seq": "ATGTAATAA",
-        "cds_start_in_transcript": 11,
-        "cds_end_in_transcript": 20,
-    }
-    result = splice_alt_cds_into_transcript(row, "ATGAAATAACCATGAAATAAGG")
+    row = SpliceRow(
+        transcript_seq="ATGAAATAACCATGAAATAAGG",
+        ref_cds_seq="ATGAAATAA",
+        alt_cds_seq="ATGTAATAA",
+        cds_start_in_transcript=11,
+        cds_end_in_transcript=20,
+        utr5_change=("", ""),
+        utr3_change=("", ""),
+    )
+    result = splice_alt_cds_into_transcript(row)
     assert result == "ATGAAATAACCATGTAATAAGG"
 
     # The transcript does not hold the CDS sequence at the CDS position
-    assert splice_alt_cds_into_transcript({**row, "cds_start_in_transcript": 10}, "ATGAAATAACCATGAAATAAGG") is None
+    assert splice_alt_cds_into_transcript(replace(row, cds_start_in_transcript=10)) is None
     # The CDS position is unknown
-    unknown = {**row, "cds_start_in_transcript": None, "cds_end_in_transcript": None}
-    assert splice_alt_cds_into_transcript(unknown, "ATGAAATAACCATGAAATAAGG") is None
+    unknown = replace(row, cds_start_in_transcript=None, cds_end_in_transcript=None)
+    assert splice_alt_cds_into_transcript(unknown) is None
 
     # A deletion of TAAG at t17 reaches 1 nt past the stop codon into the 3'UTR, which loses that nt too
-    deletion = {**row, "alt_cds_seq": "ATGAAA", "utr3_change": ("G", "")}
-    assert splice_alt_cds_into_transcript(deletion, "ATGAAATAACCATGAAATAAGG") == "ATGAAATAACCATGAAAG"
+    deletion = replace(row, alt_cds_seq="ATGAAA", utr3_change=("G", ""))
+    assert splice_alt_cds_into_transcript(deletion) == "ATGAAATAACCATGAAAG"
     # The transcript does not hold the ref 3'UTR bases
-    assert splice_alt_cds_into_transcript({**deletion, "utr3_change": ("C", "")}, "ATGAAATAACCATGAAATAAGG") is None
+    assert splice_alt_cds_into_transcript(replace(deletion, utr3_change=("C", ""))) is None
 
     # An indel at the start codon edge changes the 5'UTR: here CC before the start codon becomes GGG
-    utr5 = {**row, "utr5_change": ("CC", "GGG")}
-    assert splice_alt_cds_into_transcript(utr5, "ATGAAATAACCATGAAATAAGG") == "ATGAAATAAGGGATGTAATAAGG"
+    utr5 = replace(row, utr5_change=("CC", "GGG"))
+    assert splice_alt_cds_into_transcript(utr5) == "ATGAAATAAGGGATGTAATAAGG"
     # The transcript does not hold the ref 5'UTR bases
-    assert splice_alt_cds_into_transcript({**utr5, "utr5_change": ("AC", "")}, "ATGAAATAACCATGAAATAAGG") is None
+    assert splice_alt_cds_into_transcript(replace(utr5, utr5_change=("AC", ""))) is None
 
 
 def test_analyze_transcript_without_cds_start_in_transcript():
@@ -652,8 +661,15 @@ def test_analyze_transcript_without_cds_start_in_transcript():
     df = pd.DataFrame(
         [
             {
+                "unknown_reason": None,
+                "has_start_codon": True,
+                "has_stop_codon": True,
+                "cds_frame": 0,
+                "alt_cds_seq": None,
+                "transcript_seq": None,
                 "alt_transcript_seq": "CCCATGAAATAATAGGGG",
                 "cds_start_in_transcript": None,
+                "cds_end_in_transcript": None,
                 "alt_cds_start_in_transcript": None,
                 "transcript_exons": [{"exon_number": 1, "length": 10}, {"exon_number": 2, "length": 10}],
                 "alt_transcript_exons": [{"exon_number": 1, "length": 10}, {"exon_number": 2, "length": 10}],
@@ -682,6 +698,7 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
             0  2       8       14
     """
     row = {
+        "unknown_reason": None,
         "transcript_seq": "CCCATGAAATAACTGTGAGG",
         "alt_transcript_seq": "CCATGAAACAACTGTGAGG",
         "cds_start_in_transcript": 3,

@@ -20,8 +20,8 @@ def add_exon_cds_sequence(df, fasta, chrom_col="Chromosome", start_col="Start", 
     fasta_id = id(fasta)
     _fasta_cache[fasta_id] = fasta  # store for later access
 
-    def extract_seq(row):
-        return fetch_seq_cached(row[chrom_col], row[start_col], row[end_col], fasta_id)
-
-    df[new_col] = df.apply(extract_seq, axis=1)
+    df[new_col] = [
+        fetch_seq_cached(chrom, start, end, fasta_id)
+        for chrom, start, end in zip(df[chrom_col], df[start_col], df[end_col])
+    ]
     return df

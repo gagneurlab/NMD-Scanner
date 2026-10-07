@@ -6,6 +6,10 @@ columns" of "Technical Notes.md" gives the meaning of each column and says when 
 a result to a pyarrow Table with the same types for every input.
 """
 
+import dataclasses
+import math
+
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 
@@ -278,6 +282,52 @@ def empty_table(column_kinds=OUTPUT_COLUMN_KINDS):
     """
 
     return apply_schema(pd.DataFrame(columns=list(column_kinds)), column_kinds)
+
+
+def plain_value(value):
+    """
+    Return ``value`` as a plain Python value, with None for a missing value.
+
+    A row of the result table holds pd.NA for a missing value in an int, bool or string column, and NaN in a
+    categorical column. A table without that schema can hold NaN instead, and numpy scalars. The row functions test
+    for a missing value with ``is None`` and for False with ``is False``, so they need plain values. Lists, e.g.
+    ``transcript_exons``, stay as they are.
+    """
+
+    if isinstance(value, np.generic):
+        value = value.item()
+    if value is pd.NA or (isinstance(value, float) and math.isnan(value)):
+        return None
+    return value
+
+
+def records(table, record_type):
+    """
+    Return the rows of ``table`` as instances of the dataclass ``record_type``, in row order. Each field gets the
+    value of the column of the same name, as a plain value (see plain_value). The other columns are not read.
+
+    :param table: DataFrame with a column for each field of ``record_type``
+    :param record_type: The dataclass, e.g. rules.SpliceRow
+    :return: list with one ``record_type`` per row
+    :raises KeyError: if ``table`` has no column for a field of ``record_type``
+    """
+
+    columns = [
+        [plain_value(value) for value in table[field.name].tolist()] for field in dataclasses.fields(record_type)
+    ]
+    return [record_type(*values) for values in zip(*columns)]
+
+
+def record(row, record_type):
+    """
+    Return one row as an instance of the dataclass ``record_type``, as records does for each row of a table.
+
+    :param row: A row of a table, as a pandas Series or a dict, with a value for each field of ``record_type``
+    :param record_type: The dataclass, e.g. extra_features.FeatureRow
+    :raises KeyError: if ``row`` has no value for a field of ``record_type``
+    """
+
+    return record_type(*(plain_value(row[field.name]) for field in dataclasses.fields(record_type)))
 
 
 def to_arrow(results: pd.DataFrame) -> pa.Table:

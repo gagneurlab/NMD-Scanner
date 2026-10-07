@@ -319,7 +319,7 @@ def _stop_codon_position(placements, edge, strand, exon_edge):
     return position if exon_edge is None else max(position, exon_edge)
 
 
-def place_in_transcript(placements, coding_rows, exons, reference, strand, coding_region):
+def place_in_transcript(placements, coding_rows, exons, reference, strand, coding_region, boundaries=None):
     """
     Effect of a variant on the coding region of one transcript.
 
@@ -354,12 +354,15 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     :param strand: strand of the transcript, "+" or "-"
     :param coding_region: (start, end) of the transcript's whole coding region: the smallest coding row start and the
         largest coding row end
+    :param boundaries: exon_boundaries(exons, reference), or None to compute it here. It is the same for every variant
+        of the transcript, so a caller with many variants computes it once.
     :return: TranscriptEffect, or None if the variant touches no coding row and no splice dinucleotide
     """
     if not placements:
         return None
 
-    boundaries = exon_boundaries(exons, reference)
+    if boundaries is None:
+        boundaries = exon_boundaries(exons, reference)
     exon_starts = {b.position for b in boundaries if not b.exon_on_left}
     exon_ends = {b.position for b in boundaries if b.exon_on_left}
     splice_sites = {(b.position, b.exon_on_left) for b in boundaries if b.dinucleotide is not None}
