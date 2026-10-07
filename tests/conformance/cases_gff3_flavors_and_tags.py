@@ -17,6 +17,7 @@ from .runner import (
     NO_PTC_FEATURES,
     NO_RULE,
     NOT_SCANNED,
+    RULES_FALSE,
     SAME_EXONS,
     Case,
     Change,
@@ -874,7 +875,7 @@ CASES = [
         """
         cds_start_NF: TGG>TAG at CDS 9 is a PTC 9 nt downstream of the CDS start and 6 nt downstream of the internal
         Met at CDS 3. The true start codon lies upstream of the CDS, at an unknown distance, so ptc_to_start_codon is
-        null and the start-proximal rule is False. The PTC lies 54 nt upstream of the only exon junction.
+        null, and so are the start-proximal rule and nmd_escape. The PTC lies 54 nt upstream of the only exon junction.
 
         CDS         0   3       9
         ref 5' [ggg CTG ATG AAG TGG GAC AAG ..39.. AAG AAG]|[CCC GAC TAA ggctagcc] 3'
@@ -909,11 +910,13 @@ CASES = [
             "upstream_exon_count": 0,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
+            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 66,
             "annotated_stop_distance": 60,
             "ptc_to_exon_end": 54,
-            **NO_RULE,
+            **RULES_FALSE,
+            "nmd_start_proximal_rule": None,
+            "nmd_escape": None,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "no_annotated_start",
         },
@@ -1017,7 +1020,7 @@ CASES = [
             "ptc_exon_length": 9,
             "annotated_stop_distance": None,
             "ptc_to_exon_end": 3,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_last_exon_rule": True,
             "nmd_start_proximal_rule": True,
             "nmd_escape": True,
@@ -1304,7 +1307,7 @@ CASES = [
             "ptc_exon_length": 13,
             "annotated_stop_distance": None,
             "ptc_to_exon_end": 7,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_last_exon_rule": True,
             "nmd_start_proximal_rule": True,
             "nmd_escape": True,
@@ -1356,11 +1359,12 @@ CASES = [
             "upstream_exon_count": 0,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
+            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 7,
             "annotated_stop_distance": None,
             "ptc_to_exon_end": 6,
-            **NO_RULE,
+            **RULES_FALSE,
+            "nmd_start_proximal_rule": None,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -1476,6 +1480,7 @@ CASES = [
         Change("ATGG[C>A]CAAG"),
         {
             **ONE_EXON_MISSENSE,
+            **RULES_FALSE,
             "alt_cds_seq": "ATGGACAAGCTGTGA",
             "alt_last_codon": "TGA",
             "alt_first_stop_codon": "TGA",

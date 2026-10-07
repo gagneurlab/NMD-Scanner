@@ -1,5 +1,5 @@
 """
-Conformance cases of the NMD rules: each rule True and False, nmd_escape, and the thresholds of the 50 nt rule
+Conformance cases of the NMD rules: each rule True, False and null, nmd_escape, and the thresholds of the 50 nt rule
 (50/51 nt, and 0/1 nt at the last exon junction), the long exon rule (407/408 nt) and the start-proximal rule
 (147/150 nt).
 
@@ -20,6 +20,7 @@ from .runner import (
     NO_PTC_FEATURES,
     NO_RULE,
     NOT_SCANNED,
+    RULES_FALSE,
     SAME_EXONS,
     UNKNOWN_ALT,
     Case,
@@ -266,7 +267,7 @@ C_PTC = {
     "ptc_to_start_codon": 150,
     "ptc_less_than_150nt_to_start": False,
     "annotated_stop_distance": 12,
-    **NO_RULE,
+    **RULES_FALSE,
     "nmd_50nt_penultimate_rule": True,
     "nmd_escape": True,
 }
@@ -545,7 +546,7 @@ CASES = [
             "ptc_exon_length": 138,
             "annotated_stop_distance": 108,
             "ptc_to_exon_end": 51,
-            **NO_RULE,
+            **RULES_FALSE,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "ok",
         },
@@ -592,7 +593,7 @@ CASES = [
             "ptc_exon_length": 137,
             "annotated_stop_distance": 108,
             "ptc_to_exon_end": 50,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -638,7 +639,7 @@ CASES = [
             "ptc_exon_length": 117,
             "annotated_stop_distance": 108,
             "ptc_to_exon_end": 117,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_last_exon_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -685,7 +686,7 @@ CASES = [
             "ptc_exon_length": 88,
             "annotated_stop_distance": 108,
             "ptc_to_exon_end": 1,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -731,7 +732,7 @@ CASES = [
             "ptc_exon_length": 138,
             "annotated_stop_distance": 111,
             "ptc_to_exon_end": 54,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_start_proximal_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -780,7 +781,7 @@ CASES = [
             "ptc_exon_length": 66,
             "annotated_stop_distance": 33,
             "ptc_to_exon_end": 42,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_last_exon_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -846,7 +847,7 @@ CASES = [
             "ptc_exon_length": 138,
             "annotated_stop_distance": 107,
             "ptc_to_exon_end": 50,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": [(1, 66), (2, 138), (3, 66)],
@@ -920,7 +921,7 @@ CASES = [
             "ptc_exon_length": 271,
             "annotated_stop_distance": 108,
             "ptc_to_exon_end": 117,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_last_exon_rule": True,
             "nmd_single_exon_rule": True,
             "nmd_escape": True,
@@ -930,9 +931,9 @@ CASES = [
         marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_exon_end = 117")),
         ruler=Ruler((-4, 0, 147, 150, 258, 267), "CDS"),
     ),
-    # NR-20: a row that is not a PTC row has every rule False, also the single exon rule of a single exon transcript
+    # NR-20: a row that is not a PTC row has every rule null, also the single exon rule of a single exon transcript
     Case(
-        "missense_snv_in_a_single_exon_transcript_is_no_ptc_row_and_every_rule_is_false",
+        "missense_snv_in_a_single_exon_transcript_is_no_ptc_row_and_every_rule_is_null",
         """
         CDS     -4   0                       147                    258       267
         ref 5' [gacc ATG GCC ..135.. GCC GCC CAG TTG AGC ..99.. GCC TAA gccgcc] 3'
@@ -1009,7 +1010,7 @@ CASES = [
             "ptc_exon_length": 184,
             "annotated_stop_distance": 57,
             "ptc_to_exon_end": 30,
-            **NO_RULE,
+            **RULES_FALSE,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "ok",
         },
@@ -1054,7 +1055,7 @@ CASES = [
             "ptc_exon_length": 60,
             "annotated_stop_distance": 18,
             "ptc_to_exon_end": 51,
-            **NO_RULE,
+            **RULES_FALSE,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "ok",
         },
@@ -1096,7 +1097,7 @@ CASES = [
             "ptc_exon_length": 59,
             "annotated_stop_distance": 18,
             "ptc_to_exon_end": 50,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -1190,7 +1191,7 @@ CASES = [
             "alt_transcript_length": 433,
             "alt_cds_start_in_transcript": 4,
             "ptc_exon_length": 407,
-            **NO_RULE,
+            **RULES_FALSE,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "ok",
         },
@@ -1219,7 +1220,7 @@ CASES = [
             "alt_transcript_length": 434,
             "alt_cds_start_in_transcript": 5,
             "ptc_exon_length": 408,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_long_exon_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -1396,7 +1397,7 @@ CASES = [
             "ptc_exon_length": 138,
             "annotated_stop_distance": 68,
             "ptc_to_exon_end": 41,
-            **NO_RULE,
+            **RULES_FALSE,
             "nmd_50nt_penultimate_rule": True,
             "nmd_start_proximal_rule": True,
             "nmd_escape": True,
@@ -1410,9 +1411,10 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 63, 100, 160, 201, 228, 237), "CDS"),
     ),
-    # NR-13: without an annotated start codon, the start-proximal rule is False, also 9 nt after the CDS start
+    # NR-13: without an annotated start codon, the start-proximal rule is null, also 9 nt after the CDS start. No
+    # other rule is True, so nmd_escape is null too.
     Case(
-        "cds_start_nf_ptc_9_nt_after_the_cds_start_escapes_by_no_rule",
+        "cds_start_nf_ptc_9_nt_after_the_cds_start_has_a_null_start_proximal_rule_and_nmd_escape",
         """
         CDS     0           9                            63                   153                 168       177
         ref 5' [GCC GCC GCC CAG GCC GCC ..39.. GCC GCC]|[GCC GCC ..81.. GCC]|[GCC GCC GCC GCC GCC TAA gccgcc] 3'
@@ -1452,11 +1454,13 @@ CASES = [
             "upstream_exon_count": 0,
             "downstream_exon_count": 2,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
+            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 63,
             "annotated_stop_distance": 159,
             "ptc_to_exon_end": 54,
-            **NO_RULE,
+            **RULES_FALSE,
+            "nmd_start_proximal_rule": None,
+            "nmd_escape": None,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "no_annotated_start",
         },

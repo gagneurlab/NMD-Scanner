@@ -102,18 +102,21 @@ NO_PTC_FEATURES = {
     "upstream_exon_count": None,
     "downstream_exon_count": None,
     "ptc_to_start_codon": None,
-    "ptc_less_than_150nt_to_start": False,
+    "ptc_less_than_150nt_to_start": None,
     "ptc_exon_length": None,
     "ptc_to_exon_end": None,
 }
+# The NMD rules of a row that is not a PTC row
 NO_RULE = {
-    "nmd_last_exon_rule": False,
-    "nmd_50nt_penultimate_rule": False,
-    "nmd_long_exon_rule": False,
-    "nmd_start_proximal_rule": False,
-    "nmd_single_exon_rule": False,
-    "nmd_escape": False,
+    "nmd_last_exon_rule": None,
+    "nmd_50nt_penultimate_rule": None,
+    "nmd_long_exon_rule": None,
+    "nmd_start_proximal_rule": None,
+    "nmd_single_exon_rule": None,
+    "nmd_escape": None,
 }
+# The NMD rules of a PTC row whose PTC meets no rule
+RULES_FALSE = dict.fromkeys(NO_RULE, False)
 # A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null, and the
 # model cannot score the row
 UNKNOWN_ALT = {

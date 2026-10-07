@@ -19,6 +19,7 @@ from .runner import (
     NO_PTC_FEATURES,
     NO_RULE,
     NOT_SCANNED,
+    RULES_FALSE,
     SAME_EXONS,
     UNKNOWN_ALT,
     Case,
@@ -628,7 +629,7 @@ CASES = [
             "ptc_exon_length": 200,
             "annotated_stop_distance": 177,
             "ptc_to_exon_end": 120,
-            **NO_RULE,
+            **RULES_FALSE,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "ok",
         },
@@ -1256,7 +1257,7 @@ CASES = [
         "missense_in_a_cds_at_the_transcript_start_has_no_5utr",
         """
         The CDS starts at the transcript start, so utr5_length is 0. The missense AAG>GAG keeps the annotated stop
-        codon: annotated_stop_distance is 0. Not a PTC row, so ptc_less_than_150nt_to_start is False.
+        codon: annotated_stop_distance is 0. Not a PTC row, so ptc_less_than_150nt_to_start is null.
         exon 1: 12 nt, exon 2: 15 nt
 
         tx      0                 12          21    27
@@ -1397,7 +1398,7 @@ CASES = [
             "ptc_exon_length": 214,
             "annotated_stop_distance": 63,
             "ptc_to_exon_end": 60,
-            **NO_RULE,
+            **RULES_FALSE,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "ok",
         },
@@ -1488,7 +1489,7 @@ CASES = [
         """
         The transcript of the CTG case, without start_codon rows and tagged cds_start_NF. Its start codon lies
         upstream of the CDS, at an unknown distance. So ptc_to_start_codon is null, and ptc_less_than_150nt_to_start
-        is False. Without an annotated start codon, likely_misannotated is True.
+        is null too. Without an annotated start codon, likely_misannotated is True.
         exon 1: 103 nt, exon 2: 73 nt
         ptc_exon_length = 73. upstream_exon_count = 1, downstream_exon_count = 0.
 
@@ -1529,14 +1530,14 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
+            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 73,
             "annotated_stop_distance": 6,
             "ptc_to_exon_end": 14,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
-            "nmd_start_proximal_rule": False,
+            "nmd_start_proximal_rule": None,
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,

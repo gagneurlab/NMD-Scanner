@@ -19,6 +19,7 @@ from .runner import (
     NO_PTC_FEATURES,
     NO_RULE,
     NOT_SCANNED,
+    RULES_FALSE,
     SAME_EXONS,
     Case,
     Change,
@@ -1385,7 +1386,7 @@ CASES += [
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 2, 150, False, 173, 16),
             "annotated_stop_distance": 95,
-            **NO_RULE,
+            **RULES_FALSE,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "ok",
         },
@@ -1761,9 +1762,9 @@ def frame_ptc_row(frame):
         "alt_cds_start_in_transcript": 3,
         **NOT_SCANNED,
         "unknown_reason": None,
-        **columns(PTC_FEATURE_COLUMNS, 1, 0, None, False, 18 + frame, 14),
+        **columns(PTC_FEATURE_COLUMNS, 1, 0, None, None, 18 + frame, 14),
         "annotated_stop_distance": 6,
-        **columns(RULE_COLUMNS, True, False, False, False, False, True),
+        **columns(RULE_COLUMNS, True, False, False, None, False, True),
     }
 
 

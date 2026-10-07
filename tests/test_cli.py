@@ -551,7 +551,11 @@ def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
     assert unknown["ref_cds_seq"].notna().all()
     for column in ["alt_cds_seq", "alt_has_ptc", "start_loss", "stop_loss", "nmd_escape"]:
         assert unknown[column].isna().all(), column
-    assert results.loc[results["unknown_reason"].isna(), "nmd_escape"].notna().all()
+    # The NMD rules are null on a row that is not a PTC row. Each PTC row here has the inputs of the rules.
+    ptc_rows = results["alt_has_ptc"].fillna(False).astype(bool)
+    assert ptc_rows.any()
+    assert results.loc[ptc_rows, "nmd_escape"].notna().all()
+    assert results.loc[~ptc_rows, "nmd_escape"].isna().all()
 
 
 @pytest.fixture(scope="module")

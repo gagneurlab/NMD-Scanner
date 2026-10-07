@@ -149,8 +149,8 @@ def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, s
     """
     The annotated start codon is TAG (`*`), a stop codon. Translation cannot start on a stop codon, so this start
     codon is a misannotation. The missense GCC>GAC at t7 (`x`) leaves it unchanged. TAG is the first in-frame stop
-    codon of the alt CDS, so the PTC is the start codon itself. ptc_to_start_codon is null, and the start-proximal
-    rule is False.
+    codon of the alt CDS, so the PTC is the start codon itself. ptc_to_start_codon is null, and so are
+    ptc_less_than_150nt_to_start and the start-proximal rule.
 
     5' [uuu***=x=======sssuuuuu] 3'
     tx  0  3   7       15 18
@@ -168,8 +168,8 @@ def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, s
             "start_loss": False,
             "stop_loss": False,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
-            "nmd_start_proximal_rule": False,
+            "ptc_less_than_150nt_to_start": None,
+            "nmd_start_proximal_rule": None,
             "likely_misannotated": False,
         },
     )

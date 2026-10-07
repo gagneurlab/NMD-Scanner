@@ -695,14 +695,14 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
+            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 9,
             "annotated_stop_distance": 9,
             "ptc_to_exon_end": 6,
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": True,
             "nmd_long_exon_rule": False,
-            "nmd_start_proximal_rule": False,
+            "nmd_start_proximal_rule": None,
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -712,11 +712,11 @@ CASES = [
     ),
     # Pins the null clause of ptc_to_start_codon "the annotated start codon is a stop codon, such as TAG" ("Input
     # Defects.md": "A variant that leaves it unchanged gives a PTC row whose PTC is this start codon"). So
-    # ptc_less_than_150nt_to_start is False ("False if `ptc_to_start_codon` is null"), and so is
-    # nmd_start_proximal_rule. The row keeps the flags from the CDS: the ref transcript, read in frame, stops at the
-    # TAG and not at the annotated stop codon. likely_misannotated is False ("Input Defects.md": "`likely_misannotated`
-    # does not flag it, because its start codon check only asks for an annotated start codon at CDS position 0"). NU-22
-    # pins the other clause, a PTC row without an annotated start codon.
+    # ptc_less_than_150nt_to_start and nmd_start_proximal_rule are null ("`ptc_to_start_codon` is null"). The row keeps
+    # the flags from the CDS: the ref transcript, read in frame, stops at the TAG and not at the annotated stop codon.
+    # likely_misannotated is False ("Input Defects.md": "`likely_misannotated` does not flag it, because its start codon
+    # check only asks for an annotated start codon at CDS position 0"). NU-22 pins the other clause, a PTC row without
+    # an annotated start codon.
     Case(
         "missense_in_a_cds_whose_annotated_start_codon_is_tag_is_a_ptc_row_without_ptc_to_start_codon",
         """
@@ -761,14 +761,14 @@ CASES = [
             "upstream_exon_count": 0,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
+            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 21,
             "annotated_stop_distance": 12,
             "ptc_to_exon_end": 18,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
-            "nmd_start_proximal_rule": False,
+            "nmd_start_proximal_rule": None,
             "nmd_single_exon_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
@@ -1619,7 +1619,7 @@ CASES = [
         },
     ),
     # A PTC row on a transcript without exon rows. alt_transcript_exons is null, so the PTC has no exon features,
-    # and the rules that read them are False. ptc_to_start_codon reads CDS positions only: 9 - 0.
+    # and the rules that read them are null. ptc_to_start_codon reads CDS positions only: 9 - 0.
     Case(
         "nonsense_in_a_transcript_without_exon_rows_has_no_exon_features",
         """
@@ -1659,11 +1659,11 @@ CASES = [
             "ptc_exon_length": None,
             "annotated_stop_distance": 9,
             "ptc_to_exon_end": None,
-            "nmd_last_exon_rule": False,
-            "nmd_50nt_penultimate_rule": False,
-            "nmd_long_exon_rule": False,
+            "nmd_last_exon_rule": None,
+            "nmd_50nt_penultimate_rule": None,
+            "nmd_long_exon_rule": None,
             "nmd_start_proximal_rule": True,
-            "nmd_single_exon_rule": False,
+            "nmd_single_exon_rule": None,
             "nmd_escape": True,
             "nmd_model_status": "missing_input",
         },
@@ -1760,11 +1760,16 @@ CASES = [
             "upstream_exon_count": None,
             "downstream_exon_count": None,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
+            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": None,
             "annotated_stop_distance": 18,
             "ptc_to_exon_end": None,
-            **NO_RULE,
+            "nmd_last_exon_rule": None,
+            "nmd_50nt_penultimate_rule": None,
+            "nmd_long_exon_rule": None,
+            "nmd_start_proximal_rule": None,
+            "nmd_single_exon_rule": None,
+            "nmd_escape": None,
             "nmd_model_status": "start_lost",
         },
         marks=(Mark("alt", 4, 7, "*", "PTC"),),

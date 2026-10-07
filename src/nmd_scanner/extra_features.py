@@ -10,7 +10,14 @@ from nmd_scanner.rules import (
     first_stop_codon,
     starts_with_annotated_start_codon,
 )
-from nmd_scanner.schema import KIND_DTYPES, MODEL_INPUTS, MODEL_STATUSES, OUTPUT_COLUMN_KINDS, apply_schema
+from nmd_scanner.schema import (
+    KIND_DTYPES,
+    MODEL_INPUTS,
+    MODEL_STATUSES,
+    NMD_RULE_COLUMN_KINDS,
+    OUTPUT_COLUMN_KINDS,
+    apply_schema,
+)
 
 
 def _plain_values(row):
@@ -115,8 +122,8 @@ def add_nmd_features(row):
 
     # Distance between PTC to start codon
     ptc_to_start_codon = calculate_ptc_to_start_distance(row)
-    # PTC location < 150nt to start codon
-    ptc_less_than_150nt_to_start = ptc_to_start_codon is not None and ptc_to_start_codon < 150
+    # PTC location < 150nt to start codon. Null without a distance, e.g. on a row that is not a PTC row.
+    ptc_less_than_150nt_to_start = None if ptc_to_start_codon is None else ptc_to_start_codon < 150
 
     # PTC exon length
     ptc_exon_length = calculate_ptc_exon_length(row)
@@ -302,35 +309,21 @@ def evaluate_nmd_escape_rules(row):
     A PTC is considered to escape NMD if it satisfies any of the above rules. "Technical Notes.md" has figures of the
     rules.
 
+    A rule is None on a row that is not a PTC row, also on one with unknown_reason, because it does not apply there.
+    On a PTC row, a rule is None if one of its inputs is None, because its value is unknown then. nmd_escape is
+    True if one rule is True, None if no rule is True and one is None, and False otherwise.
+
     :param row: A row of the DataFrame including alt_has_ptc (bool), the columns that ptc_in_alt_transcript reads
                 (the PTC position and alt_transcript_exons), total_exon_count, downstream_exon_count and
                 ptc_exon_length (see add_nmd_features), and the columns that calculate_ptc_to_start_distance reads
-    :return: A dictionary with boolean flags for each rule and overall NMD escape
+    :return: A dictionary with a flag or None for each rule and for the overall NMD escape
     """
 
     row = _plain_values(row)
 
-    # Unknown without an alt transcript
-    if row.get("unknown_reason") is not None:
-        return {
-            "nmd_last_exon_rule": None,
-            "nmd_50nt_penultimate_rule": None,
-            "nmd_long_exon_rule": None,
-            "nmd_start_proximal_rule": None,
-            "nmd_single_exon_rule": None,
-            "nmd_escape": None,
-        }
-
-    # Only relevant for premature stop codons
+    # Only relevant for premature stop codons. A row with unknown_reason has no known PTC either.
     if not row.get("alt_has_ptc"):
-        return {
-            "nmd_last_exon_rule": False,
-            "nmd_50nt_penultimate_rule": False,
-            "nmd_long_exon_rule": False,
-            "nmd_start_proximal_rule": False,
-            "nmd_single_exon_rule": False,
-            "nmd_escape": False,
-        }
+        return dict.fromkeys(NMD_RULE_COLUMN_KINDS)
 
     # Extract relevant data
     ptc = ptc_in_alt_transcript(row)
@@ -340,29 +333,30 @@ def evaluate_nmd_escape_rules(row):
     ptc_exon_length = row.get("ptc_exon_length")
 
     # Single exon rule
-    rule_single_exon = total_exons == 1
+    rule_single_exon = None if total_exons is None else total_exons == 1
 
     # Last exon rule
-    rule_last_exon = downstream_exons == 0 if downstream_exons is not None else False
+    rule_last_exon = None if downstream_exons is None else downstream_exons == 0
 
     # 1 to 50 nt upstream of the last exon junction of the alt transcript, i.e. the 3' end of its penultimate exon.
-    # The junction lies past the CDS end if the last exon holds no CDS.
-    rule_50nt_penultimate = False
+    # The junction lies past the CDS end if the last exon holds no CDS. A transcript of one exon has no junction.
+    rule_50nt_penultimate = None if ptc is None else False
     if ptc is not None and len(ptc[1]) >= 2:
         stop_pos, exons, _ = ptc
         last_junction = exons[-2][2]
         rule_50nt_penultimate = last_junction - 50 <= stop_pos < last_junction
 
     # Long exon rule (with exon longer than >407nt)
-    rule_long_exon = ptc_exon_length is not None and ptc_exon_length > 407
+    rule_long_exon = None if ptc_exon_length is None else ptc_exon_length > 407
 
-    # Start-proximal rule (closer than 150nt from the start codon). Without a known start codon, the rule does not
-    # apply. After a start loss, the start codon is the ATG of the scan.
+    # Start-proximal rule (closer than 150nt from the start codon). Without a known start codon, the distance and the
+    # rule are unknown. After a start loss, the start codon is the ATG of the scan.
     ptc_to_start_codon = calculate_ptc_to_start_distance(row)
-    rule_start_proximal = ptc_to_start_codon is not None and ptc_to_start_codon < 150
+    rule_start_proximal = None if ptc_to_start_codon is None else ptc_to_start_codon < 150
 
-    # NMD escape if any rule is true
-    escape = rule_last_exon or rule_50nt_penultimate or rule_long_exon or rule_start_proximal or rule_single_exon
+    # NMD escape if any rule is true, unknown if no rule is true and one is unknown (three-valued OR)
+    rules = [rule_last_exon, rule_50nt_penultimate, rule_long_exon, rule_start_proximal, rule_single_exon]
+    escape = True if True in rules else None if None in rules else False
 
     return {
         "nmd_last_exon_rule": rule_last_exon,

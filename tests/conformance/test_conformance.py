@@ -249,6 +249,14 @@ NOT_SCANNED = "not scanned"
 NOT_A_PTC_ROW = "not a PTC row"
 NO_ALT_EXONS = "`alt_transcript_exons` is null"
 CDS_START_IS_NULL = "`cds_start_in_transcript` is null"
+# The 5 NMD rules, which nmd_escape combines
+RULES = (
+    "nmd_last_exon_rule",
+    "nmd_50nt_penultimate_rule",
+    "nmd_long_exon_rule",
+    "nmd_start_proximal_rule",
+    "nmd_single_exon_rule",
+)
 NULL_CASES = [
     *[
         (column, UNKNOWN, lambda row: not _known(row))
@@ -257,10 +265,7 @@ NULL_CASES = [
             *("alt_first_stop_codon", "alt_first_stop_pos", "alt_stop_codon_count", "alt_stop_codons"),
             *("alt_stop_codon_exons", "alt_has_ptc", "start_loss", "stop_loss"),
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
-            "alt_transcript_exons",
-            *("ptc_less_than_150nt_to_start", "annotated_stop_distance"),
-            *("nmd_last_exon_rule", "nmd_50nt_penultimate_rule", "nmd_long_exon_rule", "nmd_start_proximal_rule"),
-            *("nmd_single_exon_rule", "nmd_escape"),
+            *("alt_transcript_exons", "annotated_stop_distance"),
         )
     ],
     ("start_codon_exon", NO_START_CODON, lambda row: not row["has_start_codon"]),
@@ -408,6 +413,36 @@ NULL_CASES = [
         "ptc_to_start_codon",
         "after a start loss: the row has no `alt_transcript_seq`",
         lambda row: _ptc_row(row) and row["start_loss"] and row["alt_transcript_seq"] is None,
+    ),
+    *[
+        (column, NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False)
+        for column in (
+            *("ptc_less_than_150nt_to_start", "nmd_last_exon_rule", "nmd_50nt_penultimate_rule"),
+            *("nmd_long_exon_rule", "nmd_start_proximal_rule", "nmd_single_exon_rule", "nmd_escape"),
+        )
+    ],
+    # On a PTC row, a rule is null if one of its inputs is null
+    *[
+        (
+            column,
+            f"`{rule_input}` is null",
+            lambda row, rule_input=rule_input: _ptc_row(row) and row[rule_input] is None,
+        )
+        for column, rule_input in (
+            ("ptc_less_than_150nt_to_start", "ptc_to_start_codon"),
+            ("nmd_last_exon_rule", "downstream_exon_count"),
+            ("nmd_50nt_penultimate_rule", "alt_transcript_exons"),
+            ("nmd_long_exon_rule", "ptc_exon_length"),
+            ("nmd_start_proximal_rule", "ptc_to_start_codon"),
+            ("nmd_single_exon_rule", "total_exon_count"),
+        )
+    ],
+    (
+        "nmd_escape",
+        "no rule is True, and one is null",
+        lambda row: (
+            _ptc_row(row) and True not in [row[rule] for rule in RULES] and None in [row[rule] for rule in RULES]
+        ),
     ),
     ("annotated_stop_distance", "`has_stop_codon` is False", lambda row: _known(row) and not row["has_stop_codon"]),
     (

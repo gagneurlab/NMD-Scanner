@@ -436,7 +436,7 @@ def test_extract_ptc_of_a_transcript_without_exon_rows(tmp_path, strand):
         "total_exon_count": None,
         "annotated_stop_distance": 0,
         "likely_misannotated": True,
-        "nmd_escape": False,
+        "nmd_escape": None,
     }
     assert _values(row, expected) == expected
 
