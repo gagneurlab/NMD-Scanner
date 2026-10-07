@@ -344,7 +344,8 @@ def join_variants_to_cds(cds_df, vcf):
         # polars-bio returns the pairs in no fixed order
         .sort(order, descending=[False, False, True, False])
     )
-    row_cds, row_variant = pairs["row_cds"].to_numpy(), pairs["row_variant"].to_numpy()
+    row_cds = pairs["row_cds"].to_numpy()
+    row_variant = pairs["row_variant"].to_numpy()
     # the copies of the rows below take the most memory, so the pairs go first
     del pairs
     cds_rows = cds_df.iloc[row_cds].reset_index(drop=True)
@@ -412,8 +413,10 @@ def join_variant_windows(cds_df, variants):
         End=variants["Window_End"] + 1,
     )
     joined = join_variants_to_cds(coding, windows)
-    joined["Start"], joined["End"] = joined.pop("Coding_Start"), joined.pop("Coding_End")
-    joined["Start_variant"], joined["End_variant"] = joined.pop("VCF_Start"), joined.pop("VCF_End")
+    joined["Start"] = joined.pop("Coding_Start")
+    joined["End"] = joined.pop("Coding_End")
+    joined["Start_variant"] = joined.pop("VCF_Start")
+    joined["End_variant"] = joined.pop("VCF_End")
     return joined
 
 
@@ -1008,7 +1011,8 @@ def first_stop_codon(seq, start):
 def _common_prefix_length(a, b):
     """Return the length of the longest common prefix of the strings a and b."""
 
-    low, high = 0, min(len(a), len(b))
+    low = 0
+    high = min(len(a), len(b))
     while low < high:
         middle = (low + high + 1) // 2
         if a[:middle] == b[:middle]:
@@ -1054,7 +1058,8 @@ def annotated_stop_in_alt(ref_seq, alt_seq, stop):
 
     # 3'-most placement: the variant replaces ref_seq[prefix:ref_end] by alt_seq[prefix:alt_end]
     suffix_3prime = min(suffix, min(len(ref_seq), len(alt_seq)) - prefix)
-    ref_end, alt_end = len(ref_seq) - suffix_3prime, len(alt_seq) - suffix_3prime
+    ref_end = len(ref_seq) - suffix_3prime
+    alt_end = len(alt_seq) - suffix_3prime
     if ref_end <= stop or alt_end <= stop:
         position_3prime = stop + net_length
     else:

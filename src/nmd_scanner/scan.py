@@ -229,7 +229,8 @@ def read_gff3(gff3_path, fasta):
                 "start codon (no start loss, no start codon position, no PTC distance to the start codon). "
                 "A GENCODE GFF3 marks the start codons with start_codon rows."
             )
-        stop_transcripts, start_transcripts = df.loc[is_stop, "transcript_id"], df.loc[is_start, "transcript_id"]
+        stop_transcripts = df.loc[is_stop, "transcript_id"]
+        start_transcripts = df.loc[is_start, "transcript_id"]
         df = _set_cds_flag(df[~(is_stop | is_start)], "has_stop_codon", stop_transcripts)
         df = _set_cds_flag(df, "has_start_codon", start_transcripts)
     elif "biotype" in columns:
@@ -574,7 +575,8 @@ def _first_codons(cds, fasta):
         if chrom not in fasta:
             continue
         # the first 3 bases, from the 5' end
-        codon, missing = "", 3
+        codon = ""
+        missing = 3
         for _, _, _, start, end, _ in transcript_rows:
             take = min(missing, end - start)
             if strand == "+":
@@ -628,7 +630,8 @@ def _last_codons(cds, fasta):
         last_cds_index, _, chrom, strand, last_start, last_end, phase = transcript_rows[0]
 
         # the last 3 bases, from the 3' end: (cds_index, Start, End)
-        parts, missing = [], 3
+        parts = []
+        missing = 3
         for cds_index, _, _, _, start, end, _ in transcript_rows:
             take = min(missing, end - start)
             parts.append((cds_index, end - take, end) if strand == "+" else (cds_index, start, start + take))

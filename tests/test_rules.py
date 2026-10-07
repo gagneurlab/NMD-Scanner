@@ -53,7 +53,8 @@ def run_pipeline_on_transcript(
     :return: The single result row as a dictionary
     """
 
-    flank, intron = "C" * 10, "C" * 20
+    flank = "C" * 10
+    intron = "C" * 20
     chrom = f"chr_{tmp_path.name}"  # unique name, since catch_sequence caches sequences across tests
 
     # Lay out the transcript 5' to 3' and record each exon as (transcript start, layout start, length)
@@ -86,7 +87,8 @@ def run_pipeline_on_transcript(
     rows = []
     for number, (tx_start, layout_start, length) in enumerate(exons, start=1):
         rows.append(("exon", number, *to_genome(layout_start, layout_start + length)))
-        part_start, part_end = max(cds_range[0], tx_start), min(coding_end, tx_start + length)
+        part_start = max(cds_range[0], tx_start)
+        part_end = min(coding_end, tx_start + length)
         if part_start < part_end:
             start, end = to_genome(layout_start + part_start - tx_start, layout_start + part_end - tx_start)
             rows.append(("CDS", number, start, end))
@@ -113,7 +115,8 @@ def run_pipeline_on_transcript(
     tx_start, layout_start, _ = next(exon for exon in reversed(exons) if exon[0] <= position)
     start, end = to_genome(layout_start + position - tx_start, layout_start + position - tx_start + len(ref))
     if strand == "-":
-        ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
+        ref = str(Seq(ref).reverse_complement())
+        alt = str(Seq(alt).reverse_complement())
     vcf = pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
 
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=start_codon, has_stop_codon=stop_codon)
@@ -1397,7 +1400,9 @@ def _run_stop_start_removed(tmp_path, strand, last_codon, stop_codon, utr3, vari
     position, ref_length, alt = variant
     if alt == "":
         # VCF anchors a deletion on the base before it
-        position, ref_length, alt = position - 1, ref_length + 1, transcript_seq[position - 1]
+        alt = transcript_seq[position - 1]
+        ref_length += 1
+        position -= 1
     ref = transcript_seq[position : position + ref_length]
     return run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 40), (position, ref, alt))
 
@@ -1847,7 +1852,8 @@ def test_join_variants_to_cds_gives_repeated_cds_text_as_category():
 
 @pytest.mark.parametrize("side", ["cds_df", "vcf"])
 def test_join_variants_to_cds_rejects_an_end_above_the_limit_of_polars_bio(side):
-    cds, vcf = _join_cds(), _join_vcf([("chr1", 150, 151, "v1")])
+    cds = _join_cds()
+    vcf = _join_vcf([("chr1", 150, 151, "v1")])
     if side == "cds_df":
         cds.loc[0, "End"] = 2**31
     else:

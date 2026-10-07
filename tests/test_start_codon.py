@@ -104,9 +104,12 @@ class SyntheticTranscript:
         assert self.layout[start : start + len(ref)] == ref
         if self.strand == "-":
             start = len(self.layout) - start - len(ref)
-            ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
+            ref = str(Seq(ref).reverse_complement())
+            alt = str(Seq(alt).reverse_complement())
         if len(ref) != len(alt):
-            start, ref, alt = start - 1, self.genome[start - 1] + ref, self.genome[start - 1] + alt
+            ref = self.genome[start - 1] + ref
+            alt = self.genome[start - 1] + alt
+            start -= 1
         return start + 1, ref, alt
 
     def run(self, position, ref, alt):

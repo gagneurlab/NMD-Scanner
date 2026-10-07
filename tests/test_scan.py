@@ -644,7 +644,8 @@ def test_read_gff3_stop_codon_from_sequence(tmp_path):
         ("MT", 100, "MT_AGA", 60, -1, "AGA"),
         ("MT", 300, "MT_TGA", 60, -1, "TGA"),
     ]
-    rows, bases = [], {}
+    rows = []
+    bases = {}
     for chrom, start, tx, length, end_phase, codon in cases:
         rows += [
             f"{chrom}\tensembl\tmRNA\t{start}\t{start + 100}\t.\t+\t.\tID=transcript:{tx};Parent=gene:G{tx};biotype=protein_coding",
@@ -1253,7 +1254,8 @@ def test_read_gff3_start_codon_from_sequence(tmp_path):
     """
     # transcript, transcript start, phase of the CDS row, first 3 CDS bases
     cases = [("ATG", 100, 0, "ATG"), ("CTG", 300, 0, "CTG"), ("PHASE_1", 500, 1, "ATG")]
-    rows, bases = [], {}
+    rows = []
+    bases = {}
     for tx, start, phase, codon in cases:
         rows += [
             f"chr1\tensembl\tmRNA\t{start}\t{start + 100}\t.\t+\t.\tID=transcript:{tx};Parent=gene:G{tx};biotype=protein_coding",

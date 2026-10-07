@@ -178,12 +178,17 @@ def _start_codon_effect(strand, utr5, position, ref, alt):
     assert layout[position : position + len(ref)] == ref
     length = len(layout)
     if strand == "+":
-        genome, start, coding_row, exon = layout, position, (16, 28), (10, 38)
+        genome = layout
+        start = position
+        coding_row = (16, 28)
+        exon = (10, 38)
     else:
         genome = str(Seq(layout).reverse_complement())
         start = length - position - len(ref)
-        ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
-        coding_row, exon = (length - 28, length - 16), (length - 38, length - 10)
+        ref = str(Seq(ref).reverse_complement())
+        alt = str(Seq(alt).reverse_complement())
+        coding_row = (length - 28, length - 16)
+        exon = (length - 38, length - 10)
     reference = _Reference(genome)
     placements = variant_placements(start, ref, alt, reference)
     effect = place_in_transcript(placements, [coding_row], [exon], reference, strand, coding_row)
@@ -225,7 +230,8 @@ _STOP = "TAA"
 _UTR3 = "AAAGCTGCC"
 _LAYOUT = _FLANK + _UTR5 + _EXON1_CDS + _INTRON1 + _EXON2 + _INTRON2 + _EXON3_CDS + _STOP + _UTR3 + _FLANK
 _REF_CDS = _EXON1_CDS + _EXON2 + _EXON3_CDS + _STOP
-_DONOR1, _ACCEPTOR2 = 22, 42  # end of exon 1, start of exon 2
+_DONOR1 = 22  # end of exon 1
+_ACCEPTOR2 = 42  # start of exon 2
 _STOP_END = 87
 # (feature, exon number, start, end) in layout positions. A CDS row includes the stop codon.
 _ROWS = [
@@ -278,11 +284,14 @@ def _run(tmp_path, strand, position, ref, alt, layout=_LAYOUT, rows=_ROWS):
         def to_genome(start, end):
             return length - end, length - start
 
-        ref, alt = str(Seq(ref).reverse_complement()), str(Seq(alt).reverse_complement())
+        ref = str(Seq(ref).reverse_complement())
+        alt = str(Seq(alt).reverse_complement())
 
     start, _ = to_genome(position, position + len(ref))
     if len(ref) != len(alt):
-        start, ref, alt = start - 1, genome[start - 1] + ref, genome[start - 1] + alt
+        ref = genome[start - 1] + ref
+        alt = genome[start - 1] + alt
+        start -= 1
 
     chrom = f"chr_{tmp_path.name}"
     (tmp_path / "genome.fa").write_text(f">{chrom}\n{genome}\n")

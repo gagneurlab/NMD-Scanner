@@ -41,7 +41,8 @@ class ReferenceSequence:
             self._chunks.move_to_end(index)
             return self._chunks[index]
         start = index * _CHUNK_SIZE
-        chunk = self._chunks[index] = self._sequence[start : start + _CHUNK_SIZE].seq.upper()
+        chunk = self._sequence[start : start + _CHUNK_SIZE].seq.upper()
+        self._chunks[index] = chunk
         if len(self._chunks) > self._max_chunks:
             self._chunks.popitem(last=False)
         return chunk
@@ -169,7 +170,8 @@ def trim_alleles(start, ref, alt):
     prefix = 0
     while prefix < min(len(ref), len(alt)) and ref[prefix] == alt[prefix]:
         prefix += 1
-    ref, alt = ref[prefix:], alt[prefix:]
+    ref = ref[prefix:]
+    alt = alt[prefix:]
     suffix = 0
     while suffix < min(len(ref), len(alt)) and ref[-1 - suffix] == alt[-1 - suffix]:
         suffix += 1
@@ -202,12 +204,15 @@ def equivalent_placements(start, ref, alt, reference):
             last += 1
         return [Placement(position, position + length, "") for position in range(first, last + 1)]
 
-    inserted, position = alt, start
+    inserted = alt
+    position = start
     while position > 0 and reference.base(position - 1) == inserted[-1]:
-        inserted, position = inserted[-1] + inserted[:-1], position - 1
+        inserted = inserted[-1] + inserted[:-1]
+        position -= 1
     placements = [Placement(position, position, inserted)]
     while reference.base(position) == inserted[0]:
-        inserted, position = inserted[1:] + inserted[0], position + 1
+        inserted = inserted[1:] + inserted[0]
+        position += 1
         placements.append(Placement(position, position, inserted))
     return placements
 
@@ -396,7 +401,8 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     resolved = {(b.position, b.exon_on_left): position for b, position in zip(nearby, positions.pop())}
 
     # An exon edge outside the window is not resolved; every placement maps it to the same position
-    leftmost, rightmost = placements[0], placements[-1]
+    leftmost = placements[0]
+    rightmost = placements[-1]
     plus = strand == "+"
     alt_coding = {}
     # Alt position of each exon: the valid placements agree on every boundary, and they all agree outside the window
@@ -407,9 +413,11 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
         )
         for start, end in exons
     ]
-    left = right = ("", "")
+    left = ("", "")
+    right = ("", "")
     for start, end in coding_rows:
-        exon_start, exon_end = resolved.get((start, False)), resolved.get((end, True))
+        exon_start = resolved.get((start, False))
+        exon_end = resolved.get((end, True))
         if start == coding_start:
             alt_start = (
                 _start_codon_position(placements, start, strand, reference, exon_start)
