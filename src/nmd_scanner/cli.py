@@ -1,11 +1,11 @@
 # Import dependencies
 import argparse
 import functools
+import json
 import logging
 import os
 
 import pandas as pd
-import pyarrow as pa
 import pyarrow.parquet as pq
 import tqdm
 from pyfaidx import Fasta
@@ -13,27 +13,25 @@ from pyfaidx import Fasta
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import detect_annotation_format, read_annotation, read_vcf
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS, to_arrow
 
 SUPPORTED_OUTPUT_EXTENSIONS = (".csv", ".parquet", ".pq")
-
-# Columns that hold lists of (position, codon) tuples, e.g. (5442, "TGA"). pyarrow's
-# pandas conversion treats each tuple as a flat, homogeneously-typed sub-list rather
-# than a struct: it infers the element type from the tuple's first field (an int) and
-# then fails on the second, string field. Parquet output needs these turned into
-# {"position": ..., "codon": ...} records instead, so pyarrow can infer
-# list<struct<position: int64, codon: string>>. CSV output and the in-memory results
-# table are unaffected; only the parquet copy is rewritten.
-STOP_CODON_COLUMNS = ("ref_all_stop_codons", "alt_all_stop_codons", "transcript_all_stop_codons")
 
 logger = logging.getLogger(__name__)
 
 
-def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
+def annotate(
+    vcf_path: str | os.PathLike,
+    annotation_path: str | os.PathLike,
+    fasta_path: str | os.PathLike,
+    reassign_exons: bool = False,
+    sequences: bool = True,
+) -> pd.DataFrame:
     """
     Annotate the variants of a VCF file with NMD features and return the result table.
 
-    Nothing is written to disk and logging is not configured. Use `write_results` to save the table.
+    Nothing is written to disk and logging is not configured. Use `write_results` to save the table, or `to_arrow`
+    to convert it to a typed pyarrow Table.
 
     Steps:
     1. Read input files (VCF, FASTA, annotation)
@@ -47,8 +45,10 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
     :param fasta_path: path to the reference FASTA file. It also shows whether a CDS ends in a stop codon, and for
                        an Ensembl GFF3 whether it starts with one.
     :param reassign_exons: recompute the exon numbers of the annotation (recommended for hg19; may be slow)
-    :return: DataFrame summarizing all annotated variants, with the columns and dtypes of OUTPUT_COLUMN_KINDS
-             (see nmd_scanner.schema). It has zero rows if no variant gives a result.
+    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS. With False, they are left out, which saves
+                      most of the table's memory. The other columns stay the same.
+    :return: DataFrame summarizing all annotated variants, with the columns and dtypes of
+             output_column_kinds(sequences) (see nmd_scanner.schema). It has zero rows if no variant gives a result.
     """
 
     # read VCF file (variants)
@@ -80,10 +80,14 @@ def annotate(vcf_path, annotation_path, fasta_path, reassign_exons=False):
     # Add the NMD features (inspired by the NMD efficiency benchmark dataset) and the NMD escape rules
     results = add_features_and_rules(results)
 
+    # add_features_and_rules applies the schema with the sequences, so they are dropped after it
+    if not sequences:
+        results = results.drop(columns=list(SEQUENCE_COLUMNS))
+
     return results
 
 
-def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False):
+def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True):
     """
     Main function for NMD scanner: annotate the variants and write the results to a file
 
@@ -92,10 +96,11 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False):
     :param fasta_path: path to the reference FASTA file
     :param output: path to the output file (.csv, .parquet, or .pq)
     :param reassign_exons: recompute the exon numbers of the annotation
+    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS (see annotate())
     :return: DataFrame summarizing all annotated variants: the table that annotate() returns
     """
 
-    results = annotate(vcf_path, annotation_path, fasta_path, reassign_exons=reassign_exons)
+    results = annotate(vcf_path, annotation_path, fasta_path, reassign_exons=reassign_exons, sequences=sequences)
 
     # Write output
     logger.info("Writing results to %s", output)
@@ -107,62 +112,36 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False):
 def write_results(results, output):
     """
     Write the results DataFrame to a CSV or Parquet file based on the output extension.
+    A Parquet file gets the table of ``to_arrow``, with the same types for every input. A CSV file gets each list
+    column as JSON, e.g. [{"exon_number": 1, "length": 36}], which ``json.loads`` reads back.
     """
 
     ext = os.path.splitext(output)[1].lower()
     if ext == ".csv":
-        results.to_csv(output, index=False)
+        _json_lists(results).to_csv(output, index=False)
     elif ext in (".parquet", ".pq"):
-        table = pa.Table.from_pandas(to_parquet_safe(results), schema=parquet_schema(results), preserve_index=False)
-        pq.write_table(table, output)
+        pq.write_table(to_arrow(results), output)
     else:
         raise ValueError(f"Unsupported output extension: {ext!r}. Supported: {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}")
 
 
-def parquet_schema(results):
+def _json_lists(results):
     """
-    Return the pyarrow schema for the columns of ``results``, with the types listed in
-    ``OUTPUT_COLUMN_KINDS``. A column that is not listed raises a KeyError.
+    Return a copy of ``results`` in which each list column (kind pair_list, int_list or stop_codon_list) holds JSON
+    text. A missing value stays missing, so CSV writes it as an empty field.
     """
-
-    stop_codon = pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())])
-    kind_types = {
-        "string": pa.string(),
-        "int": pa.int64(),
-        "bool": pa.bool_(),
-        "pair_list": pa.list_(pa.list_(pa.int64())),
-        "int_list": pa.list_(pa.int64()),
-        "stop_codon_list": pa.list_(stop_codon),
-    }
-    return pa.schema([pa.field(column, kind_types[OUTPUT_COLUMN_KINDS[column]]) for column in results.columns])
-
-
-def to_parquet_safe(results):
-    """
-    Return a copy of ``results`` with the stop-codon columns given a parquet-friendly,
-    typed representation. See ``STOP_CODON_COLUMNS`` for why this is needed. Every other
-    column, and the ``results`` table passed in, is left untouched.
-    """
-
-    columns_present = [column for column in STOP_CODON_COLUMNS if column in results.columns]
-    if not columns_present:
-        return results
 
     results = results.copy()
-    for column in columns_present:
-        results[column] = results[column].apply(_stop_codons_to_records)
+    for column in results.columns:
+        if OUTPUT_COLUMN_KINDS.get(column) in ("pair_list", "int_list", "stop_codon_list"):
+            results[column] = results[column].map(_json_list, na_action="ignore")
     return results
 
 
-def _stop_codons_to_records(stop_codons):
-    """
-    Turn a list of (position, codon) tuples into {"position": ..., "codon": ...} records.
-    A missing value (None, np.nan, pd.NA) stays missing.
-    """
+def _json_list(value):
+    """Return a list value as JSON text. A numpy int, e.g. of a column read from Parquet, becomes a plain int."""
 
-    if pd.api.types.is_scalar(stop_codons) and pd.isna(stop_codons):
-        return None
-    return [{"position": position, "codon": codon} for position, codon in stop_codons]
+    return json.dumps(list(value), default=lambda item: item.item())
 
 
 def is_valid_output_path(path):
@@ -236,6 +215,15 @@ def main_cli():
     parser.add_argument(
         "--reassign_exons", action="store_true", help="Recompute exon numbers (recommended for hg19; may be slow)"
     )
+    parser.add_argument(
+        "--no-sequences",
+        dest="sequences",
+        action="store_false",
+        help=(
+            "Leave out the 4 sequence columns ref_cds_seq, alt_cds_seq, transcript_seq and alt_transcript_seq. "
+            "They make up most of the output size."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -257,7 +245,14 @@ def main_cli():
         )
 
     # Run the main pipeline
-    main(args.vcf, args.annotation, args.fasta, args.output, reassign_exons=args.reassign_exons)
+    main(
+        args.vcf,
+        args.annotation,
+        args.fasta,
+        args.output,
+        reassign_exons=args.reassign_exons,
+        sequences=args.sequences,
+    )
 
 
 if __name__ == "__main__":

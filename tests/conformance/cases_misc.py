@@ -47,32 +47,39 @@ THREE_EXONS = Layout(
     Transcript(("gtcagaccATGGCC", "AGGCTGGGC", "TCCTAAgcagccaggc")),
     {
         **IDS,
-        "ref_cds_start": per_strand(18, 20),
-        "ref_cds_stop": per_strand(79, 81),
+        "cds_start": per_strand(18, 20),
+        "cds_end": per_strand(79, 81),
         "ref_cds_seq": CDS_SEQ,
-        "ref_cds_len": 21,
+        "ref_cds_length": 21,
         "has_start_codon": True,
         "has_stop_codon": True,
         "cds_frame": 0,
-        "ref_cds_info": [(1, 6), (2, 9), (3, 6)],
+        "ref_cds_exons": [
+            {"exon_number": 1, "length": 6},
+            {"exon_number": 2, "length": 9},
+            {"exon_number": 3, "length": 6},
+        ],
         "cds_in_transcript": True,
-        "ref_start_codon_pos": 0,
-        "ref_start_codon_exon": 1,
+        "start_codon_exon": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
         "ref_first_stop_pos": 18,
-        "ref_num_stop_codons": 1,
-        "ref_all_stop_codons": [(18, "TAA")],
+        "ref_stop_codon_count": 1,
+        "ref_stop_codons": [{"position": 18, "codon": "TAA"}],
         "ref_stop_codon_exons": [3],
-        "ref_is_premature": False,
+        "ref_has_ptc": False,
         "transcript_start": 10,
         "transcript_end": 89,
         "transcript_seq": TX_SEQ,
         "transcript_length": 39,
         "cds_start_in_transcript": 8,
         "cds_end_in_transcript": 29,
-        "transcript_exon_info": [(1, 14), (2, 9), (3, 16)],
+        "transcript_exons": [
+            {"exon_number": 1, "length": 14},
+            {"exon_number": 2, "length": 9},
+            {"exon_number": 3, "length": 16},
+        ],
         "utr3_length": 10,
         "utr5_length": 8,
         "total_exon_count": 3,
@@ -93,23 +100,23 @@ MISSENSE_ROW = {
     "variant_id": "var1",
     "ref": per_strand("T", "A"),
     "alt": per_strand("A", "T"),
-    "start_variant": per_strand(48, 50),
-    "end_variant": per_strand(49, 51),
-    "alt_cds_start": per_strand(18, 20),
-    "alt_cds_stop": per_strand(79, 81),
+    "start": per_strand(48, 50),
+    "end": per_strand(49, 51),
     "alt_cds_seq": "ATGGCC" + "AGGCAGGGC" + "TCCTAA",
-    "alt_cds_len": 21,
-    "alt_cds_info": [(1, 6), (2, 9), (3, 6)],
-    "alt_start_codon_pos": 0,
-    "alt_start_codon_exon": 1,
+    "alt_cds_length": 21,
+    "alt_cds_exons": [
+        {"exon_number": 1, "length": 6},
+        {"exon_number": 2, "length": 9},
+        {"exon_number": 3, "length": 6},
+    ],
     "alt_last_codon": "TAA",
     "alt_valid_stop": True,
     "alt_first_stop_codon": "TAA",
     "alt_first_stop_pos": 18,
-    "alt_num_stop_codons": 1,
-    "alt_all_stop_codons": [(18, "TAA")],
+    "alt_stop_codon_count": 1,
+    "alt_stop_codons": [{"position": 18, "codon": "TAA"}],
     "alt_stop_codon_exons": [3],
-    "alt_is_premature": False,
+    "alt_has_ptc": False,
     "start_loss": False,
     "stop_loss": False,
     "alt_transcript_seq": "GTCAGACCATGGCC" + "AGGCAGGGC" + "TCCTAAGCAGCCAGGC",
@@ -118,7 +125,7 @@ MISSENSE_ROW = {
     **NOT_SCANNED,
     "unknown_reason": None,
     **NO_PTC_FEATURES,
-    "stop_codon_distance": 0,
+    "annotated_stop_distance": 0,
     **NO_RULE,
 }
 
@@ -178,7 +185,7 @@ def exon_1_ends_2_nt_before_its_cds_row(rows, strand):
     return [_move_3prime_end(row, strand, 2) if _is_exon(row, 1) else row for row in rows]
 
 
-# MI-13: the 5' UTR holds the CDS sequence ATG GCC TAA too
+# The 5' UTR holds the CDS sequence ATG GCC TAA too
 #   5' [g atggcctaa cc ATG GCC TAA gc] 3'
 #        <-copy--->    <--CDS--->
 #   tx 0             tx 12      tx 21
@@ -187,32 +194,31 @@ REPEATED_CDS = Layout(
     Transcript(("gatggcctaaccATGGCCTAAgc",)),
     {
         **IDS,
-        "ref_cds_start": per_strand(22, 12),
-        "ref_cds_stop": per_strand(31, 21),
+        "cds_start": per_strand(22, 12),
+        "cds_end": per_strand(31, 21),
         "ref_cds_seq": "ATGGCCTAA",
-        "ref_cds_len": 9,
+        "ref_cds_length": 9,
         "has_start_codon": True,
         "has_stop_codon": True,
         "cds_frame": 0,
-        "ref_cds_info": [(1, 9)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 9}],
         "cds_in_transcript": True,
-        "ref_start_codon_pos": 0,
-        "ref_start_codon_exon": 1,
+        "start_codon_exon": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
         "ref_first_stop_pos": 6,
-        "ref_num_stop_codons": 1,
-        "ref_all_stop_codons": [(6, "TAA")],
+        "ref_stop_codon_count": 1,
+        "ref_stop_codons": [{"position": 6, "codon": "TAA"}],
         "ref_stop_codon_exons": [1],
-        "ref_is_premature": False,
+        "ref_has_ptc": False,
         "transcript_start": 10,
         "transcript_end": 33,
         "transcript_seq": "GATGGCCTAACCATGGCCTAAGC",
         "transcript_length": 23,
         "cds_start_in_transcript": 12,
         "cds_end_in_transcript": 21,
-        "transcript_exon_info": [(1, 23)],
+        "transcript_exons": [{"exon_number": 1, "length": 23}],
         "utr3_length": 2,
         "utr5_length": 12,
         "total_exon_count": 1,
@@ -221,20 +227,28 @@ REPEATED_CDS = Layout(
 )
 
 
-# MI-19: Ensembl GFF3. The CDS rows of exon 2 and exon 3 have phase 2, because exon 1 holds 7 CDS nt and exon 2 9.
+# Ensembl GFF3. The CDS rows of exon 2 and exon 3 have phase 2, because exon 1 holds 7 CDS nt and exon 2 9.
 # has_start_codon and has_stop_codon come from the FASTA: ATG at CDS 0 with phase 0, and TAA as the last 3 CDS nt.
 #   5' [gtcagacc ATG GCC A]|[GG CTG GGC T]|[CC TAA gcagccaggc] 3'
 ENSEMBL = Layout(
     Transcript(("gtcagaccATGGCCA", "GGCTGGGCT", "CCTAAgcagccaggc"), flavor="ensembl"),
     {
         **THREE_EXONS.ref,
-        "ref_cds_info": [(1, 7), (2, 9), (3, 5)],
-        "transcript_exon_info": [(1, 15), (2, 9), (3, 15)],
+        "ref_cds_exons": [
+            {"exon_number": 1, "length": 7},
+            {"exon_number": 2, "length": 9},
+            {"exon_number": 3, "length": 5},
+        ],
+        "transcript_exons": [
+            {"exon_number": 1, "length": 15},
+            {"exon_number": 2, "length": 9},
+            {"exon_number": 3, "length": 15},
+        ],
     },
 )
 
 CASES = [
-    # MI-02, MI-18: a VCF whose only record has a REF that the genome does not have
+    # A VCF whose only record has a REF that the genome does not have
     Case(
         "only_variant_with_a_ref_mismatch_gives_no_row",
         """
@@ -247,7 +261,7 @@ CASES = [
         Change("CCATGG[C>T]CGTAAG", vcf_ref="A"),
         NoRow("REF mismatch"),
     ),
-    # MI-01: the variant with the REF mismatch gives no row, the other variant keeps its row
+    # The variant with the REF mismatch gives no row, the other variant keeps its row
     Case(
         "variant_with_a_ref_mismatch_gives_no_row_and_the_other_variant_keeps_its_row",
         """
@@ -260,10 +274,16 @@ CASES = [
         """,
         THREE_EXONS,
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **MISSENSE_ROW,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
         more_changes=(Change("CCATGG[C>T]CGTAAG", vcf_ref="A", vcf_id="var2"),),
     ),
-    # MI-03, MI-18
     Case(
         "intergenic_snv_gives_no_row",
         """
@@ -276,7 +296,6 @@ CASES = [
         Change("CAGGCCCCC[C>A]CCCCC"),
         NoRow("touches no coding region"),
     ),
-    # MI-04
     Case(
         "snv_in_the_5utr_away_from_the_start_codon_gives_no_row",
         """
@@ -291,7 +310,6 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((1, 8)),
     ),
-    # MI-04
     Case(
         "snv_in_the_3utr_away_from_the_stop_codon_gives_no_row",
         """
@@ -306,7 +324,7 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((29, 35)),
     ),
-    # MI-09: the variant lies next to the coding region but changes only the UTR
+    # The variant lies next to the coding region but changes only the UTR
     Case(
         "snv_right_before_the_start_codon_gives_no_row",
         """
@@ -321,7 +339,6 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((7,)),
     ),
-    # MI-09
     Case(
         "snv_right_after_the_stop_codon_gives_no_row",
         """
@@ -336,7 +353,6 @@ CASES = [
         NoRow("touches no coding region"),
         ruler=Ruler((29,)),
     ),
-    # MI-05
     Case(
         "snv_on_a_chromosome_without_a_coding_region_gives_no_row",
         """
@@ -350,7 +366,6 @@ CASES = [
         MISSENSE,
         NoRow("touches no coding region"),
     ),
-    # MI-08, MI-18
     Case(
         "vcf_without_a_record_gives_no_row",
         """
@@ -361,7 +376,7 @@ CASES = [
         None,
         NoRow("no record"),
     ),
-    # MI-06: one row per transcript; each row has the transcript columns of its own transcript
+    # One row per transcript; each row has the transcript columns of its own transcript
     Case(
         "variant_in_the_cds_of_two_transcripts_gives_a_row_for_each",
         """
@@ -377,7 +392,14 @@ CASES = [
             Transcript(THREE_EXONS.transcript.exons, edit_gff3=second_transcript_with_a_shorter_3utr), THREE_EXONS.ref
         ),
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **MISSENSE_ROW,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
         more_rows=(
             {
                 "transcript_id": "tx2",
@@ -385,17 +407,25 @@ CASES = [
                 "transcript_end": per_strand(85, 89),
                 "transcript_seq": "GTCAGACCATGGCC" + "AGGCTGGGC" + "TCCTAAGCAGCC",
                 "transcript_length": 35,
-                "transcript_exon_info": [(1, 14), (2, 9), (3, 12)],
+                "transcript_exons": [
+                    {"exon_number": 1, "length": 14},
+                    {"exon_number": 2, "length": 9},
+                    {"exon_number": 3, "length": 12},
+                ],
                 "utr3_length": 6,
                 "alt_transcript_seq": "GTCAGACCATGGCC" + "AGGCAGGGC" + "TCCTAAGCAGCC",
                 "alt_transcript_length": 35,
+                "ptc_pos_in_alt_transcript": None,
+                "ptc_exon_number": None,
+                "stop_classification": "alt_transcript",
             },
         ),
         marks=(Span("ref", 29, 39, "tx1: utr3_length = 10"), Span("ref", 29, 35, "tx2: utr3_length = 6")),
     ),
     # Pins the row rule of "Output columns" in a run with a touched and an untouched transcript: a row is a variant
     # in a transcript whose coding region it touches. So tx1 gives its row and tx2 gives none. In the closest cases,
-    # every transcript is touched (MI-06) or none is (MI-05). The FASTA lacks chr2. That is no error, because chr2
+    # every transcript is touched (variant_in_the_cds_of_two_transcripts_gives_a_row_for_each) or none is
+    # (snv_on_a_chromosome_without_a_coding_region_gives_no_row). The FASTA lacks chr2. That is no error, because chr2
     # has no variant.
     Case(
         "variant_in_tx1_with_an_untouched_copy_of_the_gene_on_chr2_gives_one_row",
@@ -409,9 +439,16 @@ CASES = [
         """,
         Layout(Transcript(THREE_EXONS.transcript.exons, edit_gff3=copy_of_the_gene_on_chromosome_2), THREE_EXONS.ref),
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **MISSENSE_ROW,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
     ),
-    # MI-07: one row per variant; each row applies only its own variant
+    # One row per variant; each row applies only its own variant
     Case(
         "two_variants_in_one_transcript_give_a_row_each_with_only_their_own_change",
         """
@@ -424,33 +461,46 @@ CASES = [
         """,
         THREE_EXONS,
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **MISSENSE_ROW,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
         more_changes=(Change("CTGG[G>A]CGTAAG", vcf_id="var2"),),
         more_rows=(
             {
                 "variant_id": "var2",
                 "ref": per_strand("G", "C"),
                 "alt": per_strand("A", "T"),
-                "start_variant": per_strand(51, 47),
-                "end_variant": per_strand(52, 48),
+                "start": per_strand(51, 47),
+                "end": per_strand(52, 48),
                 "alt_cds_seq": "ATGGCC" + "AGGCTGGAC" + "TCCTAA",
                 "alt_transcript_seq": "GTCAGACCATGGCC" + "AGGCTGGAC" + "TCCTAAGCAGCCAGGC",
+                "ptc_pos_in_alt_transcript": None,
+                "ptc_exon_number": None,
+                "stop_classification": "alt_transcript",
             },
         ),
     ),
-    # MI-10, UR-01: a record without ID
+    # A record without ID gives a null variant_id, as every other missing value
     Case(
-        "variant_without_an_id_gets_the_variant_id_dot",
-        MISSENSE_DRAWING + "The VCF record has the ID '.'.\n",
+        "variant_without_an_id_has_a_null_variant_id",
+        MISSENSE_DRAWING + "The VCF record has no ID: its ID is '.'.\n",
         THREE_EXONS,
         Change("AGGC[T>A]GGGC", vcf_id="."),
         {
             **MISSENSE_ROW,
-            "variant_id": ".",
-            "alt_transcript_exon_info": SAME_EXONS,
+            "variant_id": None,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
     ),
-    # MI-10
     Case(
         "numeric_variant_id_keeps_its_leading_zeros",
         MISSENSE_DRAWING + "The VCF record has the ID 007.\n",
@@ -459,10 +509,13 @@ CASES = [
         {
             **MISSENSE_ROW,
             "variant_id": "007",
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
     ),
-    # MI-10
     Case(
         "variant_id_na_stays_text",
         MISSENSE_DRAWING + "The VCF record has the ID NA.\n",
@@ -471,10 +524,14 @@ CASES = [
         {
             **MISSENSE_ROW,
             "variant_id": "NA",
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
     ),
-    # MI-13: the CDS is located by its coordinates, at tx 12, not at the copy at tx 1
+    # The CDS is located by its coordinates, at tx 12, not at the copy at tx 1
     Case(
         "cds_sequence_repeated_in_the_5utr_is_located_by_its_coordinates",
         """
@@ -491,23 +548,19 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("C", "G"),
             "alt": per_strand("A", "T"),
-            "start_variant": per_strand(26, 16),
-            "end_variant": per_strand(27, 17),
-            "alt_cds_start": per_strand(22, 12),
-            "alt_cds_stop": per_strand(31, 21),
+            "start": per_strand(26, 16),
+            "end": per_strand(27, 17),
             "alt_cds_seq": "ATGGACTAA",
-            "alt_cds_len": 9,
-            "alt_cds_info": [(1, 9)],
-            "alt_start_codon_pos": 0,
-            "alt_start_codon_exon": 1,
+            "alt_cds_length": 9,
+            "alt_cds_exons": [{"exon_number": 1, "length": 9}],
             "alt_last_codon": "TAA",
             "alt_valid_stop": True,
             "alt_first_stop_codon": "TAA",
             "alt_first_stop_pos": 6,
-            "alt_num_stop_codons": 1,
-            "alt_all_stop_codons": [(6, "TAA")],
+            "alt_stop_codon_count": 1,
+            "alt_stop_codons": [{"position": 6, "codon": "TAA"}],
             "alt_stop_codon_exons": [1],
-            "alt_is_premature": False,
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GATGGCCTAACCATGGACTAAGC",
@@ -516,24 +569,35 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         marks=(Mark("ref", 1, 10, "~", "copy of the CDS"),),
         ruler=Ruler((1, 12)),
     ),
-    # MI-15: reassign_exons numbers the exons by their position, 5' to 3'. The row is that of the correct numbers.
+    # reassign_exons numbers the exons by their position, 5' to 3'. The row is that of the correct numbers.
     Case(
         "reassign_exons_numbers_the_exons_by_their_position",
         MISSENSE_DRAWING
         + "The GFF3 has exon_number 3 on exon 1 and 1 on exon 3. annotate() runs with reassign_exons.\n",
         Layout(Transcript(THREE_EXONS.transcript.exons, edit_gff3=exon_numbers_1_and_3_swapped), THREE_EXONS.ref),
         MISSENSE,
-        {**MISSENSE_ROW, "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **MISSENSE_ROW,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
         reassign_exons=True,
     ),
-    # MI-16: README.md, section Arguments: the chromosome names must match in the VCF, the GFF3 and the FASTA
+    # README.md, section Arguments: the chromosome names must match in the VCF, the GFF3 and the FASTA
     Case(
         "variant_on_a_chromosome_that_the_fasta_lacks_is_an_error_that_names_the_chromosome",
         MISSENSE_DRAWING
@@ -543,7 +607,6 @@ CASES = [
         MISSENSE,
         Raises(ValueError, match=r"\bchromosome\(s\) with variants and CDS rows: chr1\b"),
     ),
-    # MI-17, PF-25 (CDS rows partly outside the exons), SC-18
     Case(
         "cds_row_that_reaches_past_its_exon_end_is_an_error_that_names_the_transcript_and_the_cds_row",
         """
@@ -567,7 +630,7 @@ CASES = [
         ),
         marks=(Mark("ref", 12, 14, "x", "past the end of the exon 1 row"),),
     ),
-    # MI-19: an Ensembl GFF3 with phase 2 CDS rows
+    # An Ensembl GFF3 with phase 2 CDS rows
     Case(
         "ensembl_gff3_with_phase_2_cds_rows",
         """
@@ -581,11 +644,19 @@ CASES = [
         Change("GGC[T>A]GGGCT"),
         {
             **MISSENSE_ROW,
-            "alt_cds_info": [(1, 7), (2, 9), (3, 5)],
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_cds_exons": [
+                {"exon_number": 1, "length": 7},
+                {"exon_number": 2, "length": 9},
+                {"exon_number": 3, "length": 5},
+            ],
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
     ),
-    # UR-02: no placement keeps the donor GT after exon 1
+    # No placement keeps the donor GT after exon 1
     Case(
         "snv_in_the_donor_gt_gives_splice_site_destroyed",
         """
@@ -600,13 +671,16 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("G", "C"),
             "alt": per_strand("A", "T"),
-            "start_variant": per_strand(24, 74),
-            "end_variant": per_strand(25, 75),
+            "start": per_strand(24, 74),
+            "end": per_strand(25, 75),
             **UNKNOWN_ALT,
             "unknown_reason": "splice_site_destroyed",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": None,
         },
     ),
-    # UR-04: AG inserted at CAG|AG. One placement keeps the exon start at the old AG, another puts the inserted AG
+    # AG inserted at CAG|AG. One placement keeps the exon start at the old AG, another puts the inserted AG
     # into the exon.
     Case(
         "ag_inserted_at_cag_ag_gives_exon_boundary_ambiguous",
@@ -624,14 +698,17 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("G", "T"),
             "alt": per_strand("GAG", "TCT"),
-            "start_variant": per_strand(43, 54),
-            "end_variant": per_strand(44, 55),
+            "start": per_strand(43, 54),
+            "end": per_strand(44, 55),
             **UNKNOWN_ALT,
             "unknown_reason": "exon_boundary_ambiguous",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": None,
         },
         equivalent=(Change("TTTC[>AG]AGAGGC"), Change("CAGAG[>AG]GCTG")),
     ),
-    # UR-06: an MNV has one placement, so it is never exon_boundary_ambiguous, also where its ALT forms an AG one
+    # An MNV has one placement, so it is never exon_boundary_ambiguous, also where its ALT forms an AG one
     # base into the exon
     Case(
         "mnv_at_cag_ag_whose_alt_forms_another_ag_is_not_ambiguous",
@@ -648,11 +725,15 @@ CASES = [
             **MISSENSE_ROW,
             "ref": per_strand("AG", "CT"),
             "alt": per_strand("GA", "TC"),
-            "start_variant": per_strand(44, 53),
-            "end_variant": per_strand(46, 55),
+            "start": per_strand(44, 53),
+            "end": per_strand(46, 55),
             "alt_cds_seq": "ATGGCC" + "GAGCTGGGC" + "TCCTAA",
             "alt_transcript_seq": "GTCAGACCATGGCC" + "GAGCTGGGC" + "TCCTAAGCAGCCAGGC",
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         equivalent=(Change("TTTCAG[AGG>GAG]CTG"),),
     ),

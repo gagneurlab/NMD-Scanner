@@ -35,6 +35,7 @@ All test VCFs were generated using:
 ```text
 /scripts/create_test_VCF.ipynb
 ```
+
 and include edge-case variants such as start and stop-loss mutations, frameshifts and nonsense mutations.
 
 ### `test_output_files/`
@@ -57,9 +58,10 @@ These files are provided to allow testing on a small genomic region (chromosome 
 
 - **`part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf`** : Example VCF file containing some variants from chromosome 18, used as a realistic input example for testing and demonstration.
 
---- 
+---
 
 ## Notes
+
 - These resources are intended for testing, benchmarking and reproducibility.
 - Users of the NMD-Scanner do not need to download or use these files to run the tool on their own data.
 - Dataset usage of the TCGA and MMRF/TARGET datasets follows the terms of the original source (<https://github.com/hjkng/nmdeff>).

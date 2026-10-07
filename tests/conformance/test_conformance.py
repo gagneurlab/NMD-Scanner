@@ -1,6 +1,7 @@
 """
-Run every conformance case, and check that the cases cover every output column, every value of the bool and
-categorical columns, every documented null case and every reason for no row.
+Run every conformance case, also without the sequence columns and through to_arrow, and check that the cases cover
+every output column, every value of the bool and categorical columns, every documented null case and every reason for
+no row.
 Check that the drawing of each case holds its rendered layout block.
 """
 
@@ -9,11 +10,16 @@ import re
 import textwrap
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
+from nmd_scanner import to_arrow
+from nmd_scanner.schema import CATEGORIES, OUTPUT_COLUMN_KINDS
 
-from .runner import NO_ROW_REASONS, NoRow, case_params, check, expected_row, render_case
+from .runner import NO_ROW_REASONS, NoRow, Raises, case_params, check, expected_row, render_case, run
 
 CASE_MODULES = {
     path.stem: importlib.import_module(f".{path.stem}", __package__)
@@ -37,6 +43,139 @@ def test_drawing_holds_its_layout_block(case):
     assert held, f"the drawing does not hold its layout block, at the indentation of its other lines:\n{block}"
 
 
+# The 4 sequence columns, which annotate(..., sequences=False) leaves out ("Technical Notes.md", "Output columns")
+SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
+
+
+@pytest.mark.parametrize(
+    "case",
+    [pytest.param(case, marks=[pytest.mark.xfail(reason=case.bug, strict=True)] if case.bug else []) for case in CASES],
+    ids=[case.name for case in CASES],
+)
+def test_case_without_sequences(case, tmp_path):
+    """
+    With sequences=False, each case gives its expected result without the 4 sequence columns: its rows, with the
+    values and dtypes of the other columns, or no row with these columns, or its error. Once per case: on the plus
+    strand, with the first description of the variant.
+    """
+    columns = {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
+    assert len(columns) == len(OUTPUT_COLUMN_KINDS) - 4
+
+    check(case, case.change, "+", tmp_path, sequences=False, columns=columns)
+
+
+# The Arrow type of each column kind: its Parquet type in "Technical Notes.md" ("Kinds and dtypes")
+ARROW_TYPES = {
+    "int": pa.int64(),
+    "bool": pa.bool_(),
+    "string": pa.string(),
+    "pair_list": pa.list_(pa.struct([("exon_number", pa.int64()), ("length", pa.int64())])),
+    "int_list": pa.list_(pa.int64()),
+    "stop_codon_list": pa.list_(pa.struct([("position", pa.int64()), ("codon", pa.string())])),
+    **dict.fromkeys(CATEGORIES, pa.dictionary(pa.int8(), pa.string())),
+}
+# The list columns: lists of {"exon_number", "length"} records, of exon numbers, or of {"position", "codon"} records
+LIST_COLUMNS = tuple(
+    column for column, kind in OUTPUT_COLUMN_KINDS.items() if kind in ("pair_list", "int_list", "stop_codon_list")
+)
+CASES_WITH_A_RESULT = [case for case in CASES if not isinstance(case.expected, Raises)]
+CASES_WITH_A_ROW = [case for case in CASES if isinstance(case.expected, dict)]
+
+
+@pytest.mark.parametrize("sequences", [True, False], ids=["sequences", "no_sequences"])
+@pytest.mark.parametrize("case", CASES_WITH_A_RESULT, ids=[case.name for case in CASES_WITH_A_RESULT])
+def test_to_arrow_of_the_case_result(case, sequences, tmp_path):
+    """
+    to_arrow gives each column of the case result the Arrow type of its kind: with rows, without rows, in a column
+    with only nulls, and without the sequence columns. The list columns hold the expected values, with the records as
+    structs. to_arrow leaves the result unchanged. Once per case: on the plus strand, with the first
+    description of the variant.
+    """
+    results, _ = run(case, case.change, "+", tmp_path, sequences=sequences)
+    original = results.copy()
+
+    table = to_arrow(results)
+
+    columns = [column for column in OUTPUT_COLUMN_KINDS if sequences or column not in SEQUENCE_COLUMNS]
+    assert [(field.name, field.type) for field in table.schema] == [
+        (column, ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]]) for column in columns
+    ]
+    pd.testing.assert_frame_equal(results, original)
+    if isinstance(case.expected, NoRow):
+        assert table.num_rows == 0
+        return
+    rows = [expected_row(case, "+", more) for more in ({}, *case.more_rows)]
+    by_key = {(row["transcript_id"], row["variant_id"]): row for row in rows}
+    assert table.num_rows == len(by_key) == len(rows)
+    keys = zip(table.column("transcript_id").to_pylist(), table.column("variant_id").to_pylist())
+    expected = [by_key[key] for key in keys]
+    for column in LIST_COLUMNS:
+        assert table.column(column).to_pylist() == [row[column] for row in expected], column
+
+
+@pytest.mark.parametrize("case", CASES_WITH_A_ROW, ids=[case.name for case in CASES_WITH_A_ROW])
+def test_list_columns_keep_their_shape_through_parquet(case, tmp_path):
+    """
+    A list value of the case result and the same value after to_arrow, Parquet and pd.read_parquet with default
+    arguments have elements of the same shape: a record stays a dict with the same keys and values, and an exon
+    number stays an int. Only the container changes, from a list to a numpy array, and an int becomes a numpy int. So
+    code that reads the fields by name works on both. polars reads the records as structs with the same field names.
+    Once per case: on the plus strand, with the first description of the variant.
+    """
+    results, _ = run(case, case.change, "+", tmp_path)
+    path = tmp_path / "results.parquet"
+    pq.write_table(to_arrow(results), path)
+
+    loaded = pd.read_parquet(path)
+
+    for column in LIST_COLUMNS:
+        for before, after in zip(results[column], loaded[column], strict=True):
+            if pd.api.types.is_scalar(before) and pd.isna(before):
+                assert after is None, column
+                continue
+            assert isinstance(before, list) and isinstance(after, np.ndarray), column
+            assert len(after) == len(before), column
+            for element_before, element_after in zip(before, after):
+                if isinstance(element_before, dict):
+                    assert type(element_after) is dict and element_after == element_before, column
+                else:
+                    assert type(element_before) is int and isinstance(element_after, np.integer), column
+                    assert element_after == element_before, column
+    polars = pytest.importorskip("polars")
+    schema = polars.read_parquet(path).schema
+    assert schema["transcript_exons"] == polars.List(
+        polars.Struct({"exon_number": polars.Int64, "length": polars.Int64})
+    )
+    assert schema["ref_stop_codon_exons"] == polars.List(polars.Int64)
+    assert schema["ref_stop_codons"] == polars.List(polars.Struct({"position": polars.Int64, "codon": polars.String}))
+
+
+def test_to_arrow_types_a_column_with_only_nulls(tmp_path):
+    """
+    A column of each Arrow type can hold only nulls. The one row of a destroyed splice site has a null in the alt CDS
+    columns, and the one row of a missense SNV has a null unknown_reason.
+    """
+    null_columns = {
+        "snv_at_donor_plus_1_destroys_the_splice_site": (
+            *("alt_cds_length", "start_loss", "alt_cds_seq"),
+            *("alt_cds_exons", "alt_stop_codon_exons", "alt_stop_codons"),
+        ),
+        "missense_snv_inside_an_internal_coding_exon_changes_one_cds_base": ("unknown_reason",),
+    }
+    arrow_types = {ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]] for columns in null_columns.values() for column in columns}
+    assert arrow_types == set(ARROW_TYPES.values())
+
+    for name, columns in null_columns.items():
+        case = next(case for case in CASES if case.name == name)
+        directory = tmp_path / name
+        directory.mkdir()
+        table = to_arrow(run(case, case.change, "+", directory)[0])
+
+        for column in columns:
+            assert table.column(column).null_count == table.num_rows == 1, column
+            assert table.schema.field(column).type == ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]], column
+
+
 def test_case_names_are_unique():
     names = [case.name for case in CASES]
     assert sorted(name for name in set(names) if names.count(name) > 1) == []
@@ -57,14 +196,15 @@ VALUES = {
     # None: a ref CDS of fewer than 3 nt
     "ref_valid_stop": {True, False, None},
     "ref_first_stop_codon": {"TAA", "TAG", "TGA", None},
-    "ref_is_premature": {True, False, None},
+    "ref_has_ptc": {True, False, None},
     "alt_valid_stop": {True, False, None},
     "alt_first_stop_codon": {"TAA", "TAG", "TGA", None},
-    "alt_is_premature": {True, False, None},
+    "alt_has_ptc": {True, False, None},
     "start_loss": {True, False, None},
     "stop_loss": {True, False, None},
-    "transcript_valid_stop": {True, False, None},
-    "transcript_first_stop_codon": {"TAA", "TAG", "TGA", None},
+    # None: a row with unknown_reason
+    "stop_classification": {"alt_transcript", "start_loss_scan", "alt_cds", None},
+    "alt_scan_first_stop_codon": {"TAA", "TAG", "TGA", None},
     "unknown_reason": {"splice_site_destroyed", "exon_boundary_ambiguous", None},
     "ptc_less_than_150nt_to_start": {True, False, None},
     "likely_misannotated": {True, False},
@@ -74,12 +214,29 @@ VALUES = {
     "nmd_start_proximal_rule": {True, False, None},
     "nmd_single_exon_rule": {True, False, None},
     "nmd_escape": {True, False, None},
+    "nmd_model_status": {
+        "unknown_effect",
+        "no_ptc",
+        "ref_ptc",
+        "no_annotated_stop",
+        "no_annotated_start",
+        "start_loss",
+        "missing_input",
+        "ok",
+    },
 }
 
 
 @pytest.mark.parametrize("column", sorted(VALUES))
 def test_every_value_has_a_case(column):
     assert VALUES[column] - {row[column] for row in _rows()} == set()
+
+
+def test_values_of_a_categorical_column_are_its_categories():
+    categorical = {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if kind in CATEGORIES}
+    assert {column: VALUES[column] - {None} for column in categorical} == {
+        column: set(CATEGORIES[kind]) for column, kind in categorical.items()
+    }
 
 
 def test_every_output_column_has_a_case():
@@ -108,12 +265,12 @@ def _scanned(row):
 
 
 def _no_exon_rows(row):
-    """A row shows that its transcript has no exon rows by a null transcript_exon_info."""
-    return row["transcript_exon_info"] is None
+    """A row shows that its transcript has no exon rows by a null transcript_exons."""
+    return row["transcript_exons"] is None
 
 
 def _keeps_the_flags_from_the_cds(row):
-    """Whether the row keeps alt_is_premature and stop_loss from the codon scan of the alt CDS."""
+    """Whether the row keeps alt_has_ptc and stop_loss from the codon scan of the alt CDS."""
     if not _known(row):
         return False
     seq = row["alt_transcript_seq"]
@@ -129,7 +286,7 @@ def _keeps_the_flags_from_the_cds(row):
 
 
 def _ptc_row(row):
-    return row["alt_is_premature"] is True
+    return row["alt_has_ptc"] is True
 
 
 def _no_orf_overlaps_the_cds_after_a_start_loss(row):
@@ -137,8 +294,8 @@ def _no_orf_overlaps_the_cds_after_a_start_loss(row):
     if not (_known(row) and row["has_stop_codon"] and row["start_loss"] and _scanned(row)):
         return False
     # The variant changes the start codon only, so the annotated stop codon is the last codon of the alt CDS
-    stop = row["alt_cds_start_in_transcript"] + row["alt_cds_len"] - 3
-    return row["transcript_start_codon_pos"] is None or row["transcript_start_codon_pos"] > stop
+    stop = row["alt_cds_start_in_transcript"] + row["alt_cds_length"] - 3
+    return row["alt_scan_start_codon_pos"] is None or row["alt_scan_start_codon_pos"] > stop
 
 
 UNKNOWN = "`unknown_reason` is set"
@@ -148,92 +305,75 @@ NO_IN_FRAME_STOP = "no in-frame stop codon"
 NO_EXON_ROWS = "the transcript has no exon rows"
 NOT_SCANNED = "not scanned"
 NOT_A_PTC_ROW = "not a PTC row"
-NO_ALT_EXONS = "`alt_transcript_exon_info` is null"
+NO_ALT_EXONS = "`alt_transcript_exons` is null"
 CDS_START_IS_NULL = "`cds_start_in_transcript` is null"
+# The 5 NMD rules, which nmd_escape combines
+RULES = (
+    "nmd_last_exon_rule",
+    "nmd_50nt_penultimate_rule",
+    "nmd_long_exon_rule",
+    "nmd_start_proximal_rule",
+    "nmd_single_exon_rule",
+)
 NULL_CASES = [
+    # A row does not show the ID of its record, and a null variant_id has no other cause
+    ("variant_id", "the ID of the VCF record is `.`", lambda row: True),
     *[
         (column, UNKNOWN, lambda row: not _known(row))
         for column in (
-            *("alt_cds_start", "alt_cds_stop", "alt_cds_seq", "alt_cds_len", "alt_cds_info"),
-            *("alt_start_codon_pos", "alt_start_codon_exon", "alt_last_codon", "alt_valid_stop"),
-            *("alt_first_stop_codon", "alt_first_stop_pos", "alt_num_stop_codons", "alt_all_stop_codons"),
-            *("alt_stop_codon_exons", "alt_is_premature", "start_loss", "stop_loss"),
+            *("alt_cds_seq", "alt_cds_length", "alt_cds_exons", "alt_last_codon", "alt_valid_stop"),
+            *("alt_first_stop_codon", "alt_first_stop_pos", "alt_stop_codon_count", "alt_stop_codons"),
+            *("alt_stop_codon_exons", "alt_has_ptc", "start_loss", "stop_loss", "stop_classification"),
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
-            "alt_transcript_exon_info",
-            *("ptc_less_than_150nt_to_start", "stop_codon_distance"),
-            *("nmd_last_exon_rule", "nmd_50nt_penultimate_rule", "nmd_long_exon_rule", "nmd_start_proximal_rule"),
-            *("nmd_single_exon_rule", "nmd_escape"),
+            *("alt_transcript_exons", "annotated_stop_distance"),
         )
     ],
+    ("start_codon_exon", NO_START_CODON, lambda row: not row["has_start_codon"]),
+    ("start_codon_exon", SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_length"] < 3),
     *[
-        entry
-        for column in ("ref_start_codon_pos", "ref_start_codon_exon")
-        for entry in [
-            (column, NO_START_CODON, lambda row: not row["has_start_codon"]),
-            (column, SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_len"] < 3),
-        ]
-    ],
-    *[
-        (column, SHORT_CDS, lambda row: row["ref_cds_len"] < 3)
+        (column, SHORT_CDS, lambda row: row["ref_cds_length"] < 3)
         for column in (
             *("ref_last_codon", "ref_valid_stop", "ref_first_stop_codon", "ref_first_stop_pos"),
-            *("ref_num_stop_codons", "ref_all_stop_codons", "ref_stop_codon_exons", "ref_is_premature"),
+            *("ref_stop_codon_count", "ref_stop_codons", "ref_stop_codon_exons", "ref_has_ptc"),
         )
     ],
     *[
-        (column, NO_IN_FRAME_STOP, lambda row: row["ref_cds_len"] >= 3 and row["ref_num_stop_codons"] == 0)
+        (column, NO_IN_FRAME_STOP, lambda row: row["ref_cds_length"] >= 3 and row["ref_stop_codon_count"] == 0)
         for column in ("ref_first_stop_codon", "ref_first_stop_pos")
     ],
     *[
-        entry
-        for column in ("alt_start_codon_pos", "alt_start_codon_exon")
-        for entry in [
-            (column, NO_START_CODON, lambda row: _known(row) and not row["has_start_codon"]),
-            (
-                column,
-                SHORT_CDS,
-                lambda row: _known(row) and row["has_start_codon"] and row["alt_cds_len"] < 3 and not row["start_loss"],
-            ),
-            (
-                column,
-                "the variant changes the start codon",
-                lambda row: _known(row) and row["start_loss"] and row["alt_cds_len"] >= 3,
-            ),
-        ]
-    ],
-    *[
-        (column, SHORT_CDS, lambda row: _known(row) and row["alt_cds_len"] < 3)
+        (column, SHORT_CDS, lambda row: _known(row) and row["alt_cds_length"] < 3)
         for column in (
             *("alt_last_codon", "alt_valid_stop", "alt_first_stop_codon", "alt_first_stop_pos"),
-            *("alt_num_stop_codons", "alt_all_stop_codons", "alt_stop_codon_exons"),
+            *("alt_stop_codon_count", "alt_stop_codons", "alt_stop_codon_exons"),
         )
     ],
     *[
         (
             column,
             NO_IN_FRAME_STOP,
-            lambda row: _known(row) and row["alt_cds_len"] >= 3 and row["alt_num_stop_codons"] == 0,
+            lambda row: _known(row) and row["alt_cds_length"] >= 3 and row["alt_stop_codon_count"] == 0,
         )
         for column in ("alt_first_stop_codon", "alt_first_stop_pos")
     ],
     (
-        "alt_is_premature",
+        "alt_has_ptc",
         "the row keeps the flags from the CDS, and the alt CDS has fewer than 3 nt",
-        lambda row: _keeps_the_flags_from_the_cds(row) and row["alt_cds_len"] < 3,
+        lambda row: _keeps_the_flags_from_the_cds(row) and row["alt_cds_length"] < 3,
     ),
-    # A transcript without exon rows gives a row with null transcript columns (NU-08)
+    # A transcript without exon rows gives a row with null transcript columns
     *[
         (column, NO_EXON_ROWS, _no_exon_rows)
         for column in (
             *("transcript_start", "transcript_end", "transcript_seq", "transcript_length"),
-            *("cds_start_in_transcript", "cds_end_in_transcript", "transcript_exon_info", "total_exon_count"),
+            *("cds_start_in_transcript", "cds_end_in_transcript", "transcript_exons", "total_exon_count"),
         )
     ],
     *[
         entry
         for column in (
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
-            "alt_transcript_exon_info",
+            "alt_transcript_exons",
         )
         for entry in [
             (column, CDS_START_IS_NULL, lambda row: _known(row) and row["cds_start_in_transcript"] is None),
@@ -248,13 +388,13 @@ NULL_CASES = [
         ]
     ],
     (
-        "alt_transcript_exon_info",
+        "alt_transcript_exons",
         "the exon lengths do not add up to `alt_transcript_length`",
         lambda row: row["alt_transcript_seq"] is not None,
     ),
     *[
         entry
-        for column in ("transcript_start_codon_pos", "transcript_start_codon_exon")
+        for column in ("alt_scan_start_codon_pos", "alt_scan_start_codon_exon")
         for entry in [
             (column, NOT_SCANNED, lambda row: not _scanned(row)),
             (
@@ -274,28 +414,28 @@ NULL_CASES = [
         ]
     ],
     (
-        "transcript_start_codon_exon",
+        "alt_scan_start_codon_exon",
         NO_ALT_EXONS,
         lambda row: (
-            _scanned(row) and row["transcript_start_codon_pos"] is not None and row["alt_transcript_exon_info"] is None
+            _scanned(row) and row["alt_scan_start_codon_pos"] is not None and row["alt_transcript_exons"] is None
         ),
     ),
     *[
         (column, NOT_SCANNED, lambda row: not _scanned(row))
         for column in (
-            *("transcript_last_codon", "transcript_valid_stop", "transcript_first_stop_codon"),
-            *("transcript_first_stop_pos", "transcript_num_stop_codons", "transcript_all_stop_codons"),
-            "transcript_stop_codon_exons",
+            *("alt_scan_first_stop_codon", "alt_scan_first_stop_pos", "alt_scan_stop_codon_count"),
+            "alt_scan_stop_codons",
+            "alt_scan_stop_codon_exons",
         )
     ],
     (
-        "transcript_stop_codon_exons",
+        "alt_scan_stop_codon_exons",
         NO_ALT_EXONS,
-        lambda row: _scanned(row) and row["alt_transcript_exon_info"] is None,
+        lambda row: _scanned(row) and row["alt_transcript_exons"] is None,
     ),
     *[
-        (column, "no stop codon found", lambda row: _scanned(row) and row["transcript_num_stop_codons"] == 0)
-        for column in ("transcript_first_stop_codon", "transcript_first_stop_pos")
+        (column, "no stop codon found", lambda row: _scanned(row) and row["alt_scan_stop_codon_count"] == 0)
+        for column in ("alt_scan_first_stop_codon", "alt_scan_first_stop_pos")
     ],
     ("unknown_reason", "the alt transcript is known", lambda row: row["alt_cds_seq"] is not None),
     (
@@ -307,13 +447,21 @@ NULL_CASES = [
     ("utr5_length", CDS_START_IS_NULL, lambda row: row["cds_start_in_transcript"] is None),
     *[
         entry
-        for column in ("upstream_exon_count", "downstream_exon_count", "ptc_exon_length", "ptc_to_intron")
+        for column in ("upstream_exon_count", "downstream_exon_count", "ptc_exon_length", "ptc_to_exon_end")
         for entry in [
-            (column, NOT_A_PTC_ROW, lambda row: row["alt_is_premature"] is False),
-            (column, NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exon_info"] is None),
+            (column, NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
+            (column, NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exons"] is None),
         ]
     ],
-    ("ptc_to_start_codon", NOT_A_PTC_ROW, lambda row: row["alt_is_premature"] is False),
+    ("ptc_pos_in_alt_transcript", NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
+    (
+        "ptc_pos_in_alt_transcript",
+        "`alt_transcript_seq` is null",
+        lambda row: _ptc_row(row) and row["alt_transcript_seq"] is None,
+    ),
+    ("ptc_exon_number", NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
+    ("ptc_exon_number", NO_ALT_EXONS, lambda row: _ptc_row(row) and row["alt_transcript_exons"] is None),
+    ("ptc_to_start_codon", NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False),
     (
         "ptc_to_start_codon",
         "the transcript has no annotated start codon",
@@ -323,12 +471,50 @@ NULL_CASES = [
         "ptc_to_start_codon",
         "the annotated start codon is a stop codon, such as TAG",
         lambda row: (
-            _ptc_row(row) and row["ref_start_codon_pos"] == 0 and row["ref_cds_seq"][:3] in {"TAA", "TAG", "TGA"}
+            _ptc_row(row)
+            and row["has_start_codon"]
+            and row["ref_cds_length"] >= 3
+            and row["ref_cds_seq"][:3] in {"TAA", "TAG", "TGA"}
         ),
     ),
-    ("stop_codon_distance", "`has_stop_codon` is False", lambda row: _known(row) and not row["has_stop_codon"]),
     (
-        "stop_codon_distance",
+        "ptc_to_start_codon",
+        "after a start loss: the row has no `alt_transcript_seq`",
+        lambda row: _ptc_row(row) and row["start_loss"] and row["alt_transcript_seq"] is None,
+    ),
+    *[
+        (column, NOT_A_PTC_ROW, lambda row: row["alt_has_ptc"] is False)
+        for column in (
+            *("ptc_less_than_150nt_to_start", "nmd_last_exon_rule", "nmd_50nt_penultimate_rule"),
+            *("nmd_long_exon_rule", "nmd_start_proximal_rule", "nmd_single_exon_rule", "nmd_escape"),
+        )
+    ],
+    # On a PTC row, a rule is null if one of its inputs is null
+    *[
+        (
+            column,
+            f"`{rule_input}` is null",
+            lambda row, rule_input=rule_input: _ptc_row(row) and row[rule_input] is None,
+        )
+        for column, rule_input in (
+            ("ptc_less_than_150nt_to_start", "ptc_to_start_codon"),
+            ("nmd_last_exon_rule", "downstream_exon_count"),
+            ("nmd_50nt_penultimate_rule", "alt_transcript_exons"),
+            ("nmd_long_exon_rule", "ptc_exon_length"),
+            ("nmd_start_proximal_rule", "ptc_to_start_codon"),
+            ("nmd_single_exon_rule", "total_exon_count"),
+        )
+    ],
+    (
+        "nmd_escape",
+        "no rule is True, and one is null",
+        lambda row: (
+            _ptc_row(row) and True not in [row[rule] for rule in RULES] and None in [row[rule] for rule in RULES]
+        ),
+    ),
+    ("annotated_stop_distance", "`has_stop_codon` is False", lambda row: _known(row) and not row["has_stop_codon"]),
+    (
+        "annotated_stop_distance",
         "a nonstop: the alt transcript has no in-frame stop codon",
         lambda row: (
             _known(row)
@@ -336,19 +522,19 @@ NULL_CASES = [
             and not row["start_loss"]
             and row["stop_loss"]
             and not _keeps_the_flags_from_the_cds(row)
-            and row["transcript_num_stop_codons"] == 0
+            and row["alt_scan_stop_codon_count"] == 0
         ),
     ),
     (
-        "stop_codon_distance",
+        "annotated_stop_distance",
         "after a start loss: the scan found no ATG, or one downstream of the annotated stop codon",
         _no_orf_overlaps_the_cds_after_a_start_loss,
     ),
     (
-        "stop_codon_distance",
+        "annotated_stop_distance",
         "on a row that keeps the flags from the CDS, the alt CDS has no in-frame stop codon",
         lambda row: (
-            _keeps_the_flags_from_the_cds(row) and row["has_stop_codon"] and row["alt_num_stop_codons"] in (0, None)
+            _keeps_the_flags_from_the_cds(row) and row["has_stop_codon"] and row["alt_stop_codon_count"] in (0, None)
         ),
     ),
 ]

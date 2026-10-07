@@ -3,16 +3,27 @@ import pandas as pd
 import pytest
 
 from nmd_scanner import cli
-from nmd_scanner.extra_features import add_features_and_rules, add_nmd_features, evaluate_nmd_escape_rules
+from nmd_scanner.extra_features import (
+    add_features_and_rules,
+    add_nmd_features,
+    evaluate_nmd_escape_rules,
+    nmd_model_status,
+)
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.schema import (
+    KIND_ARROW_TYPES,
     KIND_DTYPES,
+    MODEL_INPUTS,
+    MODEL_STATUS_COLUMN_KINDS,
     NMD_FEATURE_COLUMN_KINDS,
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
     PTC_COLUMN_KINDS,
+    SEQUENCE_COLUMNS,
     apply_schema,
     empty_table,
+    output_column_kinds,
+    to_arrow,
 )
 
 
@@ -24,14 +35,21 @@ def assert_schema(table, column_kinds):
     assert dict(table.dtypes) == expected
 
 
-def test_every_kind_has_a_dtype():
+def test_every_kind_has_a_dtype_and_an_arrow_type():
     assert set(OUTPUT_COLUMN_KINDS.values()) <= set(KIND_DTYPES)
+    assert set(OUTPUT_COLUMN_KINDS.values()) <= set(KIND_ARROW_TYPES)
 
 
-def test_output_columns_are_the_ptc_feature_and_rule_columns_in_order():
-    parts = [*PTC_COLUMN_KINDS, *NMD_FEATURE_COLUMN_KINDS, *NMD_RULE_COLUMN_KINDS]
+def test_output_columns_are_the_ptc_feature_rule_and_status_columns_in_order():
+    parts = [*PTC_COLUMN_KINDS, *NMD_FEATURE_COLUMN_KINDS, *NMD_RULE_COLUMN_KINDS, *MODEL_STATUS_COLUMN_KINDS]
     assert list(OUTPUT_COLUMN_KINDS) == parts
     assert len(set(parts)) == len(parts)
+
+
+def test_model_inputs_are_19_distinct_output_columns():
+    assert len(MODEL_INPUTS) == 19
+    assert len(set(MODEL_INPUTS)) == 19
+    assert set(MODEL_INPUTS) <= set(NMD_FEATURE_COLUMN_KINDS) | set(NMD_RULE_COLUMN_KINDS) | set(PTC_COLUMN_KINDS)
 
 
 def test_apply_schema_orders_columns_and_sets_dtypes():
@@ -70,11 +88,66 @@ def test_apply_schema_rejects_a_fraction_in_an_int_column():
         apply_schema(pd.DataFrame({"count": [1.5]}), {"count": "int"})
 
 
+def test_apply_schema_gives_a_categorical_column_all_its_categories():
+    result = apply_schema(pd.DataFrame({"strand": ["-", None]}), {"strand": "strand"})
+
+    assert result["strand"].dtype == pd.CategoricalDtype(["+", "-"])
+    assert result["strand"].iloc[0] == "-"
+    assert pd.isna(result["strand"].iloc[1])
+
+
+def test_apply_schema_rejects_a_value_outside_the_categories():
+    with pytest.raises(ValueError, match="nmd_model_status holds values outside its categories .*'start_lost'"):
+        apply_schema(pd.DataFrame({"nmd_model_status": ["ok", "start_lost"]}), {"nmd_model_status": "nmd_model_status"})
+
+
 def test_empty_table_has_the_schema():
     table = empty_table()
 
     assert len(table) == 0
     assert_schema(table, OUTPUT_COLUMN_KINDS)
+
+
+def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_columns():
+    reduced = output_column_kinds(sequences=False)
+
+    assert len(OUTPUT_COLUMN_KINDS) == 80
+    assert len(reduced) == 76
+    assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
+    assert reduced == {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
+    assert list(reduced) == [column for column in OUTPUT_COLUMN_KINDS if column not in SEQUENCE_COLUMNS]
+    assert output_column_kinds() == OUTPUT_COLUMN_KINDS
+    assert output_column_kinds() is not OUTPUT_COLUMN_KINDS
+
+
+def test_empty_table_without_sequences_has_the_76_columns_and_their_dtypes():
+    table = empty_table(output_column_kinds(sequences=False))
+
+    assert len(table) == 0
+    assert len(table.columns) == 76
+    assert_schema(table, output_column_kinds(sequences=False))
+
+
+@pytest.mark.parametrize("sequences", [True, False])
+def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences):
+    kinds = output_column_kinds(sequences)
+
+    table = to_arrow(empty_table(kinds))
+
+    assert table.num_rows == 0
+    assert table.column_names == list(kinds)
+    assert [field.type for field in table.schema] == [KIND_ARROW_TYPES[kind] for kind in kinds.values()]
+
+
+def test_to_arrow_rejects_a_column_outside_the_schema():
+    with pytest.raises(KeyError, match="my_key"):
+        to_arrow(pd.DataFrame({"transcript_id": ["t1"], "my_key": ["sample_1"]}))
+
+
+def test_to_arrow_is_exported_from_the_package():
+    import nmd_scanner
+
+    assert nmd_scanner.to_arrow is to_arrow
 
 
 @pytest.fixture
@@ -169,7 +242,8 @@ def test_add_features_and_rules_equals_the_row_functions_applied_one_by_one(run_
     features = ptc_table.apply(add_nmd_features, axis=1, result_type="expand")
     table = pd.concat([ptc_table, features], axis=1)
     rules = table.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
-    expected = apply_schema(pd.concat([table, rules], axis=1), OUTPUT_COLUMN_KINDS)
+    table = pd.concat([table, rules], axis=1)
+    expected = apply_schema(table.assign(nmd_model_status=nmd_model_status(table)), OUTPUT_COLUMN_KINDS)
 
     pd.testing.assert_frame_equal(add_features_and_rules(ptc_table), expected)
 
@@ -191,16 +265,14 @@ def none_row(**values):
     "values",
     [
         {},
-        {"alt_is_premature": True, "alt_first_stop_pos": 30, "cds_in_transcript": True, "ref_valid_stop": True},
+        {"alt_has_ptc": True, "alt_first_stop_pos": 30, "cds_in_transcript": True, "ref_valid_stop": True},
         {
-            "alt_is_premature": True,
-            "alt_start_codon_pos": 0,
+            "alt_has_ptc": True,
             "alt_first_stop_pos": 30,
             "alt_cds_start_in_transcript": 40,
-            "transcript_exon_info": [(1, 100), (2, 120)],
-            "alt_transcript_exon_info": [(1, 100), (2, 120)],
+            "transcript_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 120}],
+            "alt_transcript_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 120}],
             "cds_in_transcript": True,
-            "ref_start_codon_pos": 0,
             "ref_valid_stop": False,
         },
     ],
@@ -216,7 +288,7 @@ def test_features_and_rules_treat_pd_na_like_none(values):
 
 def test_likely_misannotated_reads_numpy_bools():
     # .iloc gives numpy.bool_ values, and `numpy.False_ is False` is False
-    row = schema_row(cds_in_transcript=False, ref_start_codon_pos=0, ref_valid_stop=True)
+    row = schema_row(cds_in_transcript=False, has_start_codon=True, ref_cds_seq="ATGAAATAA", ref_valid_stop=True)
     assert isinstance(row["cds_in_transcript"], np.bool_)
 
     assert add_nmd_features(row)["likely_misannotated"] is True

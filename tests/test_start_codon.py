@@ -149,8 +149,8 @@ def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, s
     """
     The annotated start codon is TAG (`*`), a stop codon. Translation cannot start on a stop codon, so this start
     codon is a misannotation. The missense GCC>GAC at t7 (`x`) leaves it unchanged. TAG is the first in-frame stop
-    codon of the alt CDS, so the PTC is the start codon itself. ptc_to_start_codon is null, and the start-proximal
-    rule is False.
+    codon of the alt CDS, so the PTC is the start codon itself. ptc_to_start_codon is null, and so are
+    ptc_less_than_150nt_to_start and the start-proximal rule.
 
     5' [uuu***=x=======sssuuuuu] 3'
     tx  0  3   7       15 18
@@ -163,15 +163,13 @@ def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, s
     _assert_values(
         row,
         {
-            "ref_start_codon_pos": 0,
-            "alt_start_codon_pos": 0,
             "alt_first_stop_pos": 0,
-            "alt_is_premature": True,
+            "alt_has_ptc": True,
             "start_loss": False,
             "stop_loss": False,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": False,
-            "nmd_start_proximal_rule": False,
+            "ptc_less_than_150nt_to_start": None,
+            "nmd_start_proximal_rule": None,
             "likely_misannotated": False,
         },
     )
@@ -199,11 +197,11 @@ def test_stop_loss_scan_starts_at_the_annotated_start_codon(tmp_path, strand, st
         {
             "start_loss": False,
             "stop_loss": True,
-            "transcript_start_codon_pos": start_pos,
-            "transcript_start_codon_exon": start_exon,
-            "transcript_first_stop_codon": "TAG",
-            "transcript_first_stop_pos": 20,
-            "stop_codon_distance": -6,
+            "alt_scan_start_codon_pos": start_pos,
+            "alt_scan_start_codon_exon": start_exon,
+            "alt_scan_first_stop_codon": "TAG",
+            "alt_scan_first_stop_pos": 20,
+            "annotated_stop_distance": -6,
         },
     )
 
@@ -212,14 +210,14 @@ def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_al
     """
     The deletion of the T of the start codon ATG at t5 (`x`) is a start loss, and it shortens exon 1 to 10 nt in the
     alt transcript. The scan takes the ATG at t7 (`a`), out of frame, and its first stop codon is the TAA at t10 (`*`).
-    In the alt transcript, t10 is the first base of exon 2, the last exon. So the PTC exon is exon 2, and ptc_to_intron
+    In the alt transcript, t10 is the first base of exon 2, the last exon. So the PTC exon is exon 2, and ptc_to_exon_end
     runs to the transcript end. The ref exon lengths would put t10 into exon 1.
 
     ref 5' [uuuu=x=====]|[========uu] 3'
         tx 0    4        11         21
     alt 5' [uuuu===aaa]|[***=====uu] 3'
         tx 0    4  7    10         20
-                             *-------->|  ptc_to_intron = 10
+                             *-------->|  ptc_to_exon_end = 10
                    <---->  ptc_to_start_codon = 3
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
@@ -231,21 +229,21 @@ def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_al
         {
             "start_loss": True,
             "stop_loss": False,
-            "alt_is_premature": True,
+            "alt_has_ptc": True,
             "alt_transcript_seq": "GACCAGGATGTAAGCTAAGC",
-            "transcript_exon_info": [(1, 11), (2, 10)],
-            "alt_transcript_exon_info": [(1, 10), (2, 10)],
-            "transcript_start_codon_pos": 7,
-            "transcript_start_codon_exon": 1,
-            "transcript_first_stop_pos": 10,
-            "transcript_all_stop_codons": [(10, "TAA")],
-            "transcript_stop_codon_exons": [2],
+            "transcript_exons": [{"exon_number": 1, "length": 11}, {"exon_number": 2, "length": 10}],
+            "alt_transcript_exons": [{"exon_number": 1, "length": 10}, {"exon_number": 2, "length": 10}],
+            "alt_scan_start_codon_pos": 7,
+            "alt_scan_start_codon_exon": 1,
+            "alt_scan_first_stop_pos": 10,
+            "alt_scan_stop_codons": [{"position": 10, "codon": "TAA"}],
+            "alt_scan_stop_codon_exons": [2],
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 3,
             "ptc_exon_length": 10,
-            "ptc_to_intron": 10,
-            "stop_codon_distance": 5,
+            "ptc_to_exon_end": 10,
+            "annotated_stop_distance": 5,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
@@ -275,21 +273,21 @@ def test_scan_after_a_deletion_of_5utr_and_start_codon_bases_takes_the_alt_exon_
         row,
         {
             "start_loss": True,
-            "alt_is_premature": True,
+            "alt_has_ptc": True,
             "alt_transcript_seq": "GACGGATGTAAGCTAAGC",
             "alt_cds_start_in_transcript": 3,
-            "transcript_exon_info": [(1, 11), (2, 10)],
-            "alt_transcript_exon_info": [(1, 8), (2, 10)],
-            "transcript_start_codon_pos": 5,
-            "transcript_start_codon_exon": 1,
-            "transcript_first_stop_pos": 8,
-            "transcript_stop_codon_exons": [2],
+            "transcript_exons": [{"exon_number": 1, "length": 11}, {"exon_number": 2, "length": 10}],
+            "alt_transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 10}],
+            "alt_scan_start_codon_pos": 5,
+            "alt_scan_start_codon_exon": 1,
+            "alt_scan_first_stop_pos": 8,
+            "alt_scan_stop_codon_exons": [2],
             "total_exon_count": 2,
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 3,
             "ptc_exon_length": 10,
-            "ptc_to_intron": 10,
+            "ptc_to_exon_end": 10,
             "nmd_last_exon_rule": True,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
@@ -317,16 +315,24 @@ def test_scan_after_a_deletion_of_the_stop_codon_and_3utr_bases_takes_the_alt_ex
         row,
         {
             "stop_loss": True,
-            "alt_is_premature": False,
+            "alt_has_ptc": False,
             "alt_transcript_seq": "GACCATGAAGCCATGACC",
-            "transcript_exon_info": [(1, 10), (2, 7), (3, 7)],
-            "alt_transcript_exon_info": [(1, 10), (2, 1), (3, 7)],
-            "transcript_start_codon_pos": 4,
-            "transcript_start_codon_exon": 1,
-            "transcript_first_stop_pos": 13,
-            "transcript_all_stop_codons": [(13, "TGA")],
-            "transcript_stop_codon_exons": [3],
-            "stop_codon_distance": -9,
+            "transcript_exons": [
+                {"exon_number": 1, "length": 10},
+                {"exon_number": 2, "length": 7},
+                {"exon_number": 3, "length": 7},
+            ],
+            "alt_transcript_exons": [
+                {"exon_number": 1, "length": 10},
+                {"exon_number": 2, "length": 1},
+                {"exon_number": 3, "length": 7},
+            ],
+            "alt_scan_start_codon_pos": 4,
+            "alt_scan_start_codon_exon": 1,
+            "alt_scan_first_stop_pos": 13,
+            "alt_scan_stop_codons": [{"position": 13, "codon": "TGA"}],
+            "alt_scan_stop_codon_exons": [3],
+            "annotated_stop_distance": -9,
         },
     )
 
@@ -343,7 +349,7 @@ def test_ptc_features_take_the_3utr_length_change_in_the_ptc_exon(tmp_path, stra
         tx 0    4         157 160            172  178         210        220
     alt 5' [uuuu===...===]|[===*=============uuuuuuuuuuuuuuu]|[uuuuuuuuuu] 3'
         tx 0    4         157 160            172               212        222
-                              *------------------------------>|  ptc_to_intron = 52
+                              *------------------------------>|  ptc_to_exon_end = 52
     """
     exons = ["GACC" + "ATG" + "GCA" * 50, "GCACCCGGGTTTGCCTAACCA" + "CCCA" * 8, "CCACCACCAC"]
     tx = SyntheticTranscript(tmp_path, strand, exons, 4, 172)
@@ -355,18 +361,26 @@ def test_ptc_features_take_the_3utr_length_change_in_the_ptc_exon(tmp_path, stra
         {
             "start_loss": False,
             "stop_loss": False,
-            "alt_is_premature": True,
+            "alt_has_ptc": True,
             "alt_first_stop_pos": 156,
             "alt_cds_start_in_transcript": 4,
-            "transcript_exon_info": [(1, 157), (2, 53), (3, 10)],
-            "alt_transcript_exon_info": [(1, 157), (2, 55), (3, 10)],
+            "transcript_exons": [
+                {"exon_number": 1, "length": 157},
+                {"exon_number": 2, "length": 53},
+                {"exon_number": 3, "length": 10},
+            ],
+            "alt_transcript_exons": [
+                {"exon_number": 1, "length": 157},
+                {"exon_number": 2, "length": 55},
+                {"exon_number": 3, "length": 10},
+            ],
             "total_exon_count": 3,
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": 156,
             "ptc_exon_length": 55,
-            "ptc_to_intron": 52,
-            "stop_codon_distance": 12,
+            "ptc_to_exon_end": 52,
+            "annotated_stop_distance": 12,
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,
@@ -389,7 +403,7 @@ def test_a_deleted_exon_is_no_upstream_exon_of_the_ptc(tmp_path, strand):
         tx 0    4      10        17             29            40
     alt 5' [uuuu======]|[===*========]|[==uuuuuuuuu] 3'
         tx 0    4      10  13         22            33
-                           *-------->|  ptc_to_intron = 9
+                           *-------->|  ptc_to_exon_end = 9
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGCA", "GCAGCAG", "GCCTAGCCGCCG", "CATAAGCCACC"], 4, 31)
     # From the sixth base of intron 1, after the last base of exon 1 at t9, to the fourth base of intron 2, before
@@ -404,20 +418,35 @@ def test_a_deleted_exon_is_no_upstream_exon_of_the_ptc(tmp_path, strand):
         {
             "start_loss": False,
             "stop_loss": False,
-            "alt_is_premature": True,
+            "alt_has_ptc": True,
             "alt_cds_seq": "ATGGCAGCCTAGCCGCCGCATAA",
-            "alt_cds_info": [(1, 6), (2, 0), (3, 12), (4, 5)],
+            "alt_cds_exons": [
+                {"exon_number": 1, "length": 6},
+                {"exon_number": 2, "length": 0},
+                {"exon_number": 3, "length": 12},
+                {"exon_number": 4, "length": 5},
+            ],
             "alt_first_stop_pos": 9,
             "alt_stop_codon_exons": [3],
-            "transcript_exon_info": [(1, 10), (2, 7), (3, 12), (4, 11)],
-            "alt_transcript_exon_info": [(1, 10), (2, 0), (3, 12), (4, 11)],
+            "transcript_exons": [
+                {"exon_number": 1, "length": 10},
+                {"exon_number": 2, "length": 7},
+                {"exon_number": 3, "length": 12},
+                {"exon_number": 4, "length": 11},
+            ],
+            "alt_transcript_exons": [
+                {"exon_number": 1, "length": 10},
+                {"exon_number": 2, "length": 0},
+                {"exon_number": 3, "length": 12},
+                {"exon_number": 4, "length": 11},
+            ],
             "total_exon_count": 4,
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": 9,
             "ptc_exon_length": 12,
-            "ptc_to_intron": 9,
-            "stop_codon_distance": 11,
+            "ptc_to_exon_end": 9,
+            "annotated_stop_distance": 11,
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": True,
             "nmd_long_exon_rule": False,
@@ -439,7 +468,7 @@ def test_long_exon_rule_takes_the_length_of_the_ptc_exon_in_the_alt_transcript(t
     alt 5' [uuuu===...===]|[===*====...=====]|[======uuuuu] 3'
         tx 0    4         154 157              561         572
                               <----------------->  ptc_exon_length = 407
-                              *---------------->|  ptc_to_intron = 404
+                              *---------------->|  ptc_to_exon_end = 404
     """
     exons = ["GACC" + "ATG" + "GCA" * 49, "GCAGTAAGC" + "GCA" * 133, "GCATAACCACC"]
     tx = SyntheticTranscript(tmp_path, strand, exons, 4, 565)
@@ -451,17 +480,25 @@ def test_long_exon_rule_takes_the_length_of_the_ptc_exon_in_the_alt_transcript(t
         {
             "start_loss": False,
             "stop_loss": False,
-            "alt_is_premature": True,
+            "alt_has_ptc": True,
             "alt_first_stop_pos": 153,
-            "transcript_exon_info": [(1, 154), (2, 408), (3, 11)],
-            "alt_transcript_exon_info": [(1, 154), (2, 407), (3, 11)],
+            "transcript_exons": [
+                {"exon_number": 1, "length": 154},
+                {"exon_number": 2, "length": 408},
+                {"exon_number": 3, "length": 11},
+            ],
+            "alt_transcript_exons": [
+                {"exon_number": 1, "length": 154},
+                {"exon_number": 2, "length": 407},
+                {"exon_number": 3, "length": 11},
+            ],
             "total_exon_count": 3,
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": 153,
             "ptc_exon_length": 407,
-            "ptc_to_intron": 404,
-            "stop_codon_distance": 407,
+            "ptc_to_exon_end": 404,
+            "annotated_stop_distance": 407,
             "nmd_last_exon_rule": False,
             "nmd_50nt_penultimate_rule": False,
             "nmd_long_exon_rule": False,

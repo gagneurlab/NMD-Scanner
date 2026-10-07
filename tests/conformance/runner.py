@@ -38,34 +38,33 @@ FLAVORS = ("gencode", "ensembl")
 REF_COLUMNS = (
     "transcript_id",
     "gene_id",
-    "chromosome",
+    "chrom",
     "strand",
-    "ref_cds_start",
-    "ref_cds_stop",
+    "cds_start",
+    "cds_end",
     "ref_cds_seq",
-    "ref_cds_len",
+    "ref_cds_length",
     "has_start_codon",
     "has_stop_codon",
     "cds_frame",
-    "ref_cds_info",
+    "ref_cds_exons",
     "cds_in_transcript",
-    "ref_start_codon_pos",
-    "ref_start_codon_exon",
+    "start_codon_exon",
     "ref_last_codon",
     "ref_valid_stop",
     "ref_first_stop_codon",
     "ref_first_stop_pos",
-    "ref_num_stop_codons",
-    "ref_all_stop_codons",
+    "ref_stop_codon_count",
+    "ref_stop_codons",
     "ref_stop_codon_exons",
-    "ref_is_premature",
+    "ref_has_ptc",
     "transcript_start",
     "transcript_end",
     "transcript_seq",
     "transcript_length",
     "cds_start_in_transcript",
     "cds_end_in_transcript",
-    "transcript_exon_info",
+    "transcript_exons",
     "utr3_length",
     "utr5_length",
     "total_exon_count",
@@ -74,7 +73,7 @@ REF_COLUMNS = (
 # The columns that depend on the variant. A Case gives their expected values.
 CASE_COLUMNS = tuple(column for column in OUTPUT_COLUMN_KINDS if column not in REF_COLUMNS)
 # The columns that echo the VCF record
-RECORD_COLUMNS = ("ref", "alt", "start_variant", "end_variant")
+RECORD_COLUMNS = ("ref", "alt", "start", "end")
 
 
 class PerStrand(NamedTuple):
@@ -89,71 +88,70 @@ def per_strand(plus, minus):
 
 
 # Expected values that many cases share
-IDS = {"transcript_id": "tx1", "gene_id": "g1", "chromosome": CHROMOSOME, "strand": per_strand("+", "-")}
+IDS = {"transcript_id": "tx1", "gene_id": "g1", "chrom": CHROMOSOME, "strand": per_strand("+", "-")}
 NOT_SCANNED = {
-    "transcript_start_codon_pos": None,
-    "transcript_start_codon_exon": None,
-    "transcript_last_codon": None,
-    "transcript_valid_stop": None,
-    "transcript_first_stop_codon": None,
-    "transcript_first_stop_pos": None,
-    "transcript_num_stop_codons": None,
-    "transcript_all_stop_codons": None,
-    "transcript_stop_codon_exons": None,
+    "alt_scan_start_codon_pos": None,
+    "alt_scan_start_codon_exon": None,
+    "alt_scan_first_stop_codon": None,
+    "alt_scan_first_stop_pos": None,
+    "alt_scan_stop_codon_count": None,
+    "alt_scan_stop_codons": None,
+    "alt_scan_stop_codon_exons": None,
 }
 NO_PTC_FEATURES = {
     "upstream_exon_count": None,
     "downstream_exon_count": None,
     "ptc_to_start_codon": None,
-    "ptc_less_than_150nt_to_start": False,
-    "ptc_exon_length": None,
-    "ptc_to_intron": None,
-}
-NO_RULE = {
-    "nmd_last_exon_rule": False,
-    "nmd_50nt_penultimate_rule": False,
-    "nmd_long_exon_rule": False,
-    "nmd_start_proximal_rule": False,
-    "nmd_single_exon_rule": False,
-    "nmd_escape": False,
-}
-# A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null
-UNKNOWN_ALT = {
-    "alt_cds_start": None,
-    "alt_cds_stop": None,
-    "alt_cds_seq": None,
-    "alt_cds_len": None,
-    "alt_cds_info": None,
-    "alt_start_codon_pos": None,
-    "alt_start_codon_exon": None,
-    "alt_last_codon": None,
-    "alt_valid_stop": None,
-    "alt_first_stop_codon": None,
-    "alt_first_stop_pos": None,
-    "alt_num_stop_codons": None,
-    "alt_all_stop_codons": None,
-    "alt_stop_codon_exons": None,
-    "alt_is_premature": None,
-    "start_loss": None,
-    "stop_loss": None,
-    "alt_transcript_seq": None,
-    "alt_transcript_length": None,
-    "alt_cds_start_in_transcript": None,
-    "alt_transcript_exon_info": None,
-    **NOT_SCANNED,
-    "upstream_exon_count": None,
-    "downstream_exon_count": None,
-    "ptc_to_start_codon": None,
     "ptc_less_than_150nt_to_start": None,
     "ptc_exon_length": None,
-    "stop_codon_distance": None,
-    "ptc_to_intron": None,
+    "ptc_to_exon_end": None,
+}
+# The NMD rules of a row that is not a PTC row
+NO_RULE = {
     "nmd_last_exon_rule": None,
     "nmd_50nt_penultimate_rule": None,
     "nmd_long_exon_rule": None,
     "nmd_start_proximal_rule": None,
     "nmd_single_exon_rule": None,
     "nmd_escape": None,
+}
+# The NMD rules of a PTC row whose PTC meets no rule
+RULES_FALSE = dict.fromkeys(NO_RULE, False)
+# A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null, and the
+# model cannot score the row
+UNKNOWN_ALT = {
+    "alt_cds_seq": None,
+    "alt_cds_length": None,
+    "alt_cds_exons": None,
+    "alt_last_codon": None,
+    "alt_valid_stop": None,
+    "alt_first_stop_codon": None,
+    "alt_first_stop_pos": None,
+    "alt_stop_codon_count": None,
+    "alt_stop_codons": None,
+    "alt_stop_codon_exons": None,
+    "alt_has_ptc": None,
+    "start_loss": None,
+    "stop_loss": None,
+    "alt_transcript_seq": None,
+    "alt_transcript_length": None,
+    "alt_cds_start_in_transcript": None,
+    "alt_transcript_exons": None,
+    **NOT_SCANNED,
+    "upstream_exon_count": None,
+    "downstream_exon_count": None,
+    "ptc_to_start_codon": None,
+    "ptc_less_than_150nt_to_start": None,
+    "ptc_exon_length": None,
+    "annotated_stop_distance": None,
+    "ptc_to_exon_end": None,
+    "nmd_last_exon_rule": None,
+    "nmd_50nt_penultimate_rule": None,
+    "nmd_long_exon_rule": None,
+    "nmd_start_proximal_rule": None,
+    "nmd_single_exon_rule": None,
+    "nmd_escape": None,
+    "nmd_model_status": "unknown_effect",
 }
 
 
@@ -164,7 +162,7 @@ class _SameExons:
         return "SAME_EXONS"
 
 
-# The expected alt_transcript_exon_info of a variant that keeps the length of every exon: the transcript_exon_info of
+# The expected alt_transcript_exons of a variant that keeps the length of every exon: the transcript_exons of
 # the row
 SAME_EXONS = _SameExons()
 
@@ -384,7 +382,7 @@ class Mark:
 class Span:
     """
     An arrow <---> under the bases start to end of the ref or the alt line of a drawing, with a label, e.g.
-    Span("alt", 44, 56, "ptc_to_intron = 12"). The arrow covers end - start bases: < stands under the first one and
+    Span("alt", 44, 56, "ptc_to_exon_end = 12"). The arrow covers end - start bases: < stands under the first one and
     > under the last one.
 
     :param line: "ref" or "alt": the line whose transcript positions start and end are
@@ -529,6 +527,8 @@ def plain(value):
     """A value of the result table as a plain Python value, with None for a missing value."""
     if isinstance(value, (list, tuple)):
         return type(value)(plain(item) for item in value)
+    if isinstance(value, dict):
+        return {key: plain(item) for key, item in value.items()}
     if pd.api.types.is_scalar(value) and pd.isna(value):
         return None
     return value.item() if hasattr(value, "item") else value
@@ -552,14 +552,17 @@ def write_inputs(transcript, changes, strand, directory):
     return (str(vcf), str(gff3), str(fasta)), records
 
 
-def run(case, change, strand, directory):
+def run(case, change, strand, directory, sequences=True):
     """
     Run annotate() on the case, with the given description of its variant and the further variants of the case.
     Return the result table and the VCF record of the given description, None without one.
+
+    :param sequences: the sequences argument of annotate()
     """
     changes = ([] if change is None else [change]) + list(case.more_changes)
     paths, records = write_inputs(case.layout.transcript, changes, strand, directory)
-    return annotate(*paths, reassign_exons=case.reassign_exons), (records[0] if change is not None else None)
+    results = annotate(*paths, reassign_exons=case.reassign_exons, sequences=sequences)
+    return results, (records[0] if change is not None else None)
 
 
 def on_strand(value, strand):
@@ -570,27 +573,33 @@ def on_strand(value, strand):
 def expected_row(case, strand, more=None):
     """
     The expected value of every output column on the strand, in output order: of the first row, or of the further row
-    with the values more, an item of more_rows. SAME_EXONS becomes the transcript_exon_info of the row.
+    with the values more, an item of more_rows. SAME_EXONS becomes the transcript_exons of the row.
     """
     values = {**case.layout.ref, **case.expected, **(more or {})}
     row = {column: on_strand(values[column], strand) for column in OUTPUT_COLUMN_KINDS}
-    if row["alt_transcript_exon_info"] is SAME_EXONS:
-        row["alt_transcript_exon_info"] = row["transcript_exon_info"]
+    if row["alt_transcript_exons"] is SAME_EXONS:
+        row["alt_transcript_exons"] = row["transcript_exons"]
     return row
 
 
-def check(case, change, strand, directory):
-    """Run the case and compare the result with its expected values, or check the error that it expects."""
+def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN_KINDS):
+    """
+    Run the case and compare the result with its expected values, or check the error that it expects.
+
+    :param sequences: the sequences argument of annotate()
+    :param columns: the kind of each column that the result has, in output order. The expected values of the other
+        output columns are not checked.
+    """
     if isinstance(case.expected, Raises):
         with pytest.raises(case.expected.exception, match=on_strand(case.expected.match, strand)):
-            run(case, change, strand, directory)
+            run(case, change, strand, directory, sequences)
         return
-    results, record = run(case, change, strand, directory)
+    results, record = run(case, change, strand, directory, sequences)
 
-    assert list(results.columns) == list(OUTPUT_COLUMN_KINDS), "the columns are not those of OUTPUT_COLUMN_KINDS"
+    assert list(results.columns) == list(columns), "the columns are not the expected ones"
     wrong_dtypes = [
         f"{column}: {results[column].dtype}"
-        for column, kind in OUTPUT_COLUMN_KINDS.items()
+        for column, kind in columns.items()
         if results[column].dtype != pd.api.types.pandas_dtype(KIND_DTYPES[kind])
     ]
     assert not wrong_dtypes, f"wrong dtypes: {wrong_dtypes}"
@@ -603,20 +612,21 @@ def check(case, change, strand, directory):
         # Another description of the variant: the columns that echo the VCF record take it from the record, unless a
         # further row gives them
         pos, ref, alt = record
-        echo = {"ref": ref, "alt": alt, "start_variant": pos - 1, "end_variant": pos - 1 + len(ref)}
+        echo = {"ref": ref, "alt": alt, "start": pos - 1, "end": pos - 1 + len(ref)}
         for row, more in zip(rows, ({}, *case.more_rows)):
             row.update({column: value for column, value in echo.items() if column not in more})
     assert len(results) == len(rows), f"expected {len(rows)} rows, got {len(results)}"
 
     def key(row):
-        return row["transcript_id"], row["variant_id"]
+        # variant_id is null for a record without ID
+        return row["transcript_id"], row["variant_id"] is not None, row["variant_id"] or ""
 
     actual_rows = [{column: plain(value) for column, value in results.iloc[i].items()} for i in range(len(results))]
     differences = [
         (f"{key(expected)}: " if len(rows) > 1 else "")
         + f"{column}: expected {expected[column]!r}, got {actual[column]!r}"
         for expected, actual in zip(sorted(rows, key=key), sorted(actual_rows, key=key))
-        for column in OUTPUT_COLUMN_KINDS
+        for column in columns
         if actual[column] != expected[column] or type(actual[column]) is not type(expected[column])
     ]
     assert not differences, "\n".join(differences)

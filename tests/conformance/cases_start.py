@@ -19,6 +19,7 @@ from .runner import (
     NO_PTC_FEATURES,
     NO_RULE,
     NOT_SCANNED,
+    RULES_FALSE,
     SAME_EXONS,
     Case,
     Change,
@@ -32,14 +33,12 @@ from .runner import (
 )
 
 ALT_CODON_COLUMNS = (
-    "alt_start_codon_pos",
-    "alt_start_codon_exon",
     "alt_last_codon",
     "alt_valid_stop",
     "alt_first_stop_codon",
     "alt_first_stop_pos",
-    "alt_num_stop_codons",
-    "alt_all_stop_codons",
+    "alt_stop_codon_count",
+    "alt_stop_codons",
     "alt_stop_codon_exons",
 )
 SCAN_COLUMNS = tuple(NOT_SCANNED)
@@ -48,8 +47,8 @@ RULE_COLUMNS = tuple(NO_RULE)
 
 
 def variant(ref, alt, start, end):
-    """The columns of the VCF record var1: ref, alt, start_variant and end_variant."""
-    return {"variant_id": "var1", "ref": ref, "alt": alt, "start_variant": start, "end_variant": end}
+    """The columns of the VCF record var1: ref, alt, start and end."""
+    return {"variant_id": "var1", "ref": ref, "alt": alt, "start": start, "end": end}
 
 
 def columns(names, *values):
@@ -63,32 +62,31 @@ ATG_START = Layout(
     Transcript(("gggATGAA", "ACCCGACTAAggggg")),
     {
         **IDS,
-        "ref_cds_start": per_strand(13, 15),
-        "ref_cds_stop": per_strand(48, 50),
+        "cds_start": per_strand(13, 15),
+        "cds_end": per_strand(48, 50),
         "ref_cds_seq": "ATGAAACCCGACTAA",
-        "ref_cds_len": 15,
+        "ref_cds_length": 15,
         "has_start_codon": True,
         "has_stop_codon": True,
         "cds_frame": 0,
-        "ref_cds_info": [(1, 5), (2, 10)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
         "cds_in_transcript": True,
-        "ref_start_codon_pos": 0,
-        "ref_start_codon_exon": 1,
+        "start_codon_exon": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
         "ref_first_stop_pos": 12,
-        "ref_num_stop_codons": 1,
-        "ref_all_stop_codons": [(12, "TAA")],
+        "ref_stop_codon_count": 1,
+        "ref_stop_codons": [{"position": 12, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
-        "ref_is_premature": False,
+        "ref_has_ptc": False,
         "transcript_start": 10,
         "transcript_end": 53,
         "transcript_seq": "GGGATGAAACCCGACTAAGGGGG",
         "transcript_length": 23,
         "cds_start_in_transcript": 3,
         "cds_end_in_transcript": 18,
-        "transcript_exon_info": [(1, 8), (2, 15)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 15}],
         "utr3_length": 5,
         "utr5_length": 3,
         "total_exon_count": 2,
@@ -106,21 +104,19 @@ CTG_START = Layout(
     },
 )
 
-# The 9 scan columns after a start loss whose scan finds no ATG: the scan reads no stop codon
+# The 7 scan columns after a start loss whose scan finds no ATG: the scan reads no stop codon
 NO_ATG_FOUND = {
-    "transcript_start_codon_pos": None,
-    "transcript_start_codon_exon": None,
-    "transcript_last_codon": "GGG",
-    "transcript_valid_stop": False,
-    "transcript_first_stop_codon": None,
-    "transcript_first_stop_pos": None,
-    "transcript_num_stop_codons": 0,
-    "transcript_all_stop_codons": [],
-    "transcript_stop_codon_exons": [],
+    "alt_scan_start_codon_pos": None,
+    "alt_scan_start_codon_exon": None,
+    "alt_scan_first_stop_codon": None,
+    "alt_scan_first_stop_pos": None,
+    "alt_scan_stop_codon_count": 0,
+    "alt_scan_stop_codons": [],
+    "alt_scan_stop_codon_exons": [],
 }
 
 CASES = [
-    # SC-01, SC-11, SC-22 (has_start_codon from the start_codon rows)
+    # The has_start_codon column comes from the start_codon rows.
     Case(
         "atg_to_acg_is_a_start_loss_and_without_a_next_atg_neither_a_ptc_nor_a_stop_loss",
         """
@@ -129,7 +125,7 @@ CASES = [
         alt 5' [ggg ACG AA]|[A CCC GAC TAA ggggg] 3'
                      ^ T>C
         ATG>ACG changes the start codon. From tx 3 on, the alt transcript has no ATG, so the scan reads no stop codon.
-        No ORF overlaps the CDS: stop_codon_distance = null.
+        No ORF overlaps the CDS: annotated_stop_distance = null.
         """,
         ATG_START,
         Change("gggA[T>C]GAA"),
@@ -137,23 +133,19 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("T", "A"),
             "alt": per_strand("C", "G"),
-            "start_variant": per_strand(14, 48),
-            "end_variant": per_strand(15, 49),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(48, 50),
+            "start": per_strand(14, 48),
+            "end": per_strand(15, 49),
             "alt_cds_seq": "ACGAAACCCGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            "alt_start_codon_pos": None,
-            "alt_start_codon_exon": None,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
             "alt_last_codon": "TAA",
             "alt_valid_stop": True,
             "alt_first_stop_codon": "TAA",
             "alt_first_stop_pos": 12,
-            "alt_num_stop_codons": 1,
-            "alt_all_stop_codons": [(12, "TAA")],
+            "alt_stop_codon_count": 1,
+            "alt_stop_codons": [{"position": 12, "codon": "TAA"}],
             "alt_stop_codon_exons": [2],
-            "alt_is_premature": False,
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGAAACCCGACTAAGGGGG",
@@ -162,13 +154,16 @@ CASES = [
             **NO_ATG_FOUND,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         ruler=Ruler((0, 3, 8, 15, 18, 23)),
     ),
-    # SC-02
     Case(
         "ctg_to_ccg_is_a_start_loss_of_a_non_atg_start_codon",
         """
@@ -184,23 +179,19 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("T", "A"),
             "alt": per_strand("C", "G"),
-            "start_variant": per_strand(14, 48),
-            "end_variant": per_strand(15, 49),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(48, 50),
+            "start": per_strand(14, 48),
+            "end": per_strand(15, 49),
             "alt_cds_seq": "CCGAAACCCGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            "alt_start_codon_pos": None,
-            "alt_start_codon_exon": None,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
             "alt_last_codon": "TAA",
             "alt_valid_stop": True,
             "alt_first_stop_codon": "TAA",
             "alt_first_stop_pos": 12,
-            "alt_num_stop_codons": 1,
-            "alt_all_stop_codons": [(12, "TAA")],
+            "alt_stop_codon_count": 1,
+            "alt_stop_codons": [{"position": 12, "codon": "TAA"}],
             "alt_stop_codon_exons": [2],
-            "alt_is_premature": False,
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGCCGAAACCCGACTAAGGGGG",
@@ -209,13 +200,16 @@ CASES = [
             **NO_ATG_FOUND,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         ruler=Ruler((0, 3, 8, 15, 18, 23)),
     ),
-    # SC-03
     Case(
         "missense_after_a_ctg_start_codon_keeps_the_start_codon",
         """
@@ -223,7 +217,7 @@ CASES = [
         ref 5' [ggg CTG AA]|[A CCC GAC TAA ggggg] 3'
         alt 5' [ggg CTG AA]|[A CGC GAC TAA ggggg] 3'
                                 ^ C>G
-        CCC>CGC is a missense. The alt CDS starts with the annotated start codon CTG too: alt_start_codon_pos = 0.
+        CCC>CGC is a missense. The alt CDS starts with the annotated start codon CTG too, so start_loss is False.
         """,
         CTG_START,
         Change("AC[C>G]CGAC"),
@@ -231,23 +225,19 @@ CASES = [
             "variant_id": "var1",
             "ref": per_strand("C", "G"),
             "alt": per_strand("G", "C"),
-            "start_variant": per_strand(40, 22),
-            "end_variant": per_strand(41, 23),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(48, 50),
+            "start": per_strand(40, 22),
+            "end": per_strand(41, 23),
             "alt_cds_seq": "CTGAAACGCGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            "alt_start_codon_pos": 0,
-            "alt_start_codon_exon": 1,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
             "alt_last_codon": "TAA",
             "alt_valid_stop": True,
             "alt_first_stop_codon": "TAA",
             "alt_first_stop_pos": 12,
-            "alt_num_stop_codons": 1,
-            "alt_all_stop_codons": [(12, "TAA")],
+            "alt_stop_codon_count": 1,
+            "alt_stop_codons": [{"position": 12, "codon": "TAA"}],
             "alt_stop_codon_exons": [2],
-            "alt_is_premature": False,
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GGGCTGAAACGCGACTAAGGGGG",
@@ -256,46 +246,49 @@ CASES = [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         ruler=Ruler((0, 3, 8, 10, 15, 18, 23)),
     ),
 ]
 
-# SC-04: the CDS starts with the annotated start codon CTG and has an in-frame ATG at CDS 30
+# The CDS starts with the annotated start codon CTG and has an in-frame ATG at CDS 30
 INTERNAL_MET_CDS = "CTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TGGGACTAA"
 INTERNAL_MET = Layout(
     Transcript(("ggg" + INTERNAL_MET_CDS[:100], INTERNAL_MET_CDS[100:] + "ggggg")),
     {
         **IDS,
-        "ref_cds_start": per_strand(13, 15),
-        "ref_cds_stop": per_strand(201, 203),
+        "cds_start": per_strand(13, 15),
+        "cds_end": per_strand(201, 203),
         "ref_cds_seq": INTERNAL_MET_CDS,
-        "ref_cds_len": 168,
+        "ref_cds_length": 168,
         "has_start_codon": True,
         "has_stop_codon": True,
         "cds_frame": 0,
-        "ref_cds_info": [(1, 100), (2, 68)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 68}],
         "cds_in_transcript": True,
-        "ref_start_codon_pos": 0,
-        "ref_start_codon_exon": 1,
+        "start_codon_exon": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
         "ref_first_stop_pos": 165,
-        "ref_num_stop_codons": 1,
-        "ref_all_stop_codons": [(165, "TAA")],
+        "ref_stop_codon_count": 1,
+        "ref_stop_codons": [{"position": 165, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
-        "ref_is_premature": False,
+        "ref_has_ptc": False,
         "transcript_start": 10,
         "transcript_end": 206,
         "transcript_seq": "GGG" + INTERNAL_MET_CDS + "GGGGG",
         "transcript_length": 176,
         "cds_start_in_transcript": 3,
         "cds_end_in_transcript": 171,
-        "transcript_exon_info": [(1, 103), (2, 73)],
+        "transcript_exons": [{"exon_number": 1, "length": 103}, {"exon_number": 2, "length": 73}],
         "utr3_length": 5,
         "utr5_length": 3,
         "total_exon_count": 2,
@@ -303,37 +296,36 @@ INTERNAL_MET = Layout(
     },
 )
 
-# SC-20: the start codon CTG, an in-frame ATG at CDS 6, and a TAG in the 3' UTR in the frame of the CDS
+# The start codon CTG, an in-frame ATG at CDS 6, and a TAG in the 3' UTR in the frame of the CDS
 CTG_THEN_ATG = Layout(
     Transcript(("ggCTGAA", "AATGCCCTAAgggtagcc")),
     {
         **IDS,
-        "ref_cds_start": per_strand(12, 18),
-        "ref_cds_stop": per_strand(47, 53),
+        "cds_start": per_strand(12, 18),
+        "cds_end": per_strand(47, 53),
         "ref_cds_seq": "CTGAAAATGCCCTAA",
-        "ref_cds_len": 15,
+        "ref_cds_length": 15,
         "has_start_codon": True,
         "has_stop_codon": True,
         "cds_frame": 0,
-        "ref_cds_info": [(1, 5), (2, 10)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
         "cds_in_transcript": True,
-        "ref_start_codon_pos": 0,
-        "ref_start_codon_exon": 1,
+        "start_codon_exon": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
         "ref_first_stop_pos": 12,
-        "ref_num_stop_codons": 1,
-        "ref_all_stop_codons": [(12, "TAA")],
+        "ref_stop_codon_count": 1,
+        "ref_stop_codons": [{"position": 12, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
-        "ref_is_premature": False,
+        "ref_has_ptc": False,
         "transcript_start": 10,
         "transcript_end": 55,
         "transcript_seq": "GGCTGAAAATGCCCTAAGGGTAGCC",
         "transcript_length": 25,
         "cds_start_in_transcript": 2,
         "cds_end_in_transcript": 17,
-        "transcript_exon_info": [(1, 7), (2, 18)],
+        "transcript_exons": [{"exon_number": 1, "length": 7}, {"exon_number": 2, "length": 18}],
         "utr3_length": 8,
         "utr5_length": 2,
         "total_exon_count": 2,
@@ -346,18 +338,17 @@ CTG_THEN_ATG = Layout(
 # the 3' UTR ggggg share
 ATG_TAA_BASE = {
     **IDS,
-    "ref_cds_start": per_strand(13, 15),
+    "cds_start": per_strand(13, 15),
     "has_start_codon": True,
     "has_stop_codon": True,
     "cds_frame": 0,
     "cds_in_transcript": True,
-    "ref_start_codon_pos": 0,
-    "ref_start_codon_exon": 1,
+    "start_codon_exon": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
-    "ref_num_stop_codons": 1,
-    "ref_is_premature": False,
+    "ref_stop_codon_count": 1,
+    "ref_has_ptc": False,
     "transcript_start": 10,
     "cds_start_in_transcript": 3,
     "utr3_length": 5,
@@ -365,29 +356,37 @@ ATG_TAA_BASE = {
     "likely_misannotated": False,
 }
 
-# SC-16: an ATG at CDS 6, in frame, and a CAG at CDS 9
+# An ATG at CDS 6, in frame, and a CAG at CDS 9
 MET_RESCUE_CDS = "ATGGCCATGCAG" + "AAA" * 36 + "GACTAA"
 MET_RESCUE = Layout(
     Transcript(("ggg" + MET_RESCUE_CDS[:60], MET_RESCUE_CDS[60:120], MET_RESCUE_CDS[120:] + "ggggg")),
     {
         **ATG_TAA_BASE,
-        "ref_cds_stop": per_strand(179, 181),
+        "cds_end": per_strand(179, 181),
         "ref_cds_seq": MET_RESCUE_CDS,
-        "ref_cds_len": 126,
-        "ref_cds_info": [(1, 60), (2, 60), (3, 6)],
+        "ref_cds_length": 126,
+        "ref_cds_exons": [
+            {"exon_number": 1, "length": 60},
+            {"exon_number": 2, "length": 60},
+            {"exon_number": 3, "length": 6},
+        ],
         "ref_first_stop_pos": 123,
-        "ref_all_stop_codons": [(123, "TAA")],
+        "ref_stop_codons": [{"position": 123, "codon": "TAA"}],
         "ref_stop_codon_exons": [3],
         "transcript_end": 184,
         "transcript_seq": "GGG" + MET_RESCUE_CDS + "GGGGG",
         "transcript_length": 134,
         "cds_end_in_transcript": 129,
-        "transcript_exon_info": [(1, 63), (2, 60), (3, 11)],
+        "transcript_exons": [
+            {"exon_number": 1, "length": 63},
+            {"exon_number": 2, "length": 60},
+            {"exon_number": 3, "length": 11},
+        ],
         "total_exon_count": 3,
     },
 )
 
-# SC-08: an ATG at CDS 4, out of frame, whose frame reads CTA AAA as TAA
+# An ATG at CDS 4, out of frame, whose frame reads CTA AAA as TAA
 OUT_OF_FRAME_RESCUE_CDS = "ATGGATGCCCTA" + "AAA" * 50 + "GACTAA"
 OUT_OF_FRAME_RESCUE = Layout(
     Transcript(
@@ -395,39 +394,47 @@ OUT_OF_FRAME_RESCUE = Layout(
     ),
     {
         **ATG_TAA_BASE,
-        "ref_cds_stop": per_strand(221, 223),
+        "cds_end": per_strand(221, 223),
         "ref_cds_seq": OUT_OF_FRAME_RESCUE_CDS,
-        "ref_cds_len": 168,
-        "ref_cds_info": [(1, 60), (2, 60), (3, 48)],
+        "ref_cds_length": 168,
+        "ref_cds_exons": [
+            {"exon_number": 1, "length": 60},
+            {"exon_number": 2, "length": 60},
+            {"exon_number": 3, "length": 48},
+        ],
         "ref_first_stop_pos": 165,
-        "ref_all_stop_codons": [(165, "TAA")],
+        "ref_stop_codons": [{"position": 165, "codon": "TAA"}],
         "ref_stop_codon_exons": [3],
         "transcript_end": 226,
         "transcript_seq": "GGG" + OUT_OF_FRAME_RESCUE_CDS + "GGGGG",
         "transcript_length": 176,
         "cds_end_in_transcript": 171,
-        "transcript_exon_info": [(1, 63), (2, 60), (3, 53)],
+        "transcript_exons": [
+            {"exon_number": 1, "length": 63},
+            {"exon_number": 2, "length": 60},
+            {"exon_number": 3, "length": 53},
+        ],
         "total_exon_count": 3,
     },
 )
 
-# SC-05, SC-09: GTA AGC after the start codon, and an ATG at CDS 9 in frame
+# GTA AGC after the start codon, and an ATG at CDS 9 in frame
 FRAMESHIFT_RESCUE = Layout(
     Transcript(("gggATGGT", "AAGCATGGCCAAAGACTAAggggg")),
     {
         **ATG_TAA_BASE,
-        "ref_cds_stop": per_strand(57, 59),
+        "cds_end": per_strand(57, 59),
         "ref_cds_seq": "ATGGTAAGCATGGCCAAAGACTAA",
-        "ref_cds_len": 24,
-        "ref_cds_info": [(1, 5), (2, 19)],
+        "ref_cds_length": 24,
+        "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 19}],
         "ref_first_stop_pos": 21,
-        "ref_all_stop_codons": [(21, "TAA")],
+        "ref_stop_codons": [{"position": 21, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
         "transcript_end": 62,
         "transcript_seq": "GGGATGGTAAGCATGGCCAAAGACTAAGGGGG",
         "transcript_length": 32,
         "cds_end_in_transcript": 27,
-        "transcript_exon_info": [(1, 8), (2, 24)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 24}],
         "total_exon_count": 2,
     },
 )
@@ -436,89 +443,88 @@ FRAMESHIFT_RESCUE = Layout(
 ATG_CCC_AAA_GAC = {
     **ATG_TAA_BASE,
     "ref_cds_seq": "ATGCCCAAAGACTAA",
-    "ref_cds_len": 15,
-    "ref_cds_info": [(1, 5), (2, 10)],
+    "ref_cds_length": 15,
+    "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
     "ref_first_stop_pos": 12,
-    "ref_all_stop_codons": [(12, "TAA")],
+    "ref_stop_codons": [{"position": 12, "codon": "TAA"}],
     "ref_stop_codon_exons": [2],
     "cds_end_in_transcript": 18,
     "total_exon_count": 2,
 }
 
-# SC-12: an ATG in the 3' UTR, 5 nt after the first base of the stop codon
+# An ATG in the 3' UTR, 5 nt after the first base of the stop codon
 ATG_IN_THE_3UTR = Layout(
     Transcript(("gggATGCC", "CAAAGACTAAggatgccctgagg")),
     {
         **ATG_CCC_AAA_GAC,
-        "ref_cds_start": per_strand(13, 23),
-        "ref_cds_stop": per_strand(48, 58),
+        "cds_start": per_strand(13, 23),
+        "cds_end": per_strand(48, 58),
         "transcript_end": 61,
         "transcript_seq": "GGGATGCCCAAAGACTAAGGATGCCCTGAGG",
         "transcript_length": 31,
-        "transcript_exon_info": [(1, 8), (2, 23)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 23}],
         "utr3_length": 13,
     },
 )
 
-# SC-13: an ATG that starts at the last base of the stop codon: TAA tg
+# An ATG that starts at the last base of the stop codon: TAA tg
 ATG_AT_THE_LAST_STOP_CODON_BASE = Layout(
     Transcript(("gggATGCC", "CAAAGACTAAtgccctgagg")),
     {
         **ATG_CCC_AAA_GAC,
-        "ref_cds_start": per_strand(13, 20),
-        "ref_cds_stop": per_strand(48, 55),
+        "cds_start": per_strand(13, 20),
+        "cds_end": per_strand(48, 55),
         "transcript_end": 58,
         "transcript_seq": "GGGATGCCCAAAGACTAATGCCCTGAGG",
         "transcript_length": 28,
-        "transcript_exon_info": [(1, 8), (2, 20)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 20}],
         "utr3_length": 10,
     },
 )
 
-# SC-13: an ATG that starts 1 nt before the stop codon TGA: CCA TGA
+# An ATG that starts 1 nt before the stop codon TGA: CCA TGA
 ATG_BEFORE_THE_STOP_CODON = Layout(
     Transcript(("gggATGCC", "CAAACCATGAcctaggg")),
     {
         **ATG_CCC_AAA_GAC,
-        "ref_cds_start": per_strand(13, 17),
-        "ref_cds_stop": per_strand(48, 52),
+        "cds_start": per_strand(13, 17),
+        "cds_end": per_strand(48, 52),
         "ref_cds_seq": "ATGCCCAAACCATGA",
         "ref_last_codon": "TGA",
         "ref_first_stop_codon": "TGA",
-        "ref_all_stop_codons": [(12, "TGA")],
+        "ref_stop_codons": [{"position": 12, "codon": "TGA"}],
         "transcript_end": 55,
         "transcript_seq": "GGGATGCCCAAACCATGACCTAGGG",
         "transcript_length": 25,
-        "transcript_exon_info": [(1, 8), (2, 17)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 17}],
         "utr3_length": 7,
     },
 )
 
-# SC-10: an ATG at CDS 4, out of frame, whose frame reads on past the stop codon to a TGA in the 3' UTR
+# An ATG at CDS 4, out of frame, whose frame reads on past the stop codon to a TGA in the 3' UTR
 RESCUE_PAST_THE_STOP = Layout(
     Transcript(("gggATGGATGC", "CCCCAAAGACTAAgtgacc")),
     {
         **ATG_TAA_BASE,
-        "ref_cds_start": per_strand(13, 16),
-        "ref_cds_stop": per_strand(54, 57),
+        "cds_start": per_strand(13, 16),
+        "cds_end": per_strand(54, 57),
         "ref_cds_seq": "ATGGATGCCCCCAAAGACTAA",
-        "ref_cds_len": 21,
-        "ref_cds_info": [(1, 8), (2, 13)],
+        "ref_cds_length": 21,
+        "ref_cds_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 13}],
         "ref_first_stop_pos": 18,
-        "ref_all_stop_codons": [(18, "TAA")],
+        "ref_stop_codons": [{"position": 18, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
         "transcript_end": 60,
         "transcript_seq": "GGGATGGATGCCCCCAAAGACTAAGTGACC",
         "transcript_length": 30,
         "cds_end_in_transcript": 24,
-        "transcript_exon_info": [(1, 11), (2, 19)],
+        "transcript_exons": [{"exon_number": 1, "length": 11}, {"exon_number": 2, "length": 19}],
         "utr3_length": 6,
         "total_exon_count": 2,
     },
 )
 
 CASES += [
-    # SC-04
     Case(
         "ptc_after_a_ctg_start_codon_is_measured_from_the_ctg_not_from_the_internal_met",
         """
@@ -528,7 +534,7 @@ CASES += [
                                                                                      ^ G>A
                                                                                     *** PTC
                     <------------ ptc_to_start_codon = 159, not < 150 ------------>
-                                                                                    <---------------> ptc_to_intron = 14
+                                                                                    <---------------> ptc_to_exon_end = 14
         exon 1: 103 nt, exon 2: 73 nt
         TGG>TAG is a PTC in the last exon. The ATG at CDS 30 is an internal Met: from it, the PTC would be 129 nt away.
         """,
@@ -536,13 +542,20 @@ CASES += [
         Change("AAT[G>A]GGAC"),
         {
             **variant(per_strand("G", "C"), per_strand("A", "T"), per_strand(193, 22), per_strand(194, 23)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(201, 203),
             "alt_cds_seq": "CTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TAGGACTAA",
-            "alt_cds_len": 168,
-            "alt_cds_info": [(1, 100), (2, 68)],
-            **columns(ALT_CODON_COLUMNS, 0, 1, "TAA", True, "TAG", 159, 2, [(159, "TAG"), (165, "TAA")], [2, 2]),
-            "alt_is_premature": True,
+            "alt_cds_length": 168,
+            "alt_cds_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 68}],
+            **columns(
+                ALT_CODON_COLUMNS,
+                "TAA",
+                True,
+                "TAG",
+                159,
+                2,
+                [{"position": 159, "codon": "TAG"}, {"position": 165, "codon": "TAA"}],
+                [2, 2],
+            ),
+            "alt_has_ptc": True,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GGGCTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TAGGACTAAGGGGG",
@@ -551,18 +564,21 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 1, 0, 159, False, 73, 14),
-            "stop_codon_distance": 6,
+            "annotated_stop_distance": 6,
             **columns(RULE_COLUMNS, True, False, False, False, False, True),
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "ok",
+            "ptc_pos_in_alt_transcript": 162,
+            "ptc_exon_number": 2,
+            "stop_classification": "alt_transcript",
         },
         marks=(
             Mark("alt", 162, 165, "*", "PTC"),
             Span("alt", 3, 162, "ptc_to_start_codon = 159, not < 150"),
-            Span("alt", 162, 176, "ptc_to_intron = 14"),
+            Span("alt", 162, 176, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 30, 159, 165), "CDS"),
     ),
-    # SC-20
     Case(
         "stop_loss_scan_starts_at_the_annotated_ctg_not_at_the_in_frame_atg",
         """
@@ -571,34 +587,35 @@ CASES += [
         alt 5' [gg CTG AA]|[A ATG CCC CAA gggtagcc] 3'
                                       ^ T>C
         TAA>CAA loses the stop codon. The scan reads on in the frame of the CDS to the TAG at tx 20. Its start codon
-        is the annotated CTG at tx 2, not the in-frame ATG at tx 8. stop_codon_distance = 14 - 20 = -6.
+        is the annotated CTG at tx 2, not the in-frame ATG at tx 8. annotated_stop_distance = 14 - 20 = -6.
         """,
         CTG_THEN_ATG,
         Change("CCC[T>C]AAggg"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(44, 20), per_strand(45, 21)),
-            "alt_cds_start": per_strand(12, 18),
-            "alt_cds_stop": per_strand(47, 53),
             "alt_cds_seq": "CTGAAAATGCCCCAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, 0, 1, "CAA", False, None, None, 0, [], []),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "CAA", False, None, None, 0, [], []),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": True,
             "alt_transcript_seq": "GGCTGAAAATGCCCCAAGGGTAGCC",
             "alt_transcript_length": 25,
             "alt_cds_start_in_transcript": 2,
-            **columns(SCAN_COLUMNS, 2, 1, "GCC", False, "TAG", 20, 1, [(20, "TAG")], [2]),
+            **columns(SCAN_COLUMNS, 2, 1, "TAG", 20, 1, [{"position": 20, "codon": "TAG"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -6,
+            "annotated_stop_distance": -6,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         ruler=Ruler((0, 2, 7, 8, 14, 20, 25)),
     ),
-    # SC-16
     Case(
         "start_loss_with_a_ptc_3_nt_after_the_atg_of_the_scan_escapes_by_the_start_proximal_rule",
         """
@@ -609,7 +626,7 @@ CASES += [
                             aaa ATG of the scan
                                 *** PTC
                             <-> ptc_to_start_codon = 3
-                                <-- ptc_to_intron = 51 -->
+                                <------------------------> ptc_to_exon_end = 51
         exon 1: 63 nt, exon 2: 60 nt, exon 3: 11 nt
         One MNV changes ATG>ACG and CAG>TAG. The scan finds the ATG at tx 9, and its first stop codon is the TAG at
         tx 12: a PTC, 114 nt upstream of the stop codon at tx 126. From the CDS start, the PTC would be 9 nt away.
@@ -623,34 +640,57 @@ CASES += [
                 per_strand(14, 171),
                 per_strand(23, 180),
             ),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(179, 181),
             "alt_cds_seq": "ACGGCCATGTAG" + "AAA" * 36 + "GACTAA",
-            "alt_cds_len": 126,
-            "alt_cds_info": [(1, 60), (2, 60), (3, 6)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAG", 9, 2, [(9, "TAG"), (123, "TAA")], [1, 3]),
-            "alt_is_premature": True,
+            "alt_cds_length": 126,
+            "alt_cds_exons": [
+                {"exon_number": 1, "length": 60},
+                {"exon_number": 2, "length": 60},
+                {"exon_number": 3, "length": 6},
+            ],
+            **columns(
+                ALT_CODON_COLUMNS,
+                "TAA",
+                True,
+                "TAG",
+                9,
+                2,
+                [{"position": 9, "codon": "TAG"}, {"position": 123, "codon": "TAA"}],
+                [1, 3],
+            ),
+            "alt_has_ptc": True,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGGCCATGTAG" + "AAA" * 36 + "GACTAAGGGGG",
             "alt_transcript_length": 134,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 9, 1, "GGG", False, "TAG", 12, 2, [(12, "TAG"), (126, "TAA")], [1, 3]),
+            **columns(
+                SCAN_COLUMNS,
+                9,
+                1,
+                "TAG",
+                12,
+                2,
+                [{"position": 12, "codon": "TAG"}, {"position": 126, "codon": "TAA"}],
+                [1, 3],
+            ),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 2, 3, True, 63, 51),
-            "stop_codon_distance": 114,
+            "annotated_stop_distance": 114,
             **columns(RULE_COLUMNS, False, False, False, True, False, True),
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "ok",
+            "ptc_pos_in_alt_transcript": 12,
+            "ptc_exon_number": 1,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 9, 12, "a", "ATG of the scan"),
             Mark("alt", 12, 15, "*", "PTC"),
             Span("alt", 9, 12, "ptc_to_start_codon = 3"),
-            Span("alt", 12, 63, "ptc_to_intron = 51"),
+            Span("alt", 12, 63, "ptc_to_exon_end = 51"),
         ),
         ruler=Ruler((0, 3, 9, 12, 63, 123, 126, 134)),
     ),
-    # SC-08, PF-08, PF-11, PF-14, PF-21
     Case(
         "start_loss_classifies_the_first_stop_codon_of_an_out_of_frame_rescued_orf_as_a_ptc",
         """
@@ -661,8 +701,8 @@ CASES += [
                          aaaa ATG of the scan
                                  **** PTC
                          <------> ptc_to_start_codon = 6
-                                 <--------------------- stop_codon_distance = 155 --------------------->
-                                 <-----------------------> ptc_to_intron = 50
+                                 <------------------- annotated_stop_distance = 155 ------------------->
+                                 <-----------------------> ptc_to_exon_end = 50
         exon 1: 63 nt, exon 2: 60 nt, exon 3: 53 nt
         ATG>ACG is a start loss. The scan finds the ATG at tx 7, out of frame with the stop codon. Its ORF ATG CCC TAA
         ends at tx 13, upstream of the stop codon at tx 168: a PTC in exon 1.
@@ -671,35 +711,40 @@ CASES += [
         Change("gggA[T>C]GGATG"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 221), per_strand(15, 222)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(221, 223),
             "alt_cds_seq": "ACGGATGCCCTA" + "AAA" * 50 + "GACTAA",
-            "alt_cds_len": 168,
-            "alt_cds_info": [(1, 60), (2, 60), (3, 48)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 165, 1, [(165, "TAA")], [3]),
-            "alt_is_premature": True,
+            "alt_cds_length": 168,
+            "alt_cds_exons": [
+                {"exon_number": 1, "length": 60},
+                {"exon_number": 2, "length": 60},
+                {"exon_number": 3, "length": 48},
+            ],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 165, 1, [{"position": 165, "codon": "TAA"}], [3]),
+            "alt_has_ptc": True,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGGATGCCCTA" + "AAA" * 50 + "GACTAAGGGGG",
             "alt_transcript_length": 176,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 7, 1, "GGG", False, "TAA", 13, 1, [(13, "TAA")], [1]),
+            **columns(SCAN_COLUMNS, 7, 1, "TAA", 13, 1, [{"position": 13, "codon": "TAA"}], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 2, 6, True, 63, 50),
-            "stop_codon_distance": 155,
+            "annotated_stop_distance": 155,
             **columns(RULE_COLUMNS, False, False, False, True, False, True),
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "ok",
+            "ptc_pos_in_alt_transcript": 13,
+            "ptc_exon_number": 1,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 13, 16, "*", "PTC"),
             Span("alt", 7, 13, "ptc_to_start_codon = 6"),
-            Span("alt", 13, 168, "stop_codon_distance = 155"),
-            Span("alt", 13, 63, "ptc_to_intron = 50"),
+            Span("alt", 13, 168, "annotated_stop_distance = 155"),
+            Span("alt", 13, 63, "ptc_to_exon_end = 50"),
         ),
         ruler=Ruler((0, 3, 7, 13, 63, 123, 168, 176)),
     ),
-    # SC-05, SC-09
     Case(
         "deletion_in_the_atg_is_a_start_loss_and_the_next_atg_in_frame_reads_to_the_annotated_stop_codon",
         """
@@ -711,30 +756,32 @@ CASES += [
                                       aaa ATG of the scan
                                                       sss the annotated stop codon
         No placement of the deletion keeps an ATG at the CDS start. The scan finds the ATG at tx 11, which is the Met
-        at CDS 9 of the ref CDS. Its ORF ends at the annotated stop codon at tx 23: stop_codon_distance = 0.
+        at CDS 9 of the ref CDS. Its ORF ends at the annotated stop codon at tx 23: annotated_stop_distance = 0.
         """,
         FRAMESHIFT_RESCUE,
         Change("gggA[T>]GGT"),
         {
             **variant(per_strand("AT", "CA"), per_strand("A", "C"), per_strand(13, 56), per_strand(15, 58)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(57, 59),
             "alt_cds_seq": "AGGTAAGCATGGCCAAAGACTAA",
-            "alt_cds_len": 23,
-            "alt_cds_info": [(1, 4), (2, 19)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 3, 1, [(3, "TAA")], [1]),
-            "alt_is_premature": False,
+            "alt_cds_length": 23,
+            "alt_cds_exons": [{"exon_number": 1, "length": 4}, {"exon_number": 2, "length": 19}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 3, 1, [{"position": 3, "codon": "TAA"}], [1]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGAGGTAAGCATGGCCAAAGACTAAGGGGG",
             "alt_transcript_length": 31,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 11, 2, "GGG", False, "TAA", 23, 1, [(23, "TAA")], [2]),
+            **columns(SCAN_COLUMNS, 11, 2, "TAA", 23, 1, [{"position": 23, "codon": "TAA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": [(1, 7), (2, 24)],
+            "alt_transcript_exons": [{"exon_number": 1, "length": 7}, {"exon_number": 2, "length": 24}],
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         equivalent=(Change("gggA[TG>G]GT"),),
         marks=(
@@ -744,7 +791,6 @@ CASES += [
             Mark("alt", 23, 26, "s", "the annotated stop codon"),
         ),
     ),
-    # SC-12
     Case(
         "start_loss_with_the_next_atg_in_the_3utr_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -756,30 +802,32 @@ CASES += [
                                              aaa ATG of the scan
                                                    sss the stop codon of the scan
         The scan finds the ATG at tx 20, downstream of the first base of the stop codon at tx 15. Its ORF does not
-        overlap the CDS: neither flag, stop_codon_distance = null. The scan columns are set.
+        overlap the CDS: neither flag, annotated_stop_distance = null. The scan columns are set.
         """,
         ATG_IN_THE_3UTR,
         Change("gggA[T>C]GCC"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 56), per_strand(15, 57)),
-            "alt_cds_start": per_strand(13, 23),
-            "alt_cds_stop": per_strand(48, 58),
             "alt_cds_seq": "ACGCCCAAAGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 12, 1, [(12, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 12, 1, [{"position": 12, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGCCCAAAGACTAAGGATGCCCTGAGG",
             "alt_transcript_length": 31,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 20, 2, "AGG", False, "TGA", 26, 1, [(26, "TGA")], [2]),
+            **columns(SCAN_COLUMNS, 20, 2, "TGA", 26, 1, [{"position": 26, "codon": "TGA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 15, 18, "s", "the annotated stop codon"),
@@ -788,7 +836,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 15, 20, 26, 31)),
     ),
-    # SC-10
     Case(
         "start_loss_whose_rescued_orf_ends_downstream_of_the_annotated_stop_codon_is_a_stop_loss",
         """
@@ -799,7 +846,7 @@ CASES += [
                          aaaa ATG of the scan
                                                sss the annotated stop codon
                                                     sss the stop codon of the scan
-                                               <---> stop_codon_distance = 21 - 25 = -4
+                                               <---> annotated_stop_distance = 21 - 25 = -4
         The scan finds the ATG at tx 7, out of frame with the stop codon at tx 21. Its frame reads past it to the TGA
         at tx 25 in the 3' UTR: a stop loss.
         """,
@@ -807,34 +854,36 @@ CASES += [
         Change("gggA[T>C]GGATG"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 55), per_strand(15, 56)),
-            "alt_cds_start": per_strand(13, 16),
-            "alt_cds_stop": per_strand(54, 57),
             "alt_cds_seq": "ACGGATGCCCCCAAAGACTAA",
-            "alt_cds_len": 21,
-            "alt_cds_info": [(1, 8), (2, 13)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 18, 1, [(18, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 21,
+            "alt_cds_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 13}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 18, 1, [{"position": 18, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": True,
             "alt_transcript_seq": "GGGACGGATGCCCCCAAAGACTAAGTGACC",
             "alt_transcript_length": 30,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 7, 1, "ACC", False, "TGA", 25, 1, [(25, "TGA")], [2]),
+            **columns(SCAN_COLUMNS, 7, 1, "TGA", 25, 1, [{"position": 25, "codon": "TGA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -4,
+            "annotated_stop_distance": -4,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 21, 24, "s", "the annotated stop codon"),
             Mark("alt", 25, 28, "s", "the stop codon of the scan"),
-            Span("alt", 21, 25, "stop_codon_distance = 21 - 25 = -4"),
+            Span("alt", 21, 25, "annotated_stop_distance = 21 - 25 = -4"),
         ),
         ruler=Ruler((0, 3, 7, 11, 21, 25, 30)),
     ),
-    # SC-13, the side of an ATG upstream of the first base of the stop codon
+    # The side of an ATG upstream of the first base of the stop codon
     Case(
         "start_loss_with_the_next_atg_1_nt_before_the_stop_codon_is_classified",
         """
@@ -846,30 +895,32 @@ CASES += [
                                        sss the annotated stop codon
                                              sss the stop codon of the scan
         The scan finds the ATG at tx 14, 1 nt before the first base of the stop codon TGA at tx 15. So its ORF is
-        classified: its frame reads to the TAG at tx 20, a stop loss. stop_codon_distance = 15 - 20 = -5.
+        classified: its frame reads to the TAG at tx 20, a stop loss. annotated_stop_distance = 15 - 20 = -5.
         """,
         ATG_BEFORE_THE_STOP_CODON,
         Change("gggA[T>C]GCC"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 50), per_strand(15, 51)),
-            "alt_cds_start": per_strand(13, 17),
-            "alt_cds_stop": per_strand(48, 52),
             "alt_cds_seq": "ACGCCCAAACCATGA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TGA", True, "TGA", 12, 1, [(12, "TGA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "TGA", True, "TGA", 12, 1, [{"position": 12, "codon": "TGA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": True,
             "alt_transcript_seq": "GGGACGCCCAAACCATGACCTAGGG",
             "alt_transcript_length": 25,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 14, 2, "GGG", False, "TAG", 20, 1, [(20, "TAG")], [2]),
+            **columns(SCAN_COLUMNS, 14, 2, "TAG", 20, 1, [{"position": 20, "codon": "TAG"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -5,
+            "annotated_stop_distance": -5,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 14, 17, "a", "ATG of the scan"),
@@ -878,7 +929,7 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 15, 20, 25)),
     ),
-    # SC-13, the side of an ATG downstream of the first base of the stop codon
+    # The side of an ATG downstream of the first base of the stop codon
     Case(
         "start_loss_with_the_next_atg_at_the_last_base_of_the_stop_codon_has_no_orf",
         """
@@ -891,30 +942,32 @@ CASES += [
                                                 sss the stop codon of the scan
         The scan finds the ATG at tx 17, 2 nt after the first base of the stop codon at tx 15. An ATG 1 nt after it
         would need TAT, which is no stop codon. So this is the nearest ATG on this side: its ORF does not overlap the
-        CDS, neither flag, stop_codon_distance = null.
+        CDS, neither flag, annotated_stop_distance = null.
         """,
         ATG_AT_THE_LAST_STOP_CODON_BASE,
         Change("gggA[T>C]GCC"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 53), per_strand(15, 54)),
-            "alt_cds_start": per_strand(13, 20),
-            "alt_cds_stop": per_strand(48, 55),
             "alt_cds_seq": "ACGCCCAAAGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 12, 1, [(12, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 12, 1, [{"position": 12, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGCCCAAAGACTAATGCCCTGAGG",
             "alt_transcript_length": 28,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 17, 2, "AGG", False, "TGA", 23, 1, [(23, "TGA")], [2]),
+            **columns(SCAN_COLUMNS, 17, 2, "TGA", 23, 1, [{"position": 23, "codon": "TGA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 15, 18, "s", "the annotated stop codon"),
@@ -925,41 +978,41 @@ CASES += [
     ),
 ]
 
-# SC-06: ATG and 12 C, so that the frame +1 of the CDS reads past the stop codon to a TGA in the 3' UTR
+# ATG and 12 C, so that the frame +1 of the CDS reads past the stop codon to a TGA in the 3' UTR
 ATG_C12 = Layout(
     Transcript(("gggATGCCCCC", "CCCCCCCTAAggtgacc")),
     {
         **ATG_TAA_BASE,
-        "ref_cds_start": per_strand(13, 17),
-        "ref_cds_stop": per_strand(51, 55),
+        "cds_start": per_strand(13, 17),
+        "cds_end": per_strand(51, 55),
         "ref_cds_seq": "ATG" + "C" * 12 + "TAA",
-        "ref_cds_len": 18,
-        "ref_cds_info": [(1, 8), (2, 10)],
+        "ref_cds_length": 18,
+        "ref_cds_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 10}],
         "ref_first_stop_pos": 15,
-        "ref_all_stop_codons": [(15, "TAA")],
+        "ref_stop_codons": [{"position": 15, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
         "transcript_end": 58,
         "transcript_seq": "GGGATG" + "C" * 12 + "TAAGGTGACC",
         "transcript_length": 28,
         "cds_end_in_transcript": 21,
-        "transcript_exon_info": [(1, 11), (2, 17)],
+        "transcript_exons": [{"exon_number": 1, "length": 11}, {"exon_number": 2, "length": 17}],
         "utr3_length": 7,
         "total_exon_count": 2,
     },
 )
 
-# SC-07, SC-21: a 13 nt 5' UTR with an ATG at tx 2, ATG GCT ATG GCT GCT GCT TGA, and a TAG in the frame of the CDS in
+# A 13 nt 5' UTR with an ATG at tx 2, ATG GCT ATG GCT GCT GCT TGA, and a TAG in the frame of the CDS in
 # the 3' UTR. The 5' UTR is one exon or two.
 SCAN_START_TRANSCRIPT = "CCATGCCGCCGCC" + "ATGGCTATGGCTGCTGCTTGA" + "GCTGCTTAGCCTAACCC"
 SCAN_START_BASE = {
     **ATG_TAA_BASE,
-    "ref_cds_start": per_strand(23, 47),
+    "cds_start": per_strand(23, 47),
     "ref_cds_seq": "ATGGCTATGGCTGCTGCTTGA",
-    "ref_cds_len": 21,
+    "ref_cds_length": 21,
     "ref_last_codon": "TGA",
     "ref_first_stop_codon": "TGA",
     "ref_first_stop_pos": 18,
-    "ref_all_stop_codons": [(18, "TGA")],
+    "ref_stop_codons": [{"position": 18, "codon": "TGA"}],
     "transcript_seq": SCAN_START_TRANSCRIPT,
     "transcript_length": 51,
     "cds_start_in_transcript": 13,
@@ -971,11 +1024,11 @@ SCAN_START = Layout(
     Transcript(("ccatgccgccgccATGGCTATGGCTGCTGCTTGA", "gctgcttagcctaaccc")),
     {
         **SCAN_START_BASE,
-        "ref_cds_stop": per_strand(44, 68),
-        "ref_cds_info": [(1, 21)],
+        "cds_end": per_strand(44, 68),
+        "ref_cds_exons": [{"exon_number": 1, "length": 21}],
         "ref_stop_codon_exons": [1],
         "transcript_end": 81,
-        "transcript_exon_info": [(1, 34), (2, 17)],
+        "transcript_exons": [{"exon_number": 1, "length": 34}, {"exon_number": 2, "length": 17}],
         "total_exon_count": 2,
     },
 )
@@ -983,55 +1036,59 @@ SCAN_START_AFTER_A_5UTR_INTRON = Layout(
     Transcript(("ccatg", "ccgccgccATGGCTATGGCTGCTGCTTGA", "gctgcttagcctaaccc")),
     {
         **SCAN_START_BASE,
-        "ref_cds_start": per_strand(43, 47),
-        "ref_cds_stop": per_strand(64, 68),
-        "ref_cds_info": [(2, 21)],
-        "ref_start_codon_exon": 2,
+        "cds_start": per_strand(43, 47),
+        "cds_end": per_strand(64, 68),
+        "ref_cds_exons": [{"exon_number": 2, "length": 21}],
+        "start_codon_exon": 2,
         "ref_stop_codon_exons": [2],
         "transcript_end": 101,
-        "transcript_exon_info": [(1, 5), (2, 29), (3, 17)],
+        "transcript_exons": [
+            {"exon_number": 1, "length": 5},
+            {"exon_number": 2, "length": 29},
+            {"exon_number": 3, "length": 17},
+        ],
         "total_exon_count": 3,
     },
 )
 
-# SC-14: one exon; the 3' UTR holds the next ATG and a TGA in its frame
+# One exon; the 3' UTR holds the next ATG and a TGA in its frame
 STOP_THEN_ATG = Layout(
     Transcript(("ccATGAAACCCTAAgatgccctgacc",)),
     {
         **ATG_TAA_BASE,
-        "ref_cds_start": per_strand(12, 22),
-        "ref_cds_stop": per_strand(24, 34),
+        "cds_start": per_strand(12, 22),
+        "cds_end": per_strand(24, 34),
         "ref_cds_seq": "ATGAAACCCTAA",
-        "ref_cds_len": 12,
-        "ref_cds_info": [(1, 12)],
+        "ref_cds_length": 12,
+        "ref_cds_exons": [{"exon_number": 1, "length": 12}],
         "ref_first_stop_pos": 9,
-        "ref_all_stop_codons": [(9, "TAA")],
+        "ref_stop_codons": [{"position": 9, "codon": "TAA"}],
         "ref_stop_codon_exons": [1],
         "transcript_end": 36,
         "transcript_seq": "CCATGAAACCCTAAGATGCCCTGACC",
         "transcript_length": 26,
         "cds_start_in_transcript": 2,
         "cds_end_in_transcript": 14,
-        "transcript_exon_info": [(1, 26)],
+        "transcript_exons": [{"exon_number": 1, "length": 26}],
         "utr3_length": 12,
         "utr5_length": 2,
         "total_exon_count": 1,
     },
 )
 
-# SC-15: a cds_end_NF transcript without stop_codon rows, whose CDS ends in GAC. Its ATG at CDS 4 reads CTA AAA as TAA,
+# A cds_end_NF transcript without stop_codon rows, whose CDS ends in GAC. Its ATG at CDS 4 reads CTA AAA as TAA,
 # or its frame reads CCA AAA and finds a TAA only in the 3' region after the CDS.
 NO_STOP_CODON_BASE = {
     **ATG_TAA_BASE,
-    "ref_cds_len": 24,
+    "ref_cds_length": 24,
     "has_stop_codon": False,
-    "ref_cds_info": [(1, 15), (2, 9)],
+    "ref_cds_exons": [{"exon_number": 1, "length": 15}, {"exon_number": 2, "length": 9}],
     "ref_last_codon": "GAC",
     "ref_valid_stop": False,
     "ref_first_stop_codon": None,
     "ref_first_stop_pos": None,
-    "ref_num_stop_codons": 0,
-    "ref_all_stop_codons": [],
+    "ref_stop_codon_count": 0,
+    "ref_stop_codons": [],
     "ref_stop_codon_exons": [],
     "cds_end_in_transcript": 27,
     "utr3_length": None,
@@ -1042,30 +1099,30 @@ NO_STOP_CODON_PTC = Layout(
     Transcript(("gggATGGATGCCCTAAAA", "AAAAAAGACcccc"), stop_codon=False, tags=("cds_end_NF",)),
     {
         **NO_STOP_CODON_BASE,
-        "ref_cds_start": per_strand(13, 14),
-        "ref_cds_stop": per_strand(57, 58),
+        "cds_start": per_strand(13, 14),
+        "cds_end": per_strand(57, 58),
         "ref_cds_seq": "ATGGATGCCCTA" + "AAA" * 3 + "GAC",
         "transcript_end": 61,
         "transcript_seq": "GGGATGGATGCCCTA" + "AAA" * 3 + "GACCCCC",
         "transcript_length": 31,
-        "transcript_exon_info": [(1, 18), (2, 13)],
+        "transcript_exons": [{"exon_number": 1, "length": 18}, {"exon_number": 2, "length": 13}],
     },
 )
 NO_STOP_CODON_STOP_PAST_THE_CDS = Layout(
     Transcript(("gggATGGATGCCCCAAAA", "AAAAAAGACctaacc"), stop_codon=False, tags=("cds_end_NF",)),
     {
         **NO_STOP_CODON_BASE,
-        "ref_cds_start": per_strand(13, 16),
-        "ref_cds_stop": per_strand(57, 60),
+        "cds_start": per_strand(13, 16),
+        "cds_end": per_strand(57, 60),
         "ref_cds_seq": "ATGGATGCCCCA" + "AAA" * 3 + "GAC",
         "transcript_end": 63,
         "transcript_seq": "GGGATGGATGCCCCA" + "AAA" * 3 + "GACCTAACC",
         "transcript_length": 33,
-        "transcript_exon_info": [(1, 18), (2, 15)],
+        "transcript_exons": [{"exon_number": 1, "length": 18}, {"exon_number": 2, "length": 15}],
     },
 )
 
-# SC-17: as OUT_OF_FRAME_RESCUE, with the CTA 150 nt after the ATG at CDS 4, in an exon 1 of 173 nt
+# As OUT_OF_FRAME_RESCUE, with the CTA 150 nt after the ATG at CDS 4, in an exon 1 of 173 nt
 START_PROXIMAL_150_CDS = "ATGGATGCC" + "AAA" * 48 + "CTA" + "AAA" * 30 + "GACTAA"
 START_PROXIMAL_150 = Layout(
     Transcript(
@@ -1073,50 +1130,57 @@ START_PROXIMAL_150 = Layout(
     ),
     {
         **ATG_TAA_BASE,
-        "ref_cds_stop": per_strand(305, 307),
+        "cds_end": per_strand(305, 307),
         "ref_cds_seq": START_PROXIMAL_150_CDS,
-        "ref_cds_len": 252,
-        "ref_cds_info": [(1, 170), (2, 70), (3, 12)],
+        "ref_cds_length": 252,
+        "ref_cds_exons": [
+            {"exon_number": 1, "length": 170},
+            {"exon_number": 2, "length": 70},
+            {"exon_number": 3, "length": 12},
+        ],
         "ref_first_stop_pos": 249,
-        "ref_all_stop_codons": [(249, "TAA")],
+        "ref_stop_codons": [{"position": 249, "codon": "TAA"}],
         "ref_stop_codon_exons": [3],
         "transcript_end": 310,
         "transcript_seq": "GGG" + START_PROXIMAL_150_CDS + "GGGGG",
         "transcript_length": 260,
         "cds_end_in_transcript": 255,
-        "transcript_exon_info": [(1, 173), (2, 70), (3, 17)],
+        "transcript_exons": [
+            {"exon_number": 1, "length": 173},
+            {"exon_number": 2, "length": 70},
+            {"exon_number": 3, "length": 17},
+        ],
         "total_exon_count": 3,
     },
 )
 
 
-# SC-19: a 5' UTR gggtca, and the ATG at CDS 4 that reads CTA AAA as TAA
+# A 5' UTR gggtca, and the ATG at CDS 4 that reads CTA AAA as TAA
 UTR5_AND_START_CODON = "ATGGATGCCCTA" + "AAA" * 3 + "GACTAA"
 UTR5_AND_START = Layout(
     Transcript(("gggtca" + UTR5_AND_START_CODON[:16], UTR5_AND_START_CODON[16:] + "ggggg")),
     {
         **ATG_TAA_BASE,
-        "ref_cds_start": per_strand(16, 15),
-        "ref_cds_stop": per_strand(63, 62),
+        "cds_start": per_strand(16, 15),
+        "cds_end": per_strand(63, 62),
         "ref_cds_seq": UTR5_AND_START_CODON,
-        "ref_cds_len": 27,
-        "ref_cds_info": [(1, 16), (2, 11)],
+        "ref_cds_length": 27,
+        "ref_cds_exons": [{"exon_number": 1, "length": 16}, {"exon_number": 2, "length": 11}],
         "ref_first_stop_pos": 24,
-        "ref_all_stop_codons": [(24, "TAA")],
+        "ref_stop_codons": [{"position": 24, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
         "transcript_end": 68,
         "transcript_seq": "GGGTCA" + UTR5_AND_START_CODON + "GGGGG",
         "transcript_length": 38,
         "cds_start_in_transcript": 6,
         "cds_end_in_transcript": 33,
-        "transcript_exon_info": [(1, 22), (2, 16)],
+        "transcript_exons": [{"exon_number": 1, "length": 22}, {"exon_number": 2, "length": 16}],
         "utr5_length": 6,
         "total_exon_count": 2,
     },
 )
 
 CASES += [
-    # SC-06
     Case(
         "insertion_inside_the_start_codon_that_keeps_an_atg_at_the_cds_start_is_no_start_loss",
         """
@@ -1127,31 +1191,33 @@ CASES += [
                                                   sss the annotated stop codon, shifted
                                                         sss the stop codon of the scan
         A>ATGAT keeps an ATG at the CDS start, so it is no start loss. The 4 nt frameshift reads past the shifted stop
-        codon at tx 22 to the TGA at tx 27 in the 3' UTR: a stop loss, stop_codon_distance = 22 - 27 = -5.
+        codon at tx 22 to the TGA at tx 27 in the 3' UTR: a stop loss, annotated_stop_distance = 22 - 27 = -5.
         The insertion also fits after AT (GATT) and after ATG (ATTG).
         """,
         ATG_C12,
         Change("gggA[>TGAT]TGCCC"),
         {
             **variant(per_strand("A", "A"), per_strand("ATGAT", "AATCA"), per_strand(13, 53), per_strand(14, 54)),
-            "alt_cds_start": per_strand(13, 17),
-            "alt_cds_stop": per_strand(51, 55),
             "alt_cds_seq": "ATGATTG" + "C" * 12 + "TAA",
-            "alt_cds_len": 22,
-            "alt_cds_info": [(1, 12), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, 0, 1, "TAA", True, None, None, 0, [], []),
-            "alt_is_premature": False,
+            "alt_cds_length": 22,
+            "alt_cds_exons": [{"exon_number": 1, "length": 12}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, None, None, 0, [], []),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": True,
             "alt_transcript_seq": "GGGATGATTG" + "C" * 12 + "TAAGGTGACC",
             "alt_transcript_length": 32,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 3, 1, "ACC", False, "TGA", 27, 1, [(27, "TGA")], [2]),
+            **columns(SCAN_COLUMNS, 3, 1, "TGA", 27, 1, [{"position": 27, "codon": "TGA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -5,
+            "annotated_stop_distance": -5,
             **NO_RULE,
-            "alt_transcript_exon_info": [(1, 15), (2, 17)],
+            "alt_transcript_exons": [{"exon_number": 1, "length": 15}, {"exon_number": 2, "length": 17}],
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         equivalent=(Change("gggAT[>GATT]GCCC"), Change("gggATG[>ATTG]CCCC")),
         marks=(
@@ -1160,7 +1226,6 @@ CASES += [
             Mark("alt", 27, 30, "s", "the stop codon of the scan"),
         ),
     ),
-    # SC-07, SC-21
     Case(
         "start_loss_scan_skips_the_atg_in_the_5utr_and_takes_the_first_atg_from_the_cds_start",
         """
@@ -1179,24 +1244,35 @@ CASES += [
         Change("gccAT[G>A]GCTATG"),
         {
             **variant(per_strand("G", "C"), per_strand("A", "T"), per_strand(25, 65), per_strand(26, 66)),
-            "alt_cds_start": per_strand(23, 47),
-            "alt_cds_stop": per_strand(44, 68),
             "alt_cds_seq": "ATAGCTATGGCTGCTGCTTGA",
-            "alt_cds_len": 21,
-            "alt_cds_info": [(1, 21)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TGA", True, "TGA", 18, 1, [(18, "TGA")], [1]),
-            "alt_is_premature": False,
+            "alt_cds_length": 21,
+            "alt_cds_exons": [{"exon_number": 1, "length": 21}],
+            **columns(ALT_CODON_COLUMNS, "TGA", True, "TGA", 18, 1, [{"position": 18, "codon": "TGA"}], [1]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "CCATGCCGCCGCC" + "ATAGCTATGGCTGCTGCTTGA" + "GCTGCTTAGCCTAACCC",
             "alt_transcript_length": 51,
             "alt_cds_start_in_transcript": 13,
-            **columns(SCAN_COLUMNS, 19, 1, "CCC", False, "TGA", 31, 2, [(31, "TGA"), (40, "TAG")], [1, 2]),
+            **columns(
+                SCAN_COLUMNS,
+                19,
+                1,
+                "TGA",
+                31,
+                2,
+                [{"position": 31, "codon": "TGA"}, {"position": 40, "codon": "TAG"}],
+                [1, 2],
+            ),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 19, 22, "a", "ATG of the scan"),
@@ -1205,7 +1281,6 @@ CASES += [
         ),
         ruler=Ruler((0, 2, 13, 19, 31, 34, 40, 51)),
     ),
-    # SC-07, SC-21
     Case(
         "start_loss_scan_after_an_intron_in_the_5utr_takes_the_first_atg_from_the_cds_start",
         """
@@ -1224,24 +1299,35 @@ CASES += [
         Change("gccAT[G>A]GCTATG"),
         {
             **variant(per_strand("G", "C"), per_strand("A", "T"), per_strand(45, 65), per_strand(46, 66)),
-            "alt_cds_start": per_strand(43, 47),
-            "alt_cds_stop": per_strand(64, 68),
             "alt_cds_seq": "ATAGCTATGGCTGCTGCTTGA",
-            "alt_cds_len": 21,
-            "alt_cds_info": [(2, 21)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TGA", True, "TGA", 18, 1, [(18, "TGA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 21,
+            "alt_cds_exons": [{"exon_number": 2, "length": 21}],
+            **columns(ALT_CODON_COLUMNS, "TGA", True, "TGA", 18, 1, [{"position": 18, "codon": "TGA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "CCATGCCGCCGCC" + "ATAGCTATGGCTGCTGCTTGA" + "GCTGCTTAGCCTAACCC",
             "alt_transcript_length": 51,
             "alt_cds_start_in_transcript": 13,
-            **columns(SCAN_COLUMNS, 19, 2, "CCC", False, "TGA", 31, 2, [(31, "TGA"), (40, "TAG")], [2, 3]),
+            **columns(
+                SCAN_COLUMNS,
+                19,
+                2,
+                "TGA",
+                31,
+                2,
+                [{"position": 31, "codon": "TGA"}, {"position": 40, "codon": "TAG"}],
+                [2, 3],
+            ),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 19, 22, "a", "ATG of the scan"),
@@ -1250,7 +1336,6 @@ CASES += [
         ),
         ruler=Ruler((0, 2, 5, 13, 19, 31, 34, 40, 51)),
     ),
-    # SC-14
     Case(
         "start_loss_with_a_deleted_stop_codon_reads_from_the_next_atg_in_the_former_3utr",
         """
@@ -1270,24 +1355,26 @@ CASES += [
             **variant(
                 per_strand("ATGAAACCCTAA", "CTTAGGGTTTCA"), per_strand("A", "C"), per_strand(12, 21), per_strand(24, 33)
             ),
-            "alt_cds_start": per_strand(12, 22),
-            "alt_cds_stop": per_strand(24, 34),
             "alt_cds_seq": "A",
-            "alt_cds_len": 1,
-            "alt_cds_info": [(1, 1)],
-            **columns(ALT_CODON_COLUMNS, *[None] * 9),
-            "alt_is_premature": False,
+            "alt_cds_length": 1,
+            "alt_cds_exons": [{"exon_number": 1, "length": 1}],
+            **columns(ALT_CODON_COLUMNS, *[None] * 7),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "CCAGATGCCCTGACC",
             "alt_transcript_length": 15,
             "alt_cds_start_in_transcript": 2,
-            **columns(SCAN_COLUMNS, 4, 1, "ACC", False, "TGA", 10, 1, [(10, "TGA")], [1]),
+            **columns(SCAN_COLUMNS, 4, 1, "TGA", 10, 1, [{"position": 10, "codon": "TGA"}], [1]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": [(1, 15)],
+            "alt_transcript_exons": [{"exon_number": 1, "length": 15}],
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         equivalent=(Change("cc[ATGAAACCCTA>]Agatg"),),
         marks=(
@@ -1296,7 +1383,7 @@ CASES += [
             Mark("alt", 10, 13, "s", "the stop codon of the scan"),
         ),
     ),
-    # SC-15, the side of a rescued stop codon inside the alt CDS
+    # The side of a rescued stop codon inside the alt CDS
     Case(
         "start_loss_without_an_annotated_stop_codon_and_a_rescued_stop_inside_the_alt_cds_is_a_ptc",
         """
@@ -1307,43 +1394,45 @@ CASES += [
                          aaaa ATG of the scan
                                  **** PTC
                          <------> ptc_to_start_codon = 6
-                                 <----> ptc_to_intron = 5
+                                 <----> ptc_to_exon_end = 5
         exon 1: 18 nt, exon 2: 13 nt; cds_end_NF, no stop_codon rows
         Without an annotated stop codon, the TAA at tx 13 of the rescued ORF is a PTC because it lies inside the alt
-        CDS, which ends at tx 27. stop_codon_distance = null.
+        CDS, which ends at tx 27. annotated_stop_distance = null.
         """,
         NO_STOP_CODON_PTC,
         Change("gggA[T>C]GGATG"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 56), per_strand(15, 57)),
-            "alt_cds_start": per_strand(13, 14),
-            "alt_cds_stop": per_strand(57, 58),
             "alt_cds_seq": "ACGGATGCCCTA" + "AAA" * 3 + "GAC",
-            "alt_cds_len": 24,
-            "alt_cds_info": [(1, 15), (2, 9)],
-            **columns(ALT_CODON_COLUMNS, None, None, "GAC", False, None, None, 0, [], []),
-            "alt_is_premature": True,
+            "alt_cds_length": 24,
+            "alt_cds_exons": [{"exon_number": 1, "length": 15}, {"exon_number": 2, "length": 9}],
+            **columns(ALT_CODON_COLUMNS, "GAC", False, None, None, 0, [], []),
+            "alt_has_ptc": True,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGGATGCCCTA" + "AAA" * 3 + "GACCCCC",
             "alt_transcript_length": 31,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 7, 1, "CCC", False, "TAA", 13, 1, [(13, "TAA")], [1]),
+            **columns(SCAN_COLUMNS, 7, 1, "TAA", 13, 1, [{"position": 13, "codon": "TAA"}], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 1, 6, True, 18, 5),
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **columns(RULE_COLUMNS, False, True, False, True, False, True),
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_annotated_stop",
+            "ptc_pos_in_alt_transcript": 13,
+            "ptc_exon_number": 1,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 13, 16, "*", "PTC"),
             Span("alt", 7, 13, "ptc_to_start_codon = 6"),
-            Span("alt", 13, 18, "ptc_to_intron = 5"),
+            Span("alt", 13, 18, "ptc_to_exon_end = 5"),
         ),
         ruler=Ruler((0, 3, 7, 13, 18, 27, 31)),
     ),
-    # SC-15, the side of a rescued stop codon past the end of the alt CDS
+    # The side of a rescued stop codon past the end of the alt CDS
     Case(
         "start_loss_without_an_annotated_stop_codon_and_a_rescued_stop_past_the_alt_cds_is_neither",
         """
@@ -1355,35 +1444,36 @@ CASES += [
                                                        sss the stop codon of the scan
         exon 1: 18 nt, exon 2: 15 nt; cds_end_NF, no stop_codon rows
         The frame of the ATG at tx 7 reads its first stop codon at tx 28, past the end of the alt CDS at tx 27:
-        neither flag, stop_codon_distance = null.
+        neither flag, annotated_stop_distance = null.
         """,
         NO_STOP_CODON_STOP_PAST_THE_CDS,
         Change("gggA[T>C]GGATG"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 58), per_strand(15, 59)),
-            "alt_cds_start": per_strand(13, 16),
-            "alt_cds_stop": per_strand(57, 60),
             "alt_cds_seq": "ACGGATGCCCCA" + "AAA" * 3 + "GAC",
-            "alt_cds_len": 24,
-            "alt_cds_info": [(1, 15), (2, 9)],
-            **columns(ALT_CODON_COLUMNS, None, None, "GAC", False, None, None, 0, [], []),
-            "alt_is_premature": False,
+            "alt_cds_length": 24,
+            "alt_cds_exons": [{"exon_number": 1, "length": 15}, {"exon_number": 2, "length": 9}],
+            **columns(ALT_CODON_COLUMNS, "GAC", False, None, None, 0, [], []),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGGATGCCCCA" + "AAA" * 3 + "GACCTAACC",
             "alt_transcript_length": 33,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 7, 1, "ACC", False, "TAA", 28, 1, [(28, "TAA")], [2]),
+            **columns(SCAN_COLUMNS, 7, 1, "TAA", 28, 1, [{"position": 28, "codon": "TAA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(Mark("alt", 7, 10, "a", "ATG of the scan"), Mark("alt", 28, 31, "s", "the stop codon of the scan")),
         ruler=Ruler((0, 3, 7, 18, 28, 33)),
     ),
-    # SC-17
     Case(
         "start_loss_with_a_ptc_150_nt_after_the_atg_of_the_scan_is_not_start_proximal",
         """
@@ -1394,7 +1484,7 @@ CASES += [
                          aaaa ATG of the scan
                                                  **** PTC
                          <----------------------> ptc_to_start_codon = 150, not < 150
-                                                 <-------------------> ptc_to_intron = 16
+                                                 <-------------------> ptc_to_exon_end = 16
         exon 1: 173 nt, exon 2: 70 nt, exon 3: 17 nt
         The frame of the ATG at tx 7 reads CTA AAA as TAA at tx 157: a PTC 150 nt after the ATG, so no NMD escape rule
         applies.
@@ -1403,34 +1493,39 @@ CASES += [
         Change("gggA[T>C]GGATG"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 305), per_strand(15, 306)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(305, 307),
             "alt_cds_seq": "ACGGATGCC" + "AAA" * 48 + "CTA" + "AAA" * 30 + "GACTAA",
-            "alt_cds_len": 252,
-            "alt_cds_info": [(1, 170), (2, 70), (3, 12)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 249, 1, [(249, "TAA")], [3]),
-            "alt_is_premature": True,
+            "alt_cds_length": 252,
+            "alt_cds_exons": [
+                {"exon_number": 1, "length": 170},
+                {"exon_number": 2, "length": 70},
+                {"exon_number": 3, "length": 12},
+            ],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 249, 1, [{"position": 249, "codon": "TAA"}], [3]),
+            "alt_has_ptc": True,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGGATGCC" + "AAA" * 48 + "CTA" + "AAA" * 30 + "GACTAAGGGGG",
             "alt_transcript_length": 260,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 7, 1, "GGG", False, "TAA", 157, 1, [(157, "TAA")], [1]),
+            **columns(SCAN_COLUMNS, 7, 1, "TAA", 157, 1, [{"position": 157, "codon": "TAA"}], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 2, 150, False, 173, 16),
-            "stop_codon_distance": 95,
-            **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "annotated_stop_distance": 95,
+            **RULES_FALSE,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "ok",
+            "ptc_pos_in_alt_transcript": 157,
+            "ptc_exon_number": 1,
+            "stop_classification": "start_loss_scan",
         },
         marks=(
             Mark("alt", 7, 10, "a", "ATG of the scan"),
             Mark("alt", 157, 160, "*", "PTC"),
             Span("alt", 7, 157, "ptc_to_start_codon = 150, not < 150"),
-            Span("alt", 157, 173, "ptc_to_intron = 16"),
+            Span("alt", 157, 173, "ptc_to_exon_end = 16"),
         ),
         ruler=Ruler((0, 3, 7, 157, 173, 243, 252, 260)),
     ),
-    # SC-19
     Case(
         "deletion_of_5utr_bases_and_the_start_codon_moves_the_alt_cds_start_and_the_scan_reads_from_there",
         """
@@ -1442,7 +1537,7 @@ CASES += [
                                        **** PTC
                                                              sss the annotated stop codon
                                <------> ptc_to_start_codon = 6
-                                       <------> ptc_to_intron = 6
+                                       <------> ptc_to_exon_end = 6
         exon 1: 22 nt, exon 2: 16 nt in the ref transcript; exon 1: 17 nt in the alt transcript, the PTC exon
         The 5' UTR loses 2 nt, so alt_cds_start_in_transcript = 4. From there, the scan finds the ATG at tx 5. Its ORF
         ends at the TAA at tx 11: a PTC, 14 nt upstream of the stop codon at tx 25.
@@ -1451,24 +1546,26 @@ CASES += [
         Change("gggt[caATG>]GATG"),
         {
             **variant(per_strand("TCAATG", "CCATTG"), per_strand("T", "C"), per_strand(13, 58), per_strand(19, 64)),
-            "alt_cds_start": per_strand(16, 15),
-            "alt_cds_stop": per_strand(63, 62),
             "alt_cds_seq": "GATGCCCTA" + "AAA" * 3 + "GACTAA",
-            "alt_cds_len": 24,
-            "alt_cds_info": [(1, 13), (2, 11)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 21, 1, [(21, "TAA")], [2]),
-            "alt_is_premature": True,
+            "alt_cds_length": 24,
+            "alt_cds_exons": [{"exon_number": 1, "length": 13}, {"exon_number": 2, "length": 11}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 21, 1, [{"position": 21, "codon": "TAA"}], [2]),
+            "alt_has_ptc": True,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGTGATGCCCTA" + "AAA" * 3 + "GACTAAGGGGG",
             "alt_transcript_length": 33,
             "alt_cds_start_in_transcript": 4,
-            **columns(SCAN_COLUMNS, 5, 1, "GGG", False, "TAA", 11, 1, [(11, "TAA")], [1]),
+            **columns(SCAN_COLUMNS, 5, 1, "TAA", 11, 1, [{"position": 11, "codon": "TAA"}], [1]),
             "unknown_reason": None,
             **columns(PTC_FEATURE_COLUMNS, 0, 1, 6, True, 17, 6),
-            "stop_codon_distance": 14,
+            "annotated_stop_distance": 14,
             **columns(RULE_COLUMNS, False, True, False, True, False, True),
-            "alt_transcript_exon_info": [(1, 17), (2, 16)],
+            "alt_transcript_exons": [{"exon_number": 1, "length": 17}, {"exon_number": 2, "length": 16}],
+            "nmd_model_status": "ok",
+            "ptc_pos_in_alt_transcript": 11,
+            "ptc_exon_number": 1,
+            "stop_classification": "start_loss_scan",
         },
         equivalent=(Change("gggt[caATGG>G]ATG"),),
         marks=(
@@ -1477,63 +1574,59 @@ CASES += [
             Mark("alt", 11, 14, "*", "PTC"),
             Mark("alt", 25, 28, "s", "the annotated stop codon"),
             Span("alt", 5, 11, "ptc_to_start_codon = 6"),
-            Span("alt", 11, 17, "ptc_to_intron = 6"),
+            Span("alt", 11, 17, "ptc_to_exon_end = 6"),
         ),
     ),
 ]
 
-# SC-23, SC-24: Ensembl GFF3. It has no start_codon rows, so a CDS has a start codon only if it starts with ATG in
+# Ensembl GFF3. It has no start_codon rows, so a CDS has a start codon only if it starts with ATG in
 # phase 0. This is the CDS of ATG_START with the non-ATG start CTG.
 ENSEMBL_CTG_START = Layout(
     Transcript(("gggCTGAA", "ACCCGACTAAggggg"), flavor="ensembl"),
     {
         **CTG_START.ref,
         "has_start_codon": False,
-        "ref_start_codon_pos": None,
-        "ref_start_codon_exon": None,
+        "start_codon_exon": None,
         "likely_misannotated": True,
     },
 )
 
-# SC-23: the CDS A TGC AAA CCC GAC TAA starts with ATG, but its phase is 1
+# The CDS A TGC AAA CCC GAC TAA starts with ATG, but its phase is 1
 ENSEMBL_ATG_IN_PHASE_1 = Layout(
     Transcript(("gggATGCA", "AACCCGACTAAggggg"), frame=1, start_codon=False, flavor="ensembl", tags=("cds_start_NF",)),
     {
         **ATG_START.ref,
-        "ref_cds_stop": per_strand(49, 51),
+        "cds_end": per_strand(49, 51),
         "ref_cds_seq": "ATGCAAACCCGACTAA",
-        "ref_cds_len": 16,
+        "ref_cds_length": 16,
         "has_start_codon": False,
         "cds_frame": 1,
-        "ref_cds_info": [(1, 5), (2, 11)],
-        "ref_start_codon_pos": None,
-        "ref_start_codon_exon": None,
+        "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 11}],
+        "start_codon_exon": None,
         "ref_first_stop_pos": 13,
-        "ref_all_stop_codons": [(13, "TAA")],
+        "ref_stop_codons": [{"position": 13, "codon": "TAA"}],
         "transcript_end": 54,
         "transcript_seq": "GGGATGCAAACCCGACTAAGGGGG",
         "transcript_length": 24,
         "cds_end_in_transcript": 19,
-        "transcript_exon_info": [(1, 8), (2, 16)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 16}],
         "likely_misannotated": True,
     },
 )
 
-# SC-23: the CDS starts with ATG in phase 0, and an intron splits the ATG into AT and G
+# The CDS starts with ATG in phase 0, and an intron splits the ATG into AT and G
 ENSEMBL_SPLIT_ATG = Layout(
     Transcript(("gggAT", "GAAACCCGACTAAggggg"), flavor="ensembl"),
     {
         **ATG_START.ref,
-        "ref_cds_info": [(1, 2), (2, 13)],
-        "transcript_exon_info": [(1, 5), (2, 18)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 2}, {"exon_number": 2, "length": 13}],
+        "transcript_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 18}],
     },
 )
 
-# SC-24
 ENSEMBL_ATG_START = Layout(Transcript(("gggATGAA", "ACCCGACTAAggggg"), flavor="ensembl"), ATG_START.ref)
 
 CASES += [
-    # SC-23
     Case(
         "ensembl_cds_starting_with_ctg_has_no_start_codon_and_a_missense_is_no_start_loss",
         """
@@ -1549,13 +1642,11 @@ CASES += [
         Change("AC[C>G]CGAC"),
         {
             **variant(per_strand("C", "G"), per_strand("G", "C"), per_strand(40, 22), per_strand(41, 23)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(48, 50),
             "alt_cds_seq": "CTGAAACGCGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 12, 1, [(12, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 12, 1, [{"position": 12, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GGGCTGAAACGCGACTAAGGGGG",
@@ -1564,13 +1655,16 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         ruler=Ruler((0, 3, 8, 15, 18)),
     ),
-    # SC-23
     Case(
         "ensembl_cds_starting_with_atg_in_phase_1_has_no_start_codon",
         """
@@ -1588,13 +1682,11 @@ CASES += [
         Change("AC[C>G]CGAC"),
         {
             **variant(per_strand("C", "G"), per_strand("G", "C"), per_strand(41, 22), per_strand(42, 23)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(49, 51),
             "alt_cds_seq": "ATGCAAACGCGACTAA",
-            "alt_cds_len": 16,
-            "alt_cds_info": [(1, 5), (2, 11)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 13, 1, [(13, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 16,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 11}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 13, 1, [{"position": 13, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GGGATGCAAACGCGACTAAGGGGG",
@@ -1603,14 +1695,17 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         marks=(Mark("alt", 16, 19, "s", "the annotated stop codon"),),
         ruler=Ruler((0, 3, 8, 16, 19)),
     ),
-    # SC-23
     Case(
         "ensembl_cds_starting_with_an_atg_split_by_an_intron_has_a_start_codon",
         """
@@ -1627,13 +1722,11 @@ CASES += [
         Change("AC[C>G]CGAC"),
         {
             **variant(per_strand("C", "G"), per_strand("G", "C"), per_strand(40, 22), per_strand(41, 23)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(48, 50),
             "alt_cds_seq": "ATGAAACGCGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 2), (2, 13)],
-            **columns(ALT_CODON_COLUMNS, 0, 1, "TAA", True, "TAA", 12, 1, [(12, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 2}, {"exon_number": 2, "length": 13}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 12, 1, [{"position": 12, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GGGATGAAACGCGACTAAGGGGG",
@@ -1642,13 +1735,16 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         ruler=Ruler((0, 3, 5, 15, 18)),
     ),
-    # SC-24
     Case(
         "ensembl_atg_to_acg_in_a_leading_atg_in_phase_0_is_a_start_loss",
         """
@@ -1664,13 +1760,11 @@ CASES += [
         Change("gggA[T>C]GAA"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(14, 48), per_strand(15, 49)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(48, 50),
             "alt_cds_seq": "ACGAAACCCGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 12, 1, [(12, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 12, 1, [{"position": 12, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGACGAAACCCGACTAAGGGGG",
@@ -1679,27 +1773,30 @@ CASES += [
             **NO_ATG_FOUND,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         ruler=Ruler((0, 3, 8, 15, 18)),
     ),
 ]
 
-# The reference values that the cds_start_NF layouts of FR-01 to FR-10 share: no start_codon rows, so no start codon
+# The reference values that the cds_start_NF layouts share: no start_codon rows, so no start codon
 CDS_START_NF_REF = {
     **IDS,
     "has_start_codon": False,
     "has_stop_codon": True,
     "cds_in_transcript": True,
-    "ref_start_codon_pos": None,
-    "ref_start_codon_exon": None,
+    "start_codon_exon": None,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
-    "ref_num_stop_codons": 1,
-    "ref_is_premature": False,
+    "ref_stop_codon_count": 1,
+    "ref_has_ptc": False,
     "transcript_start": 10,
     "cds_start_in_transcript": 3,
     "utr5_length": 3,
@@ -1741,20 +1838,20 @@ def frame_layout(frame, edit_gff3=None):
         ),
         {
             **CDS_START_NF_REF,
-            "ref_cds_start": per_strand(13, 15),
-            "ref_cds_stop": per_strand(51 + frame, 53 + frame),
+            "cds_start": per_strand(13, 15),
+            "cds_end": per_strand(51 + frame, 53 + frame),
             "ref_cds_seq": cds + "TAA",
-            "ref_cds_len": 18 + frame,
+            "ref_cds_length": 18 + frame,
             "cds_frame": frame,
-            "ref_cds_info": [(1, 5), (2, 13 + frame)],
+            "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 13 + frame}],
             "ref_first_stop_pos": 15 + frame,
-            "ref_all_stop_codons": [(15 + frame, "TAA")],
+            "ref_stop_codons": [{"position": 15 + frame, "codon": "TAA"}],
             "ref_stop_codon_exons": [2],
             "transcript_end": 56 + frame,
             "transcript_seq": "GGG" + cds + "TAAGGGGG",
             "transcript_length": 26 + frame,
             "cds_end_in_transcript": 21 + frame,
-            "transcript_exon_info": [(1, 8), (2, 18 + frame)],
+            "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 18 + frame}],
             "utr3_length": 5,
         },
     )
@@ -1765,13 +1862,13 @@ def frame_snv_row(frame):
     cds = "AC"[:frame] + "TGTAAACCCCAAGGC" + "TAA"
     return {
         **variant(per_strand("C", "G"), per_strand("T", "A"), per_strand(15 + frame, 50), per_strand(16 + frame, 51)),
-        "alt_cds_start": per_strand(13, 15),
-        "alt_cds_stop": per_strand(51 + frame, 53 + frame),
         "alt_cds_seq": cds,
-        "alt_cds_len": 18 + frame,
-        "alt_cds_info": [(1, 5), (2, 13 + frame)],
-        **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 15 + frame, 1, [(15 + frame, "TAA")], [2]),
-        "alt_is_premature": False,
+        "alt_cds_length": 18 + frame,
+        "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 13 + frame}],
+        **columns(
+            ALT_CODON_COLUMNS, "TAA", True, "TAA", 15 + frame, 1, [{"position": 15 + frame, "codon": "TAA"}], [2]
+        ),
+        "alt_has_ptc": False,
         "start_loss": False,
         "stop_loss": False,
         "alt_transcript_seq": "GGG" + cds + "GGGGG",
@@ -1780,7 +1877,7 @@ def frame_snv_row(frame):
         **NOT_SCANNED,
         "unknown_reason": None,
         **NO_PTC_FEATURES,
-        "stop_codon_distance": 0,
+        "annotated_stop_distance": 0,
         **NO_RULE,
     }
 
@@ -1790,24 +1887,20 @@ def frame_ptc_row(frame):
     cds = "AC"[:frame] + "TGCAAACCCTAAGGC" + "TAA"
     return {
         **variant(per_strand("C", "G"), per_strand("T", "A"), per_strand(42 + frame, 23), per_strand(43 + frame, 24)),
-        "alt_cds_start": per_strand(13, 15),
-        "alt_cds_stop": per_strand(51 + frame, 53 + frame),
         "alt_cds_seq": cds,
-        "alt_cds_len": 18 + frame,
-        "alt_cds_info": [(1, 5), (2, 13 + frame)],
+        "alt_cds_length": 18 + frame,
+        "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 13 + frame}],
         **columns(
             ALT_CODON_COLUMNS,
-            None,
-            None,
             "TAA",
             True,
             "TAA",
             9 + frame,
             2,
-            [(9 + frame, "TAA"), (15 + frame, "TAA")],
+            [{"position": 9 + frame, "codon": "TAA"}, {"position": 15 + frame, "codon": "TAA"}],
             [2, 2],
         ),
-        "alt_is_premature": True,
+        "alt_has_ptc": True,
         "start_loss": False,
         "stop_loss": False,
         "alt_transcript_seq": "GGG" + cds + "GGGGG",
@@ -1815,14 +1908,14 @@ def frame_ptc_row(frame):
         "alt_cds_start_in_transcript": 3,
         **NOT_SCANNED,
         "unknown_reason": None,
-        **columns(PTC_FEATURE_COLUMNS, 1, 0, None, False, 18 + frame, 14),
-        "stop_codon_distance": 6,
-        **columns(RULE_COLUMNS, True, False, False, False, False, True),
+        **columns(PTC_FEATURE_COLUMNS, 1, 0, None, None, 18 + frame, 14),
+        "annotated_stop_distance": 6,
+        **columns(RULE_COLUMNS, True, False, False, None, False, True),
     }
 
 
 CASES += [
-    # FR-01, the SNV that makes a TAA out of frame
+    # The SNV that makes a TAA out of frame
     Case(
         "cds_frame_0_snv_that_makes_a_taa_out_of_frame_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -1836,10 +1929,17 @@ CASES += [
         """,
         frame_layout(0),
         Change("gggTG[C>T]AA"),
-        {**frame_snv_row(0), "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **frame_snv_row(0),
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
         ruler=Ruler((0, 3, 8, 12, 18, 21)),
     ),
-    # FR-01, the SNV that makes a PTC in frame
+    # The SNV that makes a PTC in frame
     Case(
         "cds_frame_0_nonsense_snv_in_the_last_exon_is_a_ptc_6_nt_before_the_annotated_stop_codon",
         """
@@ -1849,23 +1949,30 @@ CASES += [
                                    ^ C>T
                                    *** PTC
                                            sss the annotated stop codon
-                                   <---------------> ptc_to_intron = 14
+                                   <---------------> ptc_to_exon_end = 14
         cds_frame 0, cds_start_NF
         CAA>TAA is a PTC at CDS 9. The annotated TAA at CDS 15 follows 6 nt later. The PTC lies in the last exon, so
-        the last exon rule applies and NMD escapes. ptc_to_intron = 14 is the distance to the end of the last exon. The
+        the last exon rule applies and NMD escapes. ptc_to_exon_end = 14 is the distance to the end of the last exon. The
         transcript has no annotated start codon: ptc_to_start_codon = null.
         """,
         frame_layout(0),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(0), "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **frame_ptc_row(0),
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_annotated_start",
+            "ptc_pos_in_alt_transcript": 12,
+            "ptc_exon_number": 2,
+            "stop_classification": "alt_transcript",
+        },
         marks=(
             Mark("alt", 12, 15, "*", "PTC"),
             Mark("alt", 18, 21, "s", "the annotated stop codon"),
-            Span("alt", 12, 26, "ptc_to_intron = 14"),
+            Span("alt", 12, 26, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 12, 18, 21)),
     ),
-    # FR-02, FR-04 (the minus strand: the CDS rows have the phases 1 and 2, and exon 1 is the row with the largest Start)
+    # The minus strand: the CDS rows have the phases 1 and 2, and exon 1 is the row with the largest Start.
     Case(
         "cds_frame_1_snv_that_makes_a_taa_out_of_frame_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -1879,10 +1986,16 @@ CASES += [
         """,
         frame_layout(1),
         Change("gggATG[C>T]A"),
-        {**frame_snv_row(1), "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **frame_snv_row(1),
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-02, FR-04
     Case(
         "cds_frame_1_nonsense_snv_in_the_last_exon_is_a_ptc_6_nt_before_the_annotated_stop_codon",
         """
@@ -1892,22 +2005,29 @@ CASES += [
                                      ^ C>T
                                      *** PTC
                                              sss the annotated stop codon
-                                     <---------------> ptc_to_intron = 14
+                                     <---------------> ptc_to_exon_end = 14
         cds_frame 1, phases 1 and 2 of the CDS rows
         The frame 1 codons start at CDS 1. CAA>TAA is a PTC at CDS 10. The annotated TAA at CDS 16 follows 6 nt
-        later. ptc_to_intron = 14 is the distance to the end of the last exon.
+        later. ptc_to_exon_end = 14 is the distance to the end of the last exon.
         """,
         frame_layout(1),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(1), "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **frame_ptc_row(1),
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_annotated_start",
+            "ptc_pos_in_alt_transcript": 13,
+            "ptc_exon_number": 2,
+            "stop_classification": "alt_transcript",
+        },
         marks=(
             Mark("alt", 13, 16, "*", "PTC"),
             Mark("alt", 19, 22, "s", "the annotated stop codon"),
-            Span("alt", 13, 27, "ptc_to_intron = 14"),
+            Span("alt", 13, 27, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-03, FR-04 (phases 2 and 0)
+    # Phases 2 and 0.
     Case(
         "cds_frame_2_snv_that_makes_a_taa_out_of_frame_is_neither_a_ptc_nor_a_stop_loss",
         """
@@ -1921,10 +2041,16 @@ CASES += [
         """,
         frame_layout(2),
         Change("gggACTG[C>T]"),
-        {**frame_snv_row(2), "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **frame_snv_row(2),
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
         ruler=Ruler((0, 3, 8, 14, 20, 23)),
     ),
-    # FR-03, FR-04
     Case(
         "cds_frame_2_nonsense_snv_in_the_last_exon_is_a_ptc_6_nt_before_the_annotated_stop_codon",
         """
@@ -1934,22 +2060,28 @@ CASES += [
                                      ^ C>T
                                      *** PTC
                                              sss the annotated stop codon
-                                     <---------------> ptc_to_intron = 14
+                                     <---------------> ptc_to_exon_end = 14
         cds_frame 2, phases 2 and 0 of the CDS rows
         The frame 2 codons start at CDS 2. CAA>TAA is a PTC at CDS 11. The annotated TAA at CDS 17 follows 6 nt
-        later. ptc_to_intron = 14 is the distance to the end of the last exon.
+        later. ptc_to_exon_end = 14 is the distance to the end of the last exon.
         """,
         frame_layout(2),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(2), "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **frame_ptc_row(2),
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_annotated_start",
+            "ptc_pos_in_alt_transcript": 14,
+            "ptc_exon_number": 2,
+            "stop_classification": "alt_transcript",
+        },
         marks=(
             Mark("alt", 14, 17, "*", "PTC"),
             Mark("alt", 20, 23, "s", "the annotated stop codon"),
-            Span("alt", 14, 28, "ptc_to_intron = 14"),
+            Span("alt", 14, 28, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 14, 20, 23)),
     ),
-    # FR-08
     Case(
         "cds_frame_comes_from_the_5prime_most_cds_row_and_not_from_the_phase_of_the_other_rows",
         """
@@ -1959,22 +2091,28 @@ CASES += [
                                      ^ C>T
                                      *** PTC
                                              sss the annotated stop codon
-                                     <---------------> ptc_to_intron = 14
+                                     <---------------> ptc_to_exon_end = 14
         phase 1 on the exon 1 CDS row, 0 on the exon 2 CDS row
         The GFF3 gives the exon 2 CDS row the phase 0 instead of 2. Only the 5'-most row counts, so cds_frame = 1 and
         the row is the PTC row of the case above.
         """,
         frame_layout(1, edit_gff3=exon_2_cds_row_with_phase_0),
         Change("CCC[C>T]AAGG"),
-        {**frame_ptc_row(1), "alt_transcript_exon_info": SAME_EXONS},
+        {
+            **frame_ptc_row(1),
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_annotated_start",
+            "ptc_pos_in_alt_transcript": 13,
+            "ptc_exon_number": 2,
+            "stop_classification": "alt_transcript",
+        },
         marks=(
             Mark("alt", 13, 16, "*", "PTC"),
             Mark("alt", 19, 22, "s", "the annotated stop codon"),
-            Span("alt", 13, 27, "ptc_to_intron = 14"),
+            Span("alt", 13, 27, "ptc_to_exon_end = 14"),
         ),
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-10
     Case(
         "cds_frame_1_change_of_the_base_before_the_first_complete_codon_changes_no_codon",
         """
@@ -1990,13 +2128,11 @@ CASES += [
         Change("ggg[A>G]TGCA"),
         {
             **variant(per_strand("A", "T"), per_strand("G", "C"), per_strand(13, 53), per_strand(14, 54)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(52, 54),
             "alt_cds_seq": "GTGCAAACCCCAAGGCTAA",
-            "alt_cds_len": 19,
-            "alt_cds_info": [(1, 5), (2, 14)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 16, 1, [(16, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 19,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 14}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 16, 1, [{"position": 16, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GGGGTGCAAACCCCAAGGCTAAGGGGG",
@@ -2005,13 +2141,16 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         ruler=Ruler((0, 3, 8, 13, 19, 22)),
     ),
-    # FR-11
     Case(
         "cds_row_with_phase_dot_is_an_error_that_names_the_transcript",
         """
@@ -2027,101 +2166,100 @@ CASES += [
     ),
 ]
 
-# FR-05: the CDS A TGC AAA CCC TAA of frame 1, and a 3' UTR with a TGA in the CDS frame at tx 25
+# The CDS A TGC AAA CCC TAA of frame 1, and a 3' UTR with a TGA in the CDS frame at tx 25
 FRAME_1_STOP_LOSS = Layout(
     Transcript(("gggATGCA", "AACCCTAAgggcccgggtgacc"), frame=1, start_codon=False, tags=("cds_start_NF",)),
     {
         **CDS_START_NF_REF,
-        "ref_cds_start": per_strand(13, 24),
-        "ref_cds_stop": per_strand(46, 57),
+        "cds_start": per_strand(13, 24),
+        "cds_end": per_strand(46, 57),
         "ref_cds_seq": "ATGCAAACCCTAA",
-        "ref_cds_len": 13,
+        "ref_cds_length": 13,
         "cds_frame": 1,
-        "ref_cds_info": [(1, 5), (2, 8)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 8}],
         "ref_first_stop_pos": 10,
-        "ref_all_stop_codons": [(10, "TAA")],
+        "ref_stop_codons": [{"position": 10, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
         "transcript_end": 60,
         "transcript_seq": "GGGATGCAAACCCTAAGGGCCCGGGTGACC",
         "transcript_length": 30,
         "cds_end_in_transcript": 16,
-        "transcript_exon_info": [(1, 8), (2, 22)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 22}],
         "utr3_length": 14,
     },
 )
 
-# FR-06: the CDS CTG AAA CCC GAC TAA of frame 0 without a start codon, and a TAG in the 3' UTR at tx 21
+# The CDS CTG AAA CCC GAC TAA of frame 0 without a start codon, and a TAG in the 3' UTR at tx 21
 NO_START_STOP_LOSS = Layout(
     Transcript(("gggCTGAA", "ACCCGACTAAgggtagccgg"), start_codon=False, tags=("cds_start_NF",)),
     {
         **CDS_START_NF_REF,
-        "ref_cds_start": per_strand(13, 20),
-        "ref_cds_stop": per_strand(48, 55),
+        "cds_start": per_strand(13, 20),
+        "cds_end": per_strand(48, 55),
         "ref_cds_seq": "CTGAAACCCGACTAA",
-        "ref_cds_len": 15,
+        "ref_cds_length": 15,
         "cds_frame": 0,
-        "ref_cds_info": [(1, 5), (2, 10)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
         "ref_first_stop_pos": 12,
-        "ref_all_stop_codons": [(12, "TAA")],
+        "ref_stop_codons": [{"position": 12, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
         "transcript_end": 58,
         "transcript_seq": "GGGCTGAAACCCGACTAAGGGTAGCCGG",
         "transcript_length": 28,
         "cds_end_in_transcript": 18,
-        "transcript_exon_info": [(1, 8), (2, 20)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 20}],
         "utr3_length": 10,
     },
 )
 
-# FR-07: a CDS of 15 nt with the phase 1, so the annotated TAA at CDS 12 is out of frame
+# A CDS of 15 nt with the phase 1, so the annotated TAA at CDS 12 is out of frame
 STOP_OUT_OF_FRAME = Layout(
     Transcript(("gggGCCAA", "ACCCGACTAAggggg"), frame=1, start_codon=False, tags=("cds_start_NF",)),
     {
         **CDS_START_NF_REF,
-        "ref_cds_start": per_strand(13, 15),
-        "ref_cds_stop": per_strand(48, 50),
+        "cds_start": per_strand(13, 15),
+        "cds_end": per_strand(48, 50),
         "ref_cds_seq": "GCCAAACCCGACTAA",
-        "ref_cds_len": 15,
+        "ref_cds_length": 15,
         "cds_frame": 1,
-        "ref_cds_info": [(1, 5), (2, 10)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
         "ref_first_stop_codon": None,
         "ref_first_stop_pos": None,
-        "ref_num_stop_codons": 0,
-        "ref_all_stop_codons": [],
+        "ref_stop_codon_count": 0,
+        "ref_stop_codons": [],
         "ref_stop_codon_exons": [],
         "transcript_end": 53,
         "transcript_seq": "GGGGCCAAACCCGACTAAGGGGG",
         "transcript_length": 23,
         "cds_end_in_transcript": 18,
-        "transcript_exon_info": [(1, 8), (2, 15)],
+        "transcript_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 15}],
         "utr3_length": 5,
     },
 )
 
-# FR-09: the annotated start codon ACG, the CDS frame 1 (CDS A CGC ATG CCC GAC TAA), and an ATG at CDS 4
+# The annotated start codon ACG, the CDS frame 1 (CDS A CGC ATG CCC GAC TAA), and an ATG at CDS 4
 START_CODON_AND_FRAME_1 = Layout(
     Transcript(("gggACGCATGC", "CCGACTAAggggg"), frame=1),
     {
         **ATG_TAA_BASE,
-        "ref_cds_stop": per_strand(49, 51),
+        "cds_end": per_strand(49, 51),
         "ref_cds_seq": "ACGCATGCCCGACTAA",
-        "ref_cds_len": 16,
+        "ref_cds_length": 16,
         "cds_frame": 1,
-        "ref_cds_info": [(1, 8), (2, 8)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 8}],
         "ref_first_stop_pos": 13,
-        "ref_all_stop_codons": [(13, "TAA")],
+        "ref_stop_codons": [{"position": 13, "codon": "TAA"}],
         "ref_stop_codon_exons": [2],
         "transcript_end": 54,
         "transcript_seq": "GGGACGCATGCCCGACTAAGGGGG",
         "transcript_length": 24,
         "cds_end_in_transcript": 19,
-        "transcript_exon_info": [(1, 11), (2, 13)],
+        "transcript_exons": [{"exon_number": 1, "length": 11}, {"exon_number": 2, "length": 13}],
         "total_exon_count": 2,
     },
 )
 
 CASES += [
-    # FR-05
     Case(
         "cds_frame_1_stop_loss_reads_through_the_3utr_in_the_cds_frame_to_a_tga",
         """
@@ -2134,30 +2272,32 @@ CASES += [
         cds_frame 1, cds_start_NF
         TAA>CAA loses the annotated stop codon at tx 13. The scan starts at the first complete codon, tx 4, so it reads
         the codons at 13, 16, 19, 22 and reaches the TGA at tx 25 in the 3' UTR. The transcript has no annotated start
-        codon, so transcript_start_codon_pos = null. stop_codon_distance = 13 - 25 = -12.
+        codon, so alt_scan_start_codon_pos = null. annotated_stop_distance = 13 - 25 = -12.
         """,
         FRAME_1_STOP_LOSS,
         Change("CCC[T>C]AAggg"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(43, 26), per_strand(44, 27)),
-            "alt_cds_start": per_strand(13, 24),
-            "alt_cds_stop": per_strand(46, 57),
             "alt_cds_seq": "ATGCAAACCCCAA",
-            "alt_cds_len": 13,
-            "alt_cds_info": [(1, 5), (2, 8)],
-            **columns(ALT_CODON_COLUMNS, None, None, "CAA", False, None, None, 0, [], []),
-            "alt_is_premature": False,
+            "alt_cds_length": 13,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 8}],
+            **columns(ALT_CODON_COLUMNS, "CAA", False, None, None, 0, [], []),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": True,
             "alt_transcript_seq": "GGGATGCAAACCCCAAGGGCCCGGGTGACC",
             "alt_transcript_length": 30,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, None, None, "ACC", False, "TGA", 25, 1, [(25, "TGA")], [2]),
+            **columns(SCAN_COLUMNS, None, None, "TGA", 25, 1, [{"position": 25, "codon": "TGA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -12,
+            "annotated_stop_distance": -12,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         marks=(
             Mark("alt", 13, 16, "s", "the annotated stop codon"),
@@ -2165,7 +2305,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 13, 16, 25)),
     ),
-    # FR-06
     Case(
         "stop_loss_in_a_cds_without_a_start_codon_reads_through_the_3utr_to_a_tag",
         """
@@ -2178,30 +2317,32 @@ CASES += [
         cds_frame 0, cds_start_NF
         TAA>CAA loses the annotated stop codon at tx 15. The CDS has no ATG at its start and no annotated start codon.
         The scan reads in the CDS frame from tx 3 and reaches the TAG at tx 21 in the 3' UTR.
-        transcript_start_codon_pos = null. stop_codon_distance = 15 - 21 = -6.
+        alt_scan_start_codon_pos = null. annotated_stop_distance = 15 - 21 = -6.
         """,
         NO_START_STOP_LOSS,
         Change("GAC[T>C]AAggg"),
         {
             **variant(per_strand("T", "A"), per_strand("C", "G"), per_strand(45, 22), per_strand(46, 23)),
-            "alt_cds_start": per_strand(13, 20),
-            "alt_cds_stop": per_strand(48, 55),
             "alt_cds_seq": "CTGAAACCCGACCAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, None, None, "CAA", False, None, None, 0, [], []),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "CAA", False, None, None, 0, [], []),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": True,
             "alt_transcript_seq": "GGGCTGAAACCCGACCAAGGGTAGCCGG",
             "alt_transcript_length": 28,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, None, None, "CGG", False, "TAG", 21, 1, [(21, "TAG")], [2]),
+            **columns(SCAN_COLUMNS, None, None, "TAG", 21, 1, [{"position": 21, "codon": "TAG"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": -6,
+            "annotated_stop_distance": -6,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
         },
         marks=(
             Mark("alt", 15, 18, "s", "the annotated stop codon"),
@@ -2209,7 +2350,6 @@ CASES += [
         ),
         ruler=Ruler((0, 3, 8, 15, 18, 21)),
     ),
-    # FR-07
     Case(
         "annotated_stop_codon_out_of_frame_in_the_cds_frame_keeps_the_flags_from_the_cds",
         """
@@ -2221,20 +2361,18 @@ CASES += [
         cds_frame 1, cds_start_NF, the CDS has 15 nt
         The CDS of 15 nt does not fit the phase 1: the codons CCA AAC CCG ACT end with AA. The annotated TAA at CDS 12
         is out of frame, so the ref CDS has no in-frame stop codon. The missense CCG>GCG reads no stop codon either.
-        The row keeps the flags from the CDS: alt_is_premature = False, stop_loss = False. It is not scanned, and
-        stop_codon_distance = null.
+        The row keeps the flags from the CDS: alt_has_ptc = False, stop_loss = False. It is not scanned, and
+        annotated_stop_distance = null.
         """,
         STOP_OUT_OF_FRAME,
         Change("AC[C>G]CGAC"),
         {
             **variant(per_strand("C", "G"), per_strand("G", "C"), per_strand(40, 22), per_strand(41, 23)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(48, 50),
             "alt_cds_seq": "GCCAAACGCGACTAA",
-            "alt_cds_len": 15,
-            "alt_cds_info": [(1, 5), (2, 10)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, None, None, 0, [], []),
-            "alt_is_premature": False,
+            "alt_cds_length": 15,
+            "alt_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, None, None, 0, [], []),
+            "alt_has_ptc": False,
             "start_loss": False,
             "stop_loss": False,
             "alt_transcript_seq": "GGGGCCAAACGCGACTAAGGGGG",
@@ -2243,14 +2381,17 @@ CASES += [
             **NOT_SCANNED,
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": None,
+            "annotated_stop_distance": None,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_cds",
         },
         marks=(Mark("ref", 15, 18, "s", "the annotated TAA, out of frame"),),
         ruler=Ruler((0, 3, 8, 15, 18)),
     ),
-    # FR-09
     Case(
         "start_loss_in_a_cds_with_cds_frame_1_scans_from_the_first_complete_codon",
         """
@@ -2269,24 +2410,26 @@ CASES += [
         Change("gggA[C>T]GCATG"),
         {
             **variant(per_strand("C", "G"), per_strand("T", "A"), per_strand(14, 49), per_strand(15, 50)),
-            "alt_cds_start": per_strand(13, 15),
-            "alt_cds_stop": per_strand(49, 51),
             "alt_cds_seq": "ATGCATGCCCGACTAA",
-            "alt_cds_len": 16,
-            "alt_cds_info": [(1, 8), (2, 8)],
-            **columns(ALT_CODON_COLUMNS, None, None, "TAA", True, "TAA", 13, 1, [(13, "TAA")], [2]),
-            "alt_is_premature": False,
+            "alt_cds_length": 16,
+            "alt_cds_exons": [{"exon_number": 1, "length": 8}, {"exon_number": 2, "length": 8}],
+            **columns(ALT_CODON_COLUMNS, "TAA", True, "TAA", 13, 1, [{"position": 13, "codon": "TAA"}], [2]),
+            "alt_has_ptc": False,
             "start_loss": True,
             "stop_loss": False,
             "alt_transcript_seq": "GGGATGCATGCCCGACTAAGGGGG",
             "alt_transcript_length": 24,
             "alt_cds_start_in_transcript": 3,
-            **columns(SCAN_COLUMNS, 7, 1, "GGG", False, "TAA", 16, 1, [(16, "TAA")], [2]),
+            **columns(SCAN_COLUMNS, 7, 1, "TAA", 16, 1, [{"position": 16, "codon": "TAA"}], [2]),
             "unknown_reason": None,
             **NO_PTC_FEATURES,
-            "stop_codon_distance": 0,
+            "annotated_stop_distance": 0,
             **NO_RULE,
-            "alt_transcript_exon_info": SAME_EXONS,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_model_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "start_loss_scan",
         },
         marks=(Mark("alt", 7, 10, "a", "ATG of the scan"), Mark("alt", 16, 19, "s", "the annotated stop codon")),
         ruler=Ruler((0, 3, 4, 7, 11, 16)),
