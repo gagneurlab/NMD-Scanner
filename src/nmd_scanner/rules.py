@@ -879,20 +879,21 @@ def analyze_sequence(results_df):
 
     df = results_df.copy()
 
-    # Initialize result columns for both reference and alternative sequence
-    df["start_codon_exon"] = None  # exon number
+    # Initialize result columns for both reference and alternative sequence. The loop collects the results per row
+    # position in lists. Setting cells of the DataFrame in the loop is slow.
+    results = {"start_codon_exon": [None] * len(df)}  # exon number
     for label in ["ref", "alt"]:
-        df[f"{label}_last_codon"] = None
-        df[f"{label}_valid_stop"] = None
-        df[f"{label}_first_stop_codon"] = None
-        df[f"{label}_first_stop_pos"] = None
-        df[f"{label}_stop_codon_count"] = None
-        df[f"{label}_stop_codons"] = None
-        df[f"{label}_stop_codon_exons"] = None  # exon number
-        df[f"{label}_has_ptc"] = None
+        results[f"{label}_last_codon"] = [None] * len(df)
+        results[f"{label}_valid_stop"] = [None] * len(df)
+        results[f"{label}_first_stop_codon"] = [None] * len(df)
+        results[f"{label}_first_stop_pos"] = [None] * len(df)
+        results[f"{label}_stop_codon_count"] = [None] * len(df)
+        results[f"{label}_stop_codons"] = [None] * len(df)
+        results[f"{label}_stop_codon_exons"] = [None] * len(df)  # exon number
+        results[f"{label}_has_ptc"] = [None] * len(df)
 
     # Row-wise codon scanning
-    for idx, row in df.iterrows():
+    for idx, row in enumerate(df.to_dict("records")):
         has_stop_codon = bool(row["has_stop_codon"])
         frame = int(row["cds_frame"])
         for label in ["ref", "alt"]:
@@ -927,16 +928,18 @@ def analyze_sequence(results_df):
 
             # Store results. The exon of the annotated start codon is the same in the ref and the alt CDS.
             if label == "ref" and start_pos is not None:
-                df.at[idx, "start_codon_exon"] = get_exon(start_pos, exon_info)  # exon number
-            df.at[idx, f"{label}_last_codon"] = last_codon
-            df.at[idx, f"{label}_valid_stop"] = is_valid_stop
-            df.at[idx, f"{label}_first_stop_codon"] = first_stop
-            df.at[idx, f"{label}_first_stop_pos"] = first_stop_pos
-            df.at[idx, f"{label}_stop_codon_count"] = len(stop_codons)
-            df.at[idx, f"{label}_stop_codons"] = stop_codon_records(stop_codons)
-            df.at[idx, f"{label}_stop_codon_exons"] = stop_exons  # exon number
-            df.at[idx, f"{label}_has_ptc"] = is_premature
+                results["start_codon_exon"][idx] = get_exon(start_pos, exon_info)  # exon number
+            results[f"{label}_last_codon"][idx] = last_codon
+            results[f"{label}_valid_stop"][idx] = is_valid_stop
+            results[f"{label}_first_stop_codon"][idx] = first_stop
+            results[f"{label}_first_stop_pos"][idx] = first_stop_pos
+            results[f"{label}_stop_codon_count"][idx] = len(stop_codons)
+            results[f"{label}_stop_codons"][idx] = stop_codon_records(stop_codons)
+            results[f"{label}_stop_codon_exons"][idx] = stop_exons  # exon number
+            results[f"{label}_has_ptc"][idx] = is_premature
 
+    for column, values in results.items():
+        df[column] = pd.Series(values, index=df.index, dtype=object)
     return df
 
 
@@ -975,9 +978,8 @@ def start_stop_loss(df):
 
     # Start codon loss: the reference CDS has an annotated start codon, and the variant changed it, so the alternative
     # CDS has none. A CDS without an annotated start codon (e.g. cds_start_NF) has no start codon to lose.
-    starts = {
-        label: [starts_with_annotated_start_codon(row, label) for _, row in df.iterrows()] for label in ("ref", "alt")
-    }
+    rows = df.to_dict("records")
+    starts = {label: [starts_with_annotated_start_codon(row, label) for row in rows] for label in ("ref", "alt")}
     df["start_loss"] = pd.Series(starts["ref"], index=df.index, dtype=bool) & ~pd.Series(
         starts["alt"], index=df.index, dtype=bool
     )
@@ -1239,18 +1241,24 @@ def analyze_transcript(results_df):
 
     df = results_df.copy()
 
-    # Add new columns to store results
-    df["alt_scan_start_codon_pos"] = None
-    df["alt_scan_start_codon_exon"] = None  # for exon number
-    df["alt_scan_first_stop_codon"] = None
-    df["alt_scan_first_stop_pos"] = None
-    df["alt_scan_stop_codon_count"] = None
-    df["alt_scan_stop_codons"] = None
-    df["alt_scan_stop_codon_exons"] = None  # for exon number
-    # The path that sets alt_has_ptc and stop_loss (see schema.STOP_CLASSIFICATIONS)
-    df["stop_classification"] = None
+    # Add new columns to store results. The loop collects the results per row position in lists. Setting cells of the
+    # DataFrame in the loop is slow, so it does so only for alt_has_ptc and stop_loss.
+    new_columns = [
+        "alt_scan_start_codon_pos",
+        "alt_scan_start_codon_exon",  # for exon number
+        "alt_scan_first_stop_codon",
+        "alt_scan_first_stop_pos",
+        "alt_scan_stop_codon_count",
+        "alt_scan_stop_codons",
+        "alt_scan_stop_codon_exons",  # for exon number
+        # The path that sets alt_has_ptc and stop_loss (see schema.STOP_CLASSIFICATIONS)
+        "stop_classification",
+    ]
+    for column in new_columns:
+        df[column] = None
+    results = {column: [None] * len(df) for column in new_columns}
 
-    for idx, row in df.iterrows():
+    for position, (idx, row) in enumerate(zip(df.index, df.to_dict("records"))):
         seq = row["alt_transcript_seq"]
         cds_start = row["alt_cds_start_in_transcript"]
 
@@ -1261,7 +1269,7 @@ def analyze_transcript(results_df):
         # the flags from the CDS, unless the alt transcript is unknown.
         if not isinstance(seq, str) or len(seq) < 3 or pd.isna(cds_start):
             if pd.isna(row.get("unknown_reason")):
-                df.at[idx, "stop_classification"] = "alt_cds"
+                results["stop_classification"][position] = "alt_cds"
             continue
 
         # Read codons in frame from the first complete codon of the CDS to the end of the transcript
@@ -1284,7 +1292,7 @@ def analyze_transcript(results_df):
             is_premature, stop_loss, _ = classify_rescued_orf(row, start_pos, first_stop)
             df.at[idx, "alt_has_ptc"] = is_premature
             df.at[idx, "stop_loss"] = stop_loss
-            df.at[idx, "stop_classification"] = "start_loss_scan"
+            results["stop_classification"][position] = "start_loss_scan"
 
         # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on
         else:
@@ -1294,13 +1302,13 @@ def analyze_transcript(results_df):
             # Otherwise, e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the row keeps the flags
             # from the CDS.
             stop_loss = row["stop_loss"]
-            df.at[idx, "stop_classification"] = "alt_cds"
+            results["stop_classification"][position] = "alt_cds"
             if not row["has_stop_codon"] or ends_at_annotated_stop(row):
                 first_stop = stop_codons_in_frame[0][0] if stop_codons_in_frame else None
                 is_premature, stop_loss = classify_first_stop(row, first_stop)
                 df.at[idx, "alt_has_ptc"] = is_premature
                 df.at[idx, "stop_loss"] = stop_loss
-                df.at[idx, "stop_classification"] = "alt_transcript"
+                results["stop_classification"][position] = "alt_transcript"
 
             # only analyze rows flagged with a stop codon loss: skip the others and fill with None values
             if not stop_loss:
@@ -1318,12 +1326,14 @@ def analyze_transcript(results_df):
         first_stop = stop_codons[0][1] if stop_codons else None
 
         # Store results
-        df.at[idx, "alt_scan_start_codon_pos"] = start_pos
-        df.at[idx, "alt_scan_start_codon_exon"] = start_exon  # for exon number
-        df.at[idx, "alt_scan_first_stop_codon"] = first_stop
-        df.at[idx, "alt_scan_first_stop_pos"] = first_stop_pos
-        df.at[idx, "alt_scan_stop_codon_count"] = len(stop_codons)
-        df.at[idx, "alt_scan_stop_codons"] = stop_codon_records(stop_codons)
-        df.at[idx, "alt_scan_stop_codon_exons"] = stop_exons  # for exon number
+        results["alt_scan_start_codon_pos"][position] = start_pos
+        results["alt_scan_start_codon_exon"][position] = start_exon  # for exon number
+        results["alt_scan_first_stop_codon"][position] = first_stop
+        results["alt_scan_first_stop_pos"][position] = first_stop_pos
+        results["alt_scan_stop_codon_count"][position] = len(stop_codons)
+        results["alt_scan_stop_codons"][position] = stop_codon_records(stop_codons)
+        results["alt_scan_stop_codon_exons"][position] = stop_exons  # for exon number
 
+    for column in new_columns:
+        df[column] = pd.Series(results[column], index=df.index, dtype=object)
     return df
