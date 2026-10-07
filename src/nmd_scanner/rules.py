@@ -1296,15 +1296,13 @@ def analyze_transcript(results_df):
 
         # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on
         else:
-            stop_codons_in_frame = list(in_frame_codons(seq, scan_start, valid_stop_codons))
-
             # The comparison needs a reference transcript that reads its first stop codon at the annotated one.
             # Otherwise, e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the row keeps the flags
             # from the CDS.
             stop_loss = row["stop_loss"]
             results["stop_classification"][position] = "alt_cds"
             if not row["has_stop_codon"] or ends_at_annotated_stop(row):
-                first_stop = stop_codons_in_frame[0][0] if stop_codons_in_frame else None
+                first_stop = first_stop_codon(seq, scan_start)
                 is_premature, stop_loss = classify_first_stop(row, first_stop)
                 df.at[idx, "alt_has_ptc"] = is_premature
                 df.at[idx, "stop_loss"] = stop_loss
@@ -1318,7 +1316,7 @@ def analyze_transcript(results_df):
             if row["has_start_codon"]:
                 start_pos = cds_start
                 start_exon = get_exon(start_pos, exon_info) if exon_info else None
-            stop_codons = stop_codons_in_frame
+            stop_codons = list(in_frame_codons(seq, scan_start, valid_stop_codons))
 
         stop_exons = [get_exon(i, exon_info) for i, _ in stop_codons] if exon_info else None
 
