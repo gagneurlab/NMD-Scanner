@@ -456,15 +456,15 @@ CASES = [
             },
         ),
     ),
-    # MI-10, UR-01: a record without ID
+    # MI-10, UR-01: a record without ID gives a null variant_id, as every other missing value
     Case(
-        "variant_without_an_id_gets_the_variant_id_dot",
-        MISSENSE_DRAWING + "The VCF record has the ID '.'.\n",
+        "variant_without_an_id_has_a_null_variant_id",
+        MISSENSE_DRAWING + "The VCF record has no ID: its ID is '.'.\n",
         THREE_EXONS,
         Change("AGGC[T>A]GGGC", vcf_id="."),
         {
             **MISSENSE_ROW,
-            "variant_id": ".",
+            "variant_id": None,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_model_status": "no_ptc",
         },

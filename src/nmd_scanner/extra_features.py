@@ -24,8 +24,9 @@ def _plain_values(row):
     """
     Return the values of ``row`` as a dict of plain Python values, with None for a missing value.
 
-    A row of the result table holds pd.NA for a missing value in an int, bool or string column. A row of a
-    table without that schema can hold NaN instead, and a row taken with ``.iloc`` holds numpy scalars. The
+    A row of the result table holds pd.NA for a missing value in an int, bool or string column, and NaN in a
+    categorical column. A row of a table without that schema can hold NaN instead, and a row taken with ``.iloc``
+    holds numpy scalars. The
     feature and rule functions test for a missing value with ``is None`` and for False with ``is False``, so
     they need plain values. Lists, e.g. ``transcript_exons``, stay as they are.
 
@@ -449,7 +450,8 @@ def nmd_model_status(results):
 
     :param results: DataFrame with unknown_reason, alt_has_ptc, ref_has_ptc, has_stop_codon, has_start_codon
                     and the columns of MODEL_INPUTS
-    :return: Series of the values of MODEL_STATUSES, with the index of ``results`` and the string dtype
+    :return: Series of the values of MODEL_STATUSES, with the index of ``results`` and the categorical dtype of
+             nmd_model_status
     """
 
     def is_true(column):
@@ -468,4 +470,4 @@ def nmd_model_status(results):
         results[MODEL_INPUTS].isna().any(axis=1).to_numpy(),
     ]
     status = np.select(conditions, list(MODEL_STATUSES[:-1]), default=MODEL_STATUSES[-1])
-    return pd.Series(status, index=results.index, dtype=KIND_DTYPES["string"])
+    return pd.Series(status, index=results.index, dtype=KIND_DTYPES["nmd_model_status"])

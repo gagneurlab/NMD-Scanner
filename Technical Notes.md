@@ -33,8 +33,13 @@ The kind of a column sets its pandas dtype (`schema.KIND_DTYPES`) and its Arrow 
 | pair_list | `object`: a list of records, e.g. `{"exon_number": 1, "length": 36}` | `list<struct<exon_number: int64, length: int64>>` |
 | int_list | `object`: a list of exon numbers | `list<int64>` |
 | stop_codon_list | `object`: a list of records, e.g. `{"position": 5442, "codon": "TGA"}` | `list<struct<position: int64, codon: string>>` |
+| strand | `category` with the categories `+` and `-` | `dictionary<int8, string>` |
+| unknown_reason | `category` with the categories `splice_site_destroyed` and `exon_boundary_ambiguous` | `dictionary<int8, string>` |
+| nmd_model_status | `category` with the 8 values of `schema.MODEL_STATUSES` as categories | `dictionary<int8, string>` |
 
-A null is pd.NA in an int, bool or string column. In a list column, it is None or NaN, so test for it with `pd.isna`. Parquet stores a null as null, and CSV writes it as an empty field.
+A null is pd.NA in an int, bool or string column, and NaN in a categorical column. In a list column, it is None or NaN, so test for it with `pd.isna`. Parquet stores a null as null, and CSV writes it as an empty field.
+
+The kinds strand, unknown_reason and nmd_model_status are categorical. Each holds the closed value set of the column of the same name, and `schema.CATEGORIES` lists the values. A categorical column has all of them as categories, also if a value does not occur. So its dtype does not depend on the data. `schema.apply_schema` raises a ValueError for a value outside the categories. Parquet stores a categorical column as a dictionary, which `pd.read_parquet` reads back as a categorical and polars as a `Categorical`. CSV writes its values as text.
 
 A record is a dict with the field names of its Arrow struct. So a list value keeps the shape of its elements through `to_arrow`, Parquet and `pd.read_parquet` with default arguments: a record stays a dict with the same keys and values, and an exon number stays an int. Only the container changes. `pd.read_parquet` gives a numpy array instead of a list, and its ints are numpy ints. Read the fields of a record by name, e.g. `exon["length"]`. `for a, b in value` binds the keys of each record, not its values. The list columns are not `pd.ArrowDtype` columns, because `pd.read_parquet` with default arguments cannot read such a column back. It raises on the nested ArrowDtype in the pandas metadata of the file (pandas 2.2 and 3.0). polars reads the records as structs with the same field names.
 
@@ -100,7 +105,7 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 | Column | Kind | Meaning | Null when |
 |---|---|---|---|
 | `transcript_id` | string | Transcript ID from the annotation | never |
-| `variant_id` | string | ID of the VCF record, `.` if it has none | never |
+| `variant_id` | string | ID of the VCF record | the ID of the VCF record is `.` |
 | `cds_start` | int | Genomic start of the coding region: the smallest Start of its CDS rows | never |
 | `cds_end` | int | Genomic end of the coding region: the largest End of its CDS rows | never |
 | `ref_cds_seq` | string | Sequence of the ref CDS, 5' to 3', stop codon included | never |
@@ -109,7 +114,7 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 | `alt_cds_length` | int | Length of `alt_cds_seq` | `unknown_reason` is set |
 | `chromosome` | string | Chromosome name, as in the input files | never |
 | `gene_id` | string | Gene ID from the annotation | never |
-| `strand` | string | Strand of the transcript, `+` or `-` | never |
+| `strand` | strand | Strand of the transcript, `+` or `-` | never |
 | `has_start_codon` | bool | Whether the CDS starts with an annotated start codon, at CDS position 0. It can be a non-ATG codon such as CTG. A `cds_start_NF` transcript has none | never |
 | `has_stop_codon` | bool | Whether the coding region ends in an annotated stop codon | never |
 | `cds_frame` | int | GFF3 phase of the 5'-most CDS row: the number of bases before the first complete codon, 0 to 2. It is 1 or 2 only for a CDS that lacks its 5' end, e.g. of a `cds_start_NF` transcript. Every codon scan starts at CDS position `cds_frame` (see [Positions and terms](#positions-and-terms)) | never |
@@ -157,7 +162,7 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 | `alt_scan_stop_codon_count` | int | Number of stop codons that the scan found | not scanned |
 | `alt_scan_stop_codons` | stop_codon_list | `position` (in `alt_transcript_seq`) and `codon` of each stop codon that the scan found | not scanned |
 | `alt_scan_stop_codon_exons` | int_list | Exon number of each stop codon that the scan found, from the exon lengths of the alt transcript, `alt_transcript_exons` | not scanned; `alt_transcript_exons` is null |
-| `unknown_reason` | string | Why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous` (see [Variants at exon boundaries](#variants-at-exon-boundaries)). The section also lists the columns that are null on such a row | the alt transcript is known |
+| `unknown_reason` | unknown_reason | Why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous` (see [Variants at exon boundaries](#variants-at-exon-boundaries)). The section also lists the columns that are null on such a row | the alt transcript is known |
 
 ### NMD features
 
@@ -196,7 +201,7 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 
 | Column | Kind | Meaning | Null when |
 |---|---|---|---|
-| `nmd_model_status` | string | `ok` if the model can score the row, else the first reason why not (see below) | never |
+| `nmd_model_status` | nmd_model_status | `ok` if the model can score the row, else the first reason why not (see below) | never |
 
 A row gets the first value whose condition holds, in this order (`MODEL_STATUSES` in `nmd_scanner.schema`):
 
@@ -207,11 +212,11 @@ A row gets the first value whose condition holds, in this order (`MODEL_STATUSES
 | `ref_ptc` | `ref_has_ptc` is True: the reference has a PTC already, so the variant does not create it |
 | `no_annotated_stop` | `has_stop_codon` is False, which makes `annotated_stop_distance` and `utr3_length` null |
 | `no_annotated_start` | `has_start_codon` is False, which makes `ptc_to_start_codon` null. The true start codon lies upstream of the CDS, at an unknown distance (e.g. cds_start_NF) |
-| `start_lost` | `start_loss` is True and `ptc_to_start_codon` is null. After a start loss, the scan of `alt_transcript_seq` takes the next ATG, and `ptc_to_start_codon` runs from it to the PTC. A scanned row is a PTC row only if the scan finds an ATG and a stop codon after it, so it always has a `ptc_to_start_codon`. Only a start-loss row without `alt_transcript_seq` gets this value, e.g. one of a transcript without exon rows. It is not scanned and keeps the PTC of the alt CDS |
+| `start_loss` | `start_loss` is True and `ptc_to_start_codon` is null. After a start loss, the scan of `alt_transcript_seq` takes the next ATG, and `ptc_to_start_codon` runs from it to the PTC. A scanned row is a PTC row only if the scan finds an ATG and a stop codon after it, so it always has a `ptc_to_start_codon`. Only a start-loss row without `alt_transcript_seq` gets this value, e.g. one of a transcript without exon rows. It is not scanned and keeps the PTC of the alt CDS |
 | `missing_input` | another model input is null |
 | `ok` | the variant creates the PTC, and no model input is null |
 
-`unknown_effect` goes first. Its rows have a null `alt_has_ptc`, and `no_ptc` would claim that they have no PTC. `no_annotated_stop` and `no_annotated_start` hold for every variant of the transcript. So they go before `start_lost` and `missing_input`, which depend on the variant, and the counts per value group the unscorable rows by annotation first. A row with both annotation reasons gets `no_annotated_stop`.
+`unknown_effect` goes first. Its rows have a null `alt_has_ptc`, and `no_ptc` would claim that they have no PTC. `no_annotated_stop` and `no_annotated_start` hold for every variant of the transcript. So they go before the values `start_loss` and `missing_input`, which depend on the variant, and the counts per value group the unscorable rows by annotation first. A row with both annotation reasons gets `no_annotated_stop`.
 
 ### Column names before 0.4.0
 

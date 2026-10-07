@@ -1757,9 +1757,9 @@ CASES = [
         },
     ),
     # A start loss on a transcript without exon rows: the row has no alt_transcript_seq, so the scan does not run, and
-    # the row keeps the PTC of the alt CDS. ptc_to_start_codon is null, so the model cannot score the row: start_lost.
+    # the row keeps the PTC of the alt CDS. ptc_to_start_codon is null, so the model cannot score the row: start_loss.
     Case(
-        "start_loss_in_a_transcript_without_exon_rows_keeps_the_ptc_of_the_alt_cds_and_is_start_lost",
+        "start_loss_in_a_transcript_without_exon_rows_keeps_the_ptc_of_the_alt_cds_and_has_the_status_start_loss",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
         alt 5' [gacc TAG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
@@ -1768,7 +1768,7 @@ CASES = [
         The GFF3 has CDS rows only, no exon rows. AT>TA changes the start codon ATG to TAG: a start loss. The row has
         no alt_transcript_seq, so the scan of the alt transcript does not run, and the row keeps the flags from the
         alt CDS. Its first in-frame stop codon is the TAG at CDS 0, upstream of the annotated stop codon at CDS 18: a
-        PTC. No ATG of a scan starts the ORF, so ptc_to_start_codon is null, and nmd_model_status is start_lost.
+        PTC. No ATG of a scan starts the ORF, so ptc_to_start_codon is null, and nmd_model_status is start_loss.
         annotated_stop_distance is 18 - 0 = 18, in alt CDS coordinates.
         """,
         THREE_EXONS_WITHOUT_EXON_ROWS,
@@ -1810,7 +1810,7 @@ CASES = [
             "nmd_start_proximal_rule": None,
             "nmd_single_exon_rule": None,
             "nmd_escape": None,
-            "nmd_model_status": "start_lost",
+            "nmd_model_status": "start_loss",
         },
         marks=(Mark("alt", 4, 7, "*", "PTC"),),
     ),

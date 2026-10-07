@@ -569,7 +569,10 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             # Variant-identifying fields come straight from the group key;
             # ID and gene_id are constant within the group, so read them once.
             chromosome, variant_start, variant_end, ref_allele, alt_allele = variant[:5]
+            # A record without ID has "." there, and its variant_id is null
             variant_id = cds_df["ID"].iloc[0]
+            if variant_id == ".":
+                variant_id = None
             gene_id = cds_df["gene_id"].iloc[0]
 
             # An unknown alt transcript gives a row without alt CDS

@@ -618,7 +618,8 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
     assert len(results) == len(rows), f"expected {len(rows)} rows, got {len(results)}"
 
     def key(row):
-        return row["transcript_id"], row["variant_id"]
+        # variant_id is null for a record without ID
+        return row["transcript_id"], row["variant_id"] is not None, row["variant_id"] or ""
 
     actual_rows = [{column: plain(value) for column, value in results.iloc[i].items()} for i in range(len(results))]
     differences = [

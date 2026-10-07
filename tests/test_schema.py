@@ -88,6 +88,19 @@ def test_apply_schema_rejects_a_fraction_in_an_int_column():
         apply_schema(pd.DataFrame({"count": [1.5]}), {"count": "int"})
 
 
+def test_apply_schema_gives_a_categorical_column_all_its_categories():
+    result = apply_schema(pd.DataFrame({"strand": ["-", None]}), {"strand": "strand"})
+
+    assert result["strand"].dtype == pd.CategoricalDtype(["+", "-"])
+    assert result["strand"].iloc[0] == "-"
+    assert pd.isna(result["strand"].iloc[1])
+
+
+def test_apply_schema_rejects_a_value_outside_the_categories():
+    with pytest.raises(ValueError, match="nmd_model_status holds values outside its categories .*'start_lost'"):
+        apply_schema(pd.DataFrame({"nmd_model_status": ["ok", "start_lost"]}), {"nmd_model_status": "nmd_model_status"})
+
+
 def test_empty_table_has_the_schema():
     table = empty_table()
 

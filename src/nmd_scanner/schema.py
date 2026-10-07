@@ -9,6 +9,44 @@ a result to a pyarrow Table with the same types for every input.
 import pandas as pd
 import pyarrow as pa
 
+from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
+
+# The values of nmd_model_status, in the order they are checked. A row gets the first value whose condition holds:
+# - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 15 of the 19 model
+#   inputs are null. unknown_reason says why.
+# - no_ptc: alt_has_ptc is not True, so there is no PTC to score.
+# - ref_ptc: ref_has_ptc is True. The reference has a PTC already, so the variant does not create it.
+# - no_annotated_stop: has_stop_codon is False, which makes annotated_stop_distance and utr3_length null.
+# - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
+#   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).
+# - start_loss: start_loss is True and ptc_to_start_codon is null. After a start loss, the scan of alt_transcript_seq
+#   takes the next ATG, and ptc_to_start_codon runs from it to the PTC. A scanned row is a PTC row only if the scan
+#   finds an ATG and a stop codon after it, so it always has a ptc_to_start_codon. Only a start-loss row without
+#   alt_transcript_seq gets this value, e.g. one of a transcript without exon rows. It is not scanned and keeps the
+#   PTC of the alt CDS.
+# - missing_input: another model input is null.
+# - ok: the variant creates the PTC, and no model input is null.
+# no_annotated_stop and no_annotated_start hold for every variant of the transcript. So they go before the values
+# start_loss and missing_input, which depend on the variant.
+MODEL_STATUSES = (
+    "unknown_effect",
+    "no_ptc",
+    "ref_ptc",
+    "no_annotated_stop",
+    "no_annotated_start",
+    "start_loss",
+    "missing_input",
+    "ok",
+)
+
+# The categories of each categorical kind: the closed value set of the column whose name the kind has. A categorical
+# column holds one of these values or a null, and it has all of them as categories, also if a value does not occur.
+CATEGORIES = {
+    "strand": ("+", "-"),
+    "unknown_reason": (SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS),
+    "nmd_model_status": MODEL_STATUSES,
+}
+
 # pandas dtype of each column kind. The int, bool and string dtypes are nullable, so a missing value is
 # pd.NA, and a column with missing values keeps its dtype. The string dtype has "python" storage: it
 # behaves the same on pandas 2 and 3, with or without pyarrow. The default string dtype of pandas 3,
@@ -17,7 +55,8 @@ import pyarrow as pa
 # "stop_codon_list" {"position": ..., "codon": ...} records. A record has the field names of its Arrow
 # struct (KIND_ARROW_TYPES). So a value keeps the shape of its elements through to_arrow, Parquet and
 # pd.read_parquet with default arguments. Only the container changes: pd.read_parquet gives a numpy array of
-# the same dicts, or of numpy ints.
+# the same dicts, or of numpy ints. A categorical kind (CATEGORIES) has a CategoricalDtype with its fixed
+# categories, so a missing value is NaN.
 KIND_DTYPES = {
     "string": pd.StringDtype("python"),
     "int": pd.Int64Dtype(),
@@ -25,10 +64,12 @@ KIND_DTYPES = {
     "pair_list": object,
     "int_list": object,
     "stop_codon_list": object,
+    **{kind: pd.CategoricalDtype(list(categories)) for kind, categories in CATEGORIES.items()},
 }
 
 # Arrow type of each column kind, which to_arrow and the Parquet output use. A record of a pair_list or a
-# stop_codon_list becomes a struct with the same field names.
+# stop_codon_list becomes a struct with the same field names. A categorical kind becomes a dictionary of strings
+# with int8 indices.
 KIND_ARROW_TYPES = {
     "string": pa.string(),
     "int": pa.int64(),
@@ -36,6 +77,7 @@ KIND_ARROW_TYPES = {
     "pair_list": pa.list_(pa.struct([pa.field("exon_number", pa.int64()), pa.field("length", pa.int64())])),
     "int_list": pa.list_(pa.int64()),
     "stop_codon_list": pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())])),
+    **dict.fromkeys(CATEGORIES, pa.dictionary(pa.int8(), pa.string())),
 }
 
 # Kind of every column that extract_ptc returns, in output order
@@ -50,7 +92,7 @@ PTC_COLUMN_KINDS = {
     "alt_cds_length": "int",
     "chromosome": "string",
     "gene_id": "string",
-    "strand": "string",
+    "strand": "strand",
     "has_start_codon": "bool",
     "has_stop_codon": "bool",
     "cds_frame": "int",
@@ -98,7 +140,7 @@ PTC_COLUMN_KINDS = {
     "alt_scan_stop_codon_count": "int",
     "alt_scan_stop_codons": "stop_codon_list",
     "alt_scan_stop_codon_exons": "int_list",
-    "unknown_reason": "string",
+    "unknown_reason": "unknown_reason",
 }
 
 # Kind of every column that add_nmd_features returns, in output order
@@ -128,7 +170,7 @@ NMD_RULE_COLUMN_KINDS = {
 
 # Kind of the column that add_features_and_rules adds after the rules. It says whether the NMD efficiency model
 # can score the row (see MODEL_STATUSES).
-MODEL_STATUS_COLUMN_KINDS = {"nmd_model_status": "string"}
+MODEL_STATUS_COLUMN_KINDS = {"nmd_model_status": "nmd_model_status"}
 
 # Kind of every output column, in output order. The kind gives the pandas dtype (KIND_DTYPES) and the
 # Arrow and Parquet type (KIND_ARROW_TYPES, see to_arrow). Without a fixed schema, pandas and pyarrow infer each type from the
@@ -173,46 +215,20 @@ MODEL_INPUTS = [
     "transcript_length",
 ]
 
-# The values of nmd_model_status, in the order they are checked. A row gets the first value whose condition holds:
-# - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 15 of the 19 model
-#   inputs are null. unknown_reason says why.
-# - no_ptc: alt_has_ptc is not True, so there is no PTC to score.
-# - ref_ptc: ref_has_ptc is True. The reference has a PTC already, so the variant does not create it.
-# - no_annotated_stop: has_stop_codon is False, which makes annotated_stop_distance and utr3_length null.
-# - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
-#   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).
-# - start_lost: start_loss is True and ptc_to_start_codon is null. After a start loss, the scan of alt_transcript_seq
-#   takes the next ATG, and ptc_to_start_codon runs from it to the PTC. A scanned row is a PTC row only if the scan
-#   finds an ATG and a stop codon after it, so it always has a ptc_to_start_codon. Only a start-loss row without
-#   alt_transcript_seq gets start_lost, e.g. one of a transcript without exon rows. It is not scanned and keeps the
-#   PTC of the alt CDS.
-# - missing_input: another model input is null.
-# - ok: the variant creates the PTC, and no model input is null.
-# no_annotated_stop and no_annotated_start hold for every variant of the transcript. So they go before start_lost and
-# missing_input, which depend on the variant.
-MODEL_STATUSES = (
-    "unknown_effect",
-    "no_ptc",
-    "ref_ptc",
-    "no_annotated_stop",
-    "no_annotated_start",
-    "start_lost",
-    "missing_input",
-    "ok",
-)
-
 
 def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
     """
     Return a copy of ``table`` with the columns of ``column_kinds``, in that order, and the dtype of each
-    column's kind (see KIND_DTYPES). A missing value in an int, bool or string column becomes pd.NA.
-    pandas raises if a value does not fit its column's dtype, e.g. 1.5 in an int column.
+    column's kind (see KIND_DTYPES). A missing value in an int, bool or string column becomes pd.NA, and one
+    in a categorical column NaN. pandas raises if a value does not fit its column's dtype, e.g. 1.5 in an int
+    column. A value outside the categories of a categorical column raises too.
 
     :param table: DataFrame with exactly the columns of ``column_kinds``, in any order
     :param column_kinds: dict of column name to kind, e.g. OUTPUT_COLUMN_KINDS, PTC_COLUMN_KINDS or
         output_column_kinds(sequences=False)
     :return: DataFrame with the schema of ``column_kinds``
-    :raises ValueError: if ``table`` lacks a column of ``column_kinds`` or has a column it does not list
+    :raises ValueError: if ``table`` lacks a column of ``column_kinds`` or has a column it does not list, or if a
+        categorical column holds a value outside its categories (see CATEGORIES)
     """
 
     missing = [column for column in column_kinds if column not in table.columns]
@@ -221,6 +237,15 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
         raise ValueError(
             f"The table does not match the schema. Missing columns: {missing}. Unknown columns: {unknown}."
         )
+    # astype turns a value outside the categories into NaN, without an error
+    for column, kind in column_kinds.items():
+        if kind not in CATEGORIES:
+            continue
+        outside = set(table[column].dropna()) - set(CATEGORIES[kind])
+        if outside:
+            raise ValueError(
+                f"The column {column} holds values outside its categories {CATEGORIES[kind]}: {sorted(outside, key=str)}."
+            )
 
     return table[list(column_kinds)].astype({column: KIND_DTYPES[kind] for column, kind in column_kinds.items()})
 

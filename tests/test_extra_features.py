@@ -648,7 +648,7 @@ _UNKNOWN_INPUTS = {
         ({"ref_has_ptc": True}, "ref_ptc"),
         ({"has_stop_codon": False, "annotated_stop_distance": None, "utr3_length": None}, "no_annotated_stop"),
         ({"has_start_codon": False, "ptc_to_start_codon": None}, "no_annotated_start"),
-        ({"start_loss": True, "ptc_to_start_codon": None}, "start_lost"),
+        ({"start_loss": True, "ptc_to_start_codon": None}, "start_loss"),
         ({"start_loss": True}, "ok"),
         ({"ptc_to_start_codon": None}, "missing_input"),
         ({"ptc_to_exon_end": None}, "missing_input"),
@@ -666,7 +666,7 @@ _UNKNOWN_INPUTS = {
             "no_annotated_stop",
         ),
         ({"has_start_codon": False, "ptc_to_start_codon": None, "ptc_to_exon_end": None}, "no_annotated_start"),
-        ({"start_loss": True, "ptc_to_start_codon": None, "ptc_to_exon_end": None}, "start_lost"),
+        ({"start_loss": True, "ptc_to_start_codon": None, "ptc_to_exon_end": None}, "start_loss"),
     ],
 )
 def test_nmd_model_status(values, status):
@@ -676,7 +676,7 @@ def test_nmd_model_status(values, status):
 
     assert result.tolist() == ["ok", status]
     assert result.index.tolist() == [7, 3]
-    assert result.dtype == pd.StringDtype("python")
+    assert result.dtype == pd.CategoricalDtype(MODEL_STATUSES)
 
 
 def test_nmd_model_status_values_are_the_documented_ones():
@@ -686,7 +686,7 @@ def test_nmd_model_status_values_are_the_documented_ones():
         "ref_ptc",
         "no_annotated_stop",
         "no_annotated_start",
-        "start_lost",
+        "start_loss",
         "missing_input",
         "ok",
     )

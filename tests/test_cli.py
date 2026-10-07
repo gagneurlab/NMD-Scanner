@@ -431,7 +431,7 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     unknown = loaded["unknown_reason"].notna()
     assert unknown.any() and not unknown.all()
     assert set(loaded.loc[unknown, "unknown_reason"]) <= {SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS}
-    assert schema.field("unknown_reason").type.equals(pa.string())
+    assert schema.field("unknown_reason").type.equals(pa.dictionary(pa.int8(), pa.string()))
     for column in ["start_loss", "stop_loss", *NMD_RULE_COLUMN_KINDS]:
         assert schema.field(column).type.equals(pa.bool_()), column
         assert loaded.loc[unknown, column].isna().all(), column

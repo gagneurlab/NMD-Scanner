@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from nmd_scanner import to_arrow
-from nmd_scanner.schema import OUTPUT_COLUMN_KINDS
+from nmd_scanner.schema import CATEGORIES, OUTPUT_COLUMN_KINDS
 
 from .runner import NO_ROW_REASONS, NoRow, Raises, case_params, check, expected_row, render_case, run
 
@@ -72,6 +72,7 @@ ARROW_TYPES = {
     "pair_list": pa.list_(pa.struct([("exon_number", pa.int64()), ("length", pa.int64())])),
     "int_list": pa.list_(pa.int64()),
     "stop_codon_list": pa.list_(pa.struct([("position", pa.int64()), ("codon", pa.string())])),
+    **dict.fromkeys(CATEGORIES, pa.dictionary(pa.int8(), pa.string())),
 }
 # The list columns: lists of {"exon_number", "length"} records, of exon numbers, or of {"position", "codon"} records
 LIST_COLUMNS = tuple(
@@ -150,19 +151,29 @@ def test_list_columns_keep_their_shape_through_parquet(case, tmp_path):
 
 
 def test_to_arrow_types_a_column_with_only_nulls(tmp_path):
-    """The one row of a destroyed splice site has a null in a column of each kind: the alt CDS columns."""
-    case = next(case for case in CASES if case.name == "snv_at_donor_plus_1_destroys_the_splice_site")
-    null_columns = (
-        *("alt_cds_length", "start_loss", "alt_cds_seq"),
-        *("alt_cds_exons", "alt_stop_codon_exons", "alt_stop_codons"),
-    )
-    assert {OUTPUT_COLUMN_KINDS[column] for column in null_columns} == set(ARROW_TYPES)
+    """
+    A column of each Arrow type can hold only nulls. The one row of a destroyed splice site has a null in the alt CDS
+    columns, and the one row of a missense SNV has a null unknown_reason.
+    """
+    null_columns = {
+        "snv_at_donor_plus_1_destroys_the_splice_site": (
+            *("alt_cds_length", "start_loss", "alt_cds_seq"),
+            *("alt_cds_exons", "alt_stop_codon_exons", "alt_stop_codons"),
+        ),
+        "missense_snv_inside_an_internal_coding_exon_changes_one_cds_base": ("unknown_reason",),
+    }
+    arrow_types = {ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]] for columns in null_columns.values() for column in columns}
+    assert arrow_types == set(ARROW_TYPES.values())
 
-    table = to_arrow(run(case, case.change, "+", tmp_path)[0])
+    for name, columns in null_columns.items():
+        case = next(case for case in CASES if case.name == name)
+        directory = tmp_path / name
+        directory.mkdir()
+        table = to_arrow(run(case, case.change, "+", directory)[0])
 
-    for column in null_columns:
-        assert table.column(column).null_count == table.num_rows == 1, column
-        assert table.schema.field(column).type == ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]], column
+        for column in columns:
+            assert table.column(column).null_count == table.num_rows == 1, column
+            assert table.schema.field(column).type == ARROW_TYPES[OUTPUT_COLUMN_KINDS[column]], column
 
 
 def test_case_names_are_unique():
@@ -207,7 +218,7 @@ VALUES = {
         "ref_ptc",
         "no_annotated_stop",
         "no_annotated_start",
-        "start_lost",
+        "start_loss",
         "missing_input",
         "ok",
     },
@@ -217,6 +228,13 @@ VALUES = {
 @pytest.mark.parametrize("column", sorted(VALUES))
 def test_every_value_has_a_case(column):
     assert VALUES[column] - {row[column] for row in _rows()} == set()
+
+
+def test_values_of_a_categorical_column_are_its_categories():
+    categorical = {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if kind in CATEGORIES}
+    assert {column: VALUES[column] - {None} for column in categorical} == {
+        column: set(CATEGORIES[kind]) for column, kind in categorical.items()
+    }
 
 
 def test_every_output_column_has_a_case():
@@ -296,6 +314,8 @@ RULES = (
     "nmd_single_exon_rule",
 )
 NULL_CASES = [
+    # A row does not show the ID of its record, and a null variant_id has no other cause
+    ("variant_id", "the ID of the VCF record is `.`", lambda row: True),
     *[
         (column, UNKNOWN, lambda row: not _known(row))
         for column in (
