@@ -10,7 +10,7 @@ from Bio.Seq import Seq
 from nmd_scanner import catch_sequence
 from nmd_scanner._polars_bio import pb
 from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table
-from nmd_scanner.variant_placement import ReferenceSequence, place_in_transcript, variant_placements
+from nmd_scanner.variant_placement import ReferenceSequence, exon_boundaries, place_in_transcript, variant_placements
 
 logger = logging.getLogger(__name__)
 
@@ -464,17 +464,24 @@ def apply_variants(intersection_cds_vcf, placements, cds_df, exons_df, reference
     utr3 = [("", "")] * len(df)
     alt_exon_lengths = [None] * len(df)
     unknown_reasons = [None] * len(df)
+    # The exon boundaries of each transcript, computed for its first variant
+    boundaries = {}
     for (transcript_id, variant_row), positions in df.groupby(
         ["transcript_id", "variant_row"], observed=True
     ).indices.items():
         coding_rows = [(int(starts[i]), int(ends[i])) for i in positions]
+        exons = exons_by_transcript.get(transcript_id, [])
+        chromosome_reference = reference(chromosomes[positions[0]])
+        if transcript_id not in boundaries:
+            boundaries[transcript_id] = exon_boundaries(exons, chromosome_reference)
         effect = place_in_transcript(
             placements[variant_row],
             coding_rows,
-            exons_by_transcript.get(transcript_id, []),
-            reference(chromosomes[positions[0]]),
+            exons,
+            chromosome_reference,
             strands[positions[0]],
             coding_regions[transcript_id],
+            boundaries[transcript_id],
         )
         if effect is None:
             continue
