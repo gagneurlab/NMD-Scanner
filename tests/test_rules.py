@@ -31,6 +31,7 @@ from nmd_scanner.rules import (
     join_variants_to_cds,
     splice_alt_cds_into_transcript,
     start_stop_loss,
+    starts_with_annotated_start_codon,
 )
 
 
@@ -462,7 +463,7 @@ def test_analyze_sequence():
         ]
     )
     analyzed = analyze_sequence(df)
-    assert analyzed.loc[0, "ref_start_codon_pos"] == 0
+    assert starts_with_annotated_start_codon(analyzed.loc[0], "ref")
     assert analyzed.loc[0, "ref_valid_stop"] == True
     assert analyzed.loc[0, "alt_valid_stop"] == True
 
@@ -507,9 +508,11 @@ def test_analyze_sequence_without_stop_codon():
 def test_start_stop_loss():
     df = pd.DataFrame(
         [
+            # the variant changes the annotated start codon ATG
             {
-                "ref_start_codon_pos": 0,
-                "alt_start_codon_pos": None,
+                "has_start_codon": True,
+                "ref_cds_seq": "ATGAAATAG",
+                "alt_cds_seq": "ACGAAAGGA",
                 "ref_valid_stop": True,
                 "alt_valid_stop": False,
                 "ref_last_codon": "TAG",
@@ -517,8 +520,9 @@ def test_start_stop_loss():
             },
             # stop codon swap: the last codon changes but still encodes a stop
             {
-                "ref_start_codon_pos": 0,
-                "alt_start_codon_pos": 0,
+                "has_start_codon": True,
+                "ref_cds_seq": "ATGAAATAA",
+                "alt_cds_seq": "ATGAAATAG",
                 "ref_valid_stop": True,
                 "alt_valid_stop": True,
                 "ref_last_codon": "TAA",
@@ -568,11 +572,10 @@ def test_start_loss_judges_the_annotated_start_codon():
 
 def test_start_codon_pos_is_the_annotated_start_codon():
     """
-    The start codon position is the annotated start codon at CDS position 0, also if it is CTG and an in-frame ATG
-    follows. Without an annotated start codon, the true start lies upstream of the CDS, and an in-frame ATG is an
+    The start codon is the annotated start codon at CDS position 0, also if it is CTG and an in-frame ATG follows. Without an annotated start codon, the true start lies upstream of the CDS, and an in-frame ATG is an
     internal Met.
 
-    ref CDS  CTG AAA ATG CCC TAA    annotated start codon CTG: ref_start_codon_pos 0, not 6
+    ref CDS  CTG AAA ATG CCC TAA    annotated start codon CTG: at CDS position 0, not 6
              0       6
     """
     df = pd.DataFrame(
@@ -595,10 +598,11 @@ def test_start_codon_pos_is_the_annotated_start_codon():
 
     result = analyze_sequence(df)
 
-    assert result["ref_start_codon_pos"].tolist() == [0, 0, None, None]
+    rows = [row for _, row in result.iterrows()]
+    assert [starts_with_annotated_start_codon(row, "ref") for row in rows] == [True, True, False, False]
     assert result["start_codon_exon"].tolist() == [1, 1, None, None]
     # ATG>ACG changes the annotated start codon, so the alt CDS has none
-    assert result["alt_start_codon_pos"].tolist() == [0, None, None, None]
+    assert [starts_with_annotated_start_codon(row, "alt") for row in rows] == [True, False, False, False]
 
 
 def test_splice_alt_cds_into_transcript():

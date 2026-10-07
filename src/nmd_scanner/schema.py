@@ -43,8 +43,6 @@ PTC_COLUMN_KINDS = {
     "cds_end": "int",
     "ref_cds_seq": "string",
     "ref_cds_length": "int",
-    "alt_cds_start": "int",
-    "alt_cds_stop": "int",
     "alt_cds_seq": "string",
     "alt_cds_length": "int",
     "chromosome": "string",
@@ -60,7 +58,6 @@ PTC_COLUMN_KINDS = {
     "ref_cds_exons": "pair_list",
     "alt_cds_exons": "pair_list",
     "cds_in_transcript": "bool",
-    "ref_start_codon_pos": "int",
     "start_codon_exon": "int",
     "ref_last_codon": "string",
     "ref_valid_stop": "bool",
@@ -70,8 +67,6 @@ PTC_COLUMN_KINDS = {
     "ref_stop_codons": "stop_codon_list",
     "ref_stop_codon_exons": "int_list",
     "ref_has_ptc": "bool",
-    "alt_start_codon_pos": "int",
-    "alt_start_codon_exon": "int",
     "alt_last_codon": "string",
     "alt_valid_stop": "bool",
     "alt_first_stop_codon": "string",
@@ -95,8 +90,6 @@ PTC_COLUMN_KINDS = {
     "alt_transcript_exons": "pair_list",
     "alt_scan_start_codon_pos": "int",
     "alt_scan_start_codon_exon": "int",
-    "transcript_last_codon": "string",
-    "transcript_valid_stop": "bool",
     "alt_scan_first_stop_codon": "string",
     "alt_scan_first_stop_pos": "int",
     "alt_scan_stop_codon_count": "int",
@@ -234,7 +227,7 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
 def output_column_kinds(sequences=True):
     """
     Return the kind of every output column, in output order. With ``sequences=False``, the 4 columns of
-    SEQUENCE_COLUMNS are left out, and the other 80 columns keep their order. Pass the result to
+    SEQUENCE_COLUMNS are left out, and the other 73 columns keep their order. Pass the result to
     ``apply_schema`` or ``empty_table``.
 
     :param sequences: whether to keep the columns of SEQUENCE_COLUMNS

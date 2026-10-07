@@ -3,7 +3,13 @@ import math
 import numpy as np
 import pandas as pd
 
-from nmd_scanner.rules import annotated_stop_distance, classify_rescued_orf, ends_at_annotated_stop, first_stop_codon
+from nmd_scanner.rules import (
+    annotated_stop_distance,
+    classify_rescued_orf,
+    ends_at_annotated_stop,
+    first_stop_codon,
+    starts_with_annotated_start_codon,
+)
 from nmd_scanner.schema import KIND_DTYPES, MODEL_INPUTS, MODEL_STATUSES, OUTPUT_COLUMN_KINDS, apply_schema
 
 
@@ -191,8 +197,8 @@ def calculate_exon_features(row):
 def calculate_ptc_to_start_distance(row):
     """
     Calculate the distance in nt from the start codon to the PTC.
-    The start codon is the annotated one at CDS position 0 (alt_start_codon_pos), and the PTC lies at
-    alt_first_stop_pos, both CDS positions. The distance is None if the transcript has no annotated start codon (e.g.
+    The start codon is the annotated one at CDS position 0, and the PTC lies at alt_first_stop_pos, a CDS position. The
+    alt CDS must start with the annotated start codon (see rules.starts_with_annotated_start_codon). The distance is None if the transcript has no annotated start codon (e.g.
     cds_start_NF: the true start lies upstream of the CDS, at an unknown distance).
     After a start loss, translation starts at the ATG that the scan of the alt transcript found. So the distance runs
     from that ATG (alt_scan_start_codon_pos) to the first in-frame stop codon after it (alt_scan_first_stop_pos),
@@ -208,7 +214,7 @@ def calculate_ptc_to_start_distance(row):
         start = row.get("alt_scan_start_codon_pos")
         stop = row.get("alt_scan_first_stop_pos")
     else:
-        start = row.get("alt_start_codon_pos")
+        start = 0 if starts_with_annotated_start_codon(row, "alt") else None
         stop = row.get("alt_first_stop_pos")
 
     if start is None or stop is None:
@@ -388,8 +394,8 @@ def add_likely_misannotated_flag(row):
     Flag rows that look inconsistent between CDS and transcript annotations and might be likely misannotated.
     A row is flagged as likely misannotated if any of these conditions apply:
         cds_in_transcript = False (the assembled CDS is not found in the transcript sequence)
-        ref_start_codon_pos is None or not 0 (the reference CDS does not start with an annotated start codon, e.g.
-        cds_start_NF)
+        the reference CDS does not start with an annotated start codon, e.g. cds_start_NF (see
+        rules.starts_with_annotated_start_codon)
         ref_valid_stop is False (the reference does not end in a valid annotated stop codon, e.g. for a transcript
         without stop_codon rows such as one tagged cds_end_NF)
 
@@ -398,21 +404,18 @@ def add_likely_misannotated_flag(row):
 
     # Add likely_misannotated flag: when
     # "cds_in_transcript" is FALSE
-    # "ref_start_codon_pos" is not 0 (None: no annotated start codon)
+    # the ref CDS does not start with an annotated start codon
     # "ref_valid_stop" is FALSE
 
     cds_in_transcript = row.get("cds_in_transcript")
-    ref_start_codon_pos = row.get("ref_start_codon_pos")
     ref_valid_stop = row.get("ref_valid_stop")
 
     # if any of these are missing entirely, flag as likely misannotated
-    if cds_in_transcript is None or ref_start_codon_pos is None or ref_valid_stop is None:
+    if cds_in_transcript is None or ref_valid_stop is None:
         return True
 
     flag = (
-        (cds_in_transcript is False)
-        or ((ref_start_codon_pos is not None) and (ref_start_codon_pos != 0))
-        or (ref_valid_stop is False)
+        (cds_in_transcript is False) or not starts_with_annotated_start_codon(row, "ref") or (ref_valid_stop is False)
     )
 
     return flag

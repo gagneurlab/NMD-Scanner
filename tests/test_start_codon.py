@@ -163,8 +163,6 @@ def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, s
     _assert_values(
         row,
         {
-            "ref_start_codon_pos": 0,
-            "alt_start_codon_pos": 0,
             "alt_first_stop_pos": 0,
             "alt_has_ptc": True,
             "start_loss": False,

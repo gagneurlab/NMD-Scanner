@@ -153,7 +153,6 @@ VALUES = {
     "alt_has_ptc": {True, False, None},
     "start_loss": {True, False, None},
     "stop_loss": {True, False, None},
-    "transcript_valid_stop": {True, False, None},
     "alt_scan_first_stop_codon": {"TAA", "TAG", "TGA", None},
     "unknown_reason": {"splice_site_destroyed", "exon_boundary_ambiguous", None},
     "ptc_less_than_150nt_to_start": {True, False, None},
@@ -254,8 +253,7 @@ NULL_CASES = [
     *[
         (column, UNKNOWN, lambda row: not _known(row))
         for column in (
-            *("alt_cds_start", "alt_cds_stop", "alt_cds_seq", "alt_cds_length", "alt_cds_exons"),
-            *("alt_start_codon_pos", "alt_start_codon_exon", "alt_last_codon", "alt_valid_stop"),
+            *("alt_cds_seq", "alt_cds_length", "alt_cds_exons", "alt_last_codon", "alt_valid_stop"),
             *("alt_first_stop_codon", "alt_first_stop_pos", "alt_stop_codon_count", "alt_stop_codons"),
             *("alt_stop_codon_exons", "alt_has_ptc", "start_loss", "stop_loss"),
             *("alt_transcript_seq", "alt_transcript_length", "alt_cds_start_in_transcript"),
@@ -265,14 +263,8 @@ NULL_CASES = [
             *("nmd_single_exon_rule", "nmd_escape"),
         )
     ],
-    *[
-        entry
-        for column in ("ref_start_codon_pos", "start_codon_exon")
-        for entry in [
-            (column, NO_START_CODON, lambda row: not row["has_start_codon"]),
-            (column, SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_length"] < 3),
-        ]
-    ],
+    ("start_codon_exon", NO_START_CODON, lambda row: not row["has_start_codon"]),
+    ("start_codon_exon", SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_length"] < 3),
     *[
         (column, SHORT_CDS, lambda row: row["ref_cds_length"] < 3)
         for column in (
@@ -283,25 +275,6 @@ NULL_CASES = [
     *[
         (column, NO_IN_FRAME_STOP, lambda row: row["ref_cds_length"] >= 3 and row["ref_stop_codon_count"] == 0)
         for column in ("ref_first_stop_codon", "ref_first_stop_pos")
-    ],
-    *[
-        entry
-        for column in ("alt_start_codon_pos", "alt_start_codon_exon")
-        for entry in [
-            (column, NO_START_CODON, lambda row: _known(row) and not row["has_start_codon"]),
-            (
-                column,
-                SHORT_CDS,
-                lambda row: (
-                    _known(row) and row["has_start_codon"] and row["alt_cds_length"] < 3 and not row["start_loss"]
-                ),
-            ),
-            (
-                column,
-                "the variant changes the start codon",
-                lambda row: _known(row) and row["start_loss"] and row["alt_cds_length"] >= 3,
-            ),
-        ]
     ],
     *[
         (column, SHORT_CDS, lambda row: _known(row) and row["alt_cds_length"] < 3)
@@ -385,8 +358,8 @@ NULL_CASES = [
     *[
         (column, NOT_SCANNED, lambda row: not _scanned(row))
         for column in (
-            *("transcript_last_codon", "transcript_valid_stop", "alt_scan_first_stop_codon"),
-            *("alt_scan_first_stop_pos", "alt_scan_stop_codon_count", "alt_scan_stop_codons"),
+            *("alt_scan_first_stop_codon", "alt_scan_first_stop_pos", "alt_scan_stop_codon_count"),
+            "alt_scan_stop_codons",
             "alt_scan_stop_codon_exons",
         )
     ],
@@ -425,7 +398,10 @@ NULL_CASES = [
         "ptc_to_start_codon",
         "the annotated start codon is a stop codon, such as TAG",
         lambda row: (
-            _ptc_row(row) and row["ref_start_codon_pos"] == 0 and row["ref_cds_seq"][:3] in {"TAA", "TAG", "TGA"}
+            _ptc_row(row)
+            and row["has_start_codon"]
+            and row["ref_cds_length"] >= 3
+            and row["ref_cds_seq"][:3] in {"TAA", "TAG", "TGA"}
         ),
     ),
     (

@@ -98,8 +98,8 @@ def test_empty_table_has_the_schema():
 def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_columns():
     reduced = output_column_kinds(sequences=False)
 
-    assert len(OUTPUT_COLUMN_KINDS) == 84
-    assert len(reduced) == 80
+    assert len(OUTPUT_COLUMN_KINDS) == 77
+    assert len(reduced) == 73
     assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
     assert reduced == {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
     assert list(reduced) == [column for column in OUTPUT_COLUMN_KINDS if column not in SEQUENCE_COLUMNS]
@@ -111,7 +111,7 @@ def test_empty_table_without_sequences_has_the_80_columns_and_their_dtypes():
     table = empty_table(output_column_kinds(sequences=False))
 
     assert len(table) == 0
-    assert len(table.columns) == 80
+    assert len(table.columns) == 73
     assert_schema(table, output_column_kinds(sequences=False))
 
 
@@ -255,13 +255,11 @@ def none_row(**values):
         {"alt_has_ptc": True, "alt_first_stop_pos": 30, "cds_in_transcript": True, "ref_valid_stop": True},
         {
             "alt_has_ptc": True,
-            "alt_start_codon_pos": 0,
             "alt_first_stop_pos": 30,
             "alt_cds_start_in_transcript": 40,
             "transcript_exons": [(1, 100), (2, 120)],
             "alt_transcript_exons": [(1, 100), (2, 120)],
             "cds_in_transcript": True,
-            "ref_start_codon_pos": 0,
             "ref_valid_stop": False,
         },
     ],
@@ -277,7 +275,7 @@ def test_features_and_rules_treat_pd_na_like_none(values):
 
 def test_likely_misannotated_reads_numpy_bools():
     # .iloc gives numpy.bool_ values, and `numpy.False_ is False` is False
-    row = schema_row(cds_in_transcript=False, ref_start_codon_pos=0, ref_valid_stop=True)
+    row = schema_row(cds_in_transcript=False, has_start_codon=True, ref_cds_seq="ATGAAATAA", ref_valid_stop=True)
     assert isinstance(row["cds_in_transcript"], np.bool_)
 
     assert add_nmd_features(row)["likely_misannotated"] is True

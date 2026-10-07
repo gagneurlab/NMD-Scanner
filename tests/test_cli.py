@@ -295,7 +295,7 @@ def test_parquet_schema_is_the_same_for_every_run(tmp_path):
     )
     assert schema_with.field("alt_scan_stop_codon_exons").type.equals(pa.list_(pa.int64()))
     assert schema_with.field("alt_scan_start_codon_exon").type.equals(pa.int64())
-    assert schema_with.field("transcript_valid_stop").type.equals(pa.bool_())
+    assert schema_with.field("alt_scan_first_stop_codon").type.equals(pa.string())
 
 
 def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):

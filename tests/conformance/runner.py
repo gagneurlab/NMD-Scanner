@@ -49,7 +49,6 @@ REF_COLUMNS = (
     "cds_frame",
     "ref_cds_exons",
     "cds_in_transcript",
-    "ref_start_codon_pos",
     "start_codon_exon",
     "ref_last_codon",
     "ref_valid_stop",
@@ -93,8 +92,6 @@ IDS = {"transcript_id": "tx1", "gene_id": "g1", "chromosome": CHROMOSOME, "stran
 NOT_SCANNED = {
     "alt_scan_start_codon_pos": None,
     "alt_scan_start_codon_exon": None,
-    "transcript_last_codon": None,
-    "transcript_valid_stop": None,
     "alt_scan_first_stop_codon": None,
     "alt_scan_first_stop_pos": None,
     "alt_scan_stop_codon_count": None,
@@ -120,13 +117,9 @@ NO_RULE = {
 # A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null, and the
 # model cannot score the row
 UNKNOWN_ALT = {
-    "alt_cds_start": None,
-    "alt_cds_stop": None,
     "alt_cds_seq": None,
     "alt_cds_length": None,
     "alt_cds_exons": None,
-    "alt_start_codon_pos": None,
-    "alt_start_codon_exon": None,
     "alt_last_codon": None,
     "alt_valid_stop": None,
     "alt_first_stop_codon": None,

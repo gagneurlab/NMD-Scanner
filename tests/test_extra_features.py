@@ -219,45 +219,24 @@ def test_calculate_exon_features():
 
 
 def test_calculate_ptc_to_start_distance():
-    row = {
-        "alt_has_ptc": True,
-        "alt_first_stop_pos": 215,
-        "alt_start_codon_pos": 50,
-    }
-    assert calculate_ptc_to_start_distance(row) == 165
+    # The alt CDS starts with the annotated start codon, at CDS position 0, so the distance is alt_first_stop_pos
+    start = {"has_start_codon": True, "ref_cds_seq": "ATGAAATAA", "alt_cds_seq": "ATGTAATAA"}
+    row = {**start, "alt_has_ptc": True, "alt_first_stop_pos": 215}
+    assert calculate_ptc_to_start_distance(row) == 215
 
-    # PTC before start codon
-    row2 = {
-        "alt_has_ptc": True,
-        "alt_first_stop_pos": 30,
-        "alt_start_codon_pos": 100,
-    }
+    # The PTC is the annotated start codon itself, a stop codon such as TAG → None
+    row2 = {**start, "alt_has_ptc": True, "alt_first_stop_pos": 0}
     assert calculate_ptc_to_start_distance(row2) is None
 
-    # Same position → distance 0 # can not happen
-    row3 = {
-        "alt_has_ptc": True,
-        "alt_first_stop_pos": 120,
-        "alt_start_codon_pos": 120,
-    }
-    assert calculate_ptc_to_start_distance(row3) is None
-
     # PTC not premature → None
-    row4 = {
-        "alt_has_ptc": False,
-        "alt_first_stop_pos": 300,
-        "alt_start_codon_pos": 200,
-    }
+    row4 = {**start, "alt_has_ptc": False, "alt_first_stop_pos": 300}
     assert calculate_ptc_to_start_distance(row4) is None
 
     # Missing alt_first_stop_pos → None
-    row5 = {
-        "alt_has_ptc": True,
-        "alt_start_codon_pos": 200,
-    }
+    row5 = {**start, "alt_has_ptc": True}
     assert calculate_ptc_to_start_distance(row5) is None
 
-    # Missing alt_start_codon_pos → None
+    # Without has_start_codon and alt_cds_seq, the alt CDS has no annotated start codon → None
     row6 = {
         "alt_has_ptc": True,
         "alt_first_stop_pos": 200,
@@ -519,35 +498,32 @@ def test_calculate_ptc_to_downstream_ej():
 def test_add_likely_misannotated_flag():
 
     # Baseline: "good" annotation, not misannotated
-    row0 = {"cds_in_transcript": True, "ref_start_codon_pos": 0, "ref_valid_stop": True}
+    start = {"has_start_codon": True, "ref_cds_seq": "ATGAAATAA"}
+    row0 = {"cds_in_transcript": True, **start, "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row0) is False
 
     # CDS not in transcript
-    row1 = {"cds_in_transcript": False, "ref_start_codon_pos": 0, "ref_valid_stop": True}
+    row1 = {"cds_in_transcript": False, **start, "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row1) is True
 
-    # Start position of CDS not at position 0
-    row2 = {
-        "cds_in_transcript": True,
-        "ref_start_codon_pos": 14,  # start codon is not at beginning of CDS
-        "ref_valid_stop": True,
-    }
+    # The CDS does not start with an annotated start codon
+    row2 = {"cds_in_transcript": True, **start, "has_start_codon": False, "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row2) is True
 
     # No valid stop codon at the end of the CDS sequence
-    row3 = {"cds_in_transcript": True, "ref_start_codon_pos": 0, "ref_valid_stop": False}
+    row3 = {"cds_in_transcript": True, **start, "ref_valid_stop": False}
     assert add_likely_misannotated_flag(row3) is True
 
     # Multiple conditions that point to a likely misannotation
-    row4 = {"cds_in_transcript": True, "ref_start_codon_pos": 13, "ref_valid_stop": False}
+    row4 = {"cds_in_transcript": True, **start, "has_start_codon": False, "ref_valid_stop": False}
     assert add_likely_misannotated_flag(row4) is True
 
     # Missing information
     row5 = {}
     assert add_likely_misannotated_flag(row5) is True
 
-    # No start codon position
-    row5 = {"cds_in_transcript": True, "ref_start_codon_pos": None, "ref_valid_stop": True}
+    # A CDS of fewer than 3 nt holds no start codon
+    row5 = {"cds_in_transcript": True, "has_start_codon": True, "ref_cds_seq": "AT", "ref_valid_stop": True}
     assert add_likely_misannotated_flag(row5) is True
 
 
