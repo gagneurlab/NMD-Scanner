@@ -152,6 +152,18 @@ scorable = results[results["nmd_model_status"] == "ok"]
 X = scorable[MODEL_INPUTS]  # no null value
 ```
 
+The NMD efficiency model is `nmd_efficiency_rf.onnx` at the root of this repository. It is not part of the package. `scripts/train_model.py` trains this random forest on the features of NMD-Scanner 0.4.0 (see [scripts/README.md](scripts/README.md)). The model input `input` is a float64 matrix with the columns of `MODEL_INPUTS`, in that order. The output `variable` is a float32 matrix with one column. The metadata key `feature_names` lists the input columns as JSON. To score the rows with [onnxruntime](https://onnxruntime.ai):
+
+```python
+import json
+
+import onnxruntime
+
+session = onnxruntime.InferenceSession("nmd_efficiency_rf.onnx")
+assert json.loads(session.get_modelmeta().custom_metadata_map["feature_names"]) == MODEL_INPUTS
+nmd_efficiency = session.run(None, {"input": X.to_numpy(dtype="float64")})[0].ravel()
+```
+
 To work on single rows, `nmd_scanner.add_nmd_features` and `nmd_scanner.evaluate_nmd_escape_rules` are public too. Run the features **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced by the features. The row functions do not add `nmd_model_status`; `add_features_and_rules` adds it.
 
 ## License

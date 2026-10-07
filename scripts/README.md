@@ -86,9 +86,13 @@ uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh
 
 - The target is `NMD_efficiency` of the NMDEff TCGA benchmark, downloaded at a pinned commit.
 - The variants are `resources/TCGA_benchmark/tcga_dataset.vcf`.
-- It compares the random forest of `best_model.pkl`, a tuned random forest and LightGBM with default
-  hyperparameters in nested cross-validation. The folds are grouped by chromosome, and for comparison by variant.
+- It compares a random forest with the hyperparameters of the former `best_model.pkl`, a tuned random forest
+  and LightGBM with default hyperparameters in nested cross-validation. The folds are grouped by chromosome, and
+  for comparison by variant.
 - It saves the tuned random forest and the LightGBM model, both fit on all usable rows, to `out/models/`.
+- It also saves the tuned random forest as ONNX, to `out/models/nmd_efficiency_rf.onnx`, and checks that the ONNX
+  model predicts the training rows like the random forest. This file is `nmd_efficiency_rf.onnx` at the root of the
+  repository. The main README shows how to load it.
 
 ---
 

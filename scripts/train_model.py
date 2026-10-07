@@ -10,6 +10,9 @@
 #     "joblib==1.6.0",
 #     "pyarrow==24.0.0",
 #     "pyfaidx==0.9.0.4",
+#     "skl2onnx==1.20.0",
+#     "onnx==1.23.2",
+#     "onnxruntime==1.30.0",
 # ]
 # [tool.uv]
 # exclude-newer = "2026-10-07T16:00:00Z"
@@ -30,16 +33,18 @@ Steps:
 3. Run nmd_scanner.annotate on that VCF and keep the rows of the TCGA transcripts. NMD-Scanner's start is 0-based,
    so start + 1 is the TCGA start. Join on the transcript ID without version, chrom, start, end, ref and alt.
 4. Keep the rows with nmd_model_status "ok". The inputs are nmd_scanner.schema.MODEL_INPUTS as float64.
-5. Nested cross-validation of 3 models: a random forest with the hyperparameters of best_model.pkl, a random forest
-   tuned with the grid of scripts/train_new.ipynb, and LightGBM with its default hyperparameters. The outer loop has
-   5 folds. The inner loop, which tunes the random forest, splits the training rows of an outer fold the same way.
+5. Nested cross-validation of 3 models: a random forest with the hyperparameters of the former best_model.pkl, a
+   random forest tuned with the grid of scripts/train_new.ipynb, and LightGBM with its default hyperparameters. The
+   outer loop has 5 folds. The inner loop, which tunes the random forest, splits the training rows of an outer fold
+   the same way.
    - Main grouping by chromosome: StratifiedGroupKFold over the chromosomes, stratified by 5 quantile bins of the
      target. The folds then have similar sizes and target distributions. Genes can overlap (antisense, nested), so a
      grouping by gene could still leak.
    - Comparison grouped by variant (chrom, pos, ref, alt): GroupKFold. It is close to the ungrouped folds of the
      notebook, but keeps the TCGA rows of one variant in one fold.
 6. Tune the random forest on all usable rows with folds grouped by chromosome, and refit it. Fit LightGBM with its
-   default hyperparameters on all usable rows. Save both to <out-dir>/models/.
+   default hyperparameters on all usable rows. Save both to <out-dir>/models/. Also save the random forest as ONNX
+   (see save_onnx), and check that its predictions equal those of the random forest, rounded to float32.
 
 Outputs in --out-dir: tcga_dataset.csv, tcga_variants.vcf, tcga_features.parquet (the annotate result without
 sequences), training_rows.parquet, oof_predictions.parquet, cv_results.json, cv_results.md and models/.
@@ -59,11 +64,15 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+import onnx
+import onnxruntime
 import pandas as pd
 import pyarrow.parquet as pq
 from lightgbm import LGBMRegressor
+from onnx import TensorProto, helper, numpy_helper
 from pyfaidx import Fasta
 from scipy.stats import spearmanr
+from skl2onnx.common.tree_ensemble import add_tree_to_attribute_pairs, get_default_tree_regressor_attribute_pairs
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, root_mean_squared_error
 from sklearn.model_selection import GridSearchCV, GroupKFold, StratifiedGroupKFold
@@ -84,7 +93,8 @@ N_FOLDS = 5
 # The chromosome folds are stratified by this many quantile bins of the target
 N_TARGET_BINS = 5
 
-# Hyperparameters of best_model.pkl: the best estimator of the grid search in scripts/train_new.ipynb
+# Hyperparameters of best_model.pkl, the model before nmd_efficiency_rf.onnx: the best estimator of the grid search in
+# scripts/train_new.ipynb
 OLD_RF_PARAMS = {
     "n_estimators": 300,
     "max_depth": 11,
@@ -179,6 +189,8 @@ class FinalModel:
     model: str
     path: str
     metadata_path: str
+    # The ONNX file of the random forest, None for LightGBM
+    onnx_path: str | None
     params: dict
     inner_r2: float | None
 
@@ -449,6 +461,62 @@ def summarize(folds: list[FoldResult]) -> Summary:
     )
 
 
+def save_onnx(estimator: RandomForestRegressor, path: Path) -> None:
+    """
+    Write the random forest as one ONNX TreeEnsembleRegressor node (ai.onnx.ml opset 3). The input "input" has type
+    double and shape [N, 19], with the columns of MODEL_INPUTS in that order. By the ONNX specification, the output
+    "variable" has type float and shape [N, 1]. The metadata key feature_names holds MODEL_INPUTS as a JSON list.
+
+    The RandomForestRegressor converter of skl2onnx would store the split thresholds and leaf values as float32. This
+    function uses the tree helpers of the converter, but keeps them as float64.
+    """
+    attrs = get_default_tree_regressor_attribute_pairs()
+    attrs["n_targets"] = 1
+    n_trees = len(estimator.estimators_)
+    for tree_id, tree in enumerate(estimator.estimators_):
+        add_tree_to_attribute_pairs(
+            attrs,
+            False,
+            tree.tree_,
+            tree_id,
+            1 / n_trees,
+            0,
+            False,
+            adjust_threshold_for_sklearn=True,
+            dtype=np.float64,
+        )
+    attrs["nodes_values_as_tensor"] = numpy_helper.from_array(np.array(attrs.pop("nodes_values"), dtype=np.float64))
+    attrs["target_weights_as_tensor"] = numpy_helper.from_array(np.array(attrs.pop("target_weights"), dtype=np.float64))
+    del attrs["nodes_hitrates"]
+    node = helper.make_node("TreeEnsembleRegressor", ["input"], ["variable"], domain="ai.onnx.ml", **attrs)
+    graph = helper.make_graph(
+        [node],
+        "nmd_efficiency_rf",
+        [helper.make_tensor_value_info("input", TensorProto.DOUBLE, [None, len(MODEL_INPUTS)])],
+        [helper.make_tensor_value_info("variable", TensorProto.FLOAT, [None, 1])],
+    )
+    model = helper.make_model(
+        graph, opset_imports=[helper.make_opsetid("", 15), helper.make_opsetid("ai.onnx.ml", 3)], ir_version=8
+    )
+    helper.set_model_props(model, {"feature_names": json.dumps(list(MODEL_INPUTS))})
+    onnx.checker.check_model(model)
+    onnx.save(model, path)
+
+
+def check_onnx(estimator: RandomForestRegressor, path: Path, x: pd.DataFrame) -> float:
+    """
+    Fail if the ONNX model predicts other values than the random forest, rounded to float32. Return the largest
+    absolute difference to the float64 predictions of the random forest.
+    """
+    session = onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
+    onnx_pred = session.run(None, {"input": x.to_numpy(dtype=np.float64)})[0].ravel()
+    rf_pred = estimator.predict(x)
+    differs = onnx_pred != rf_pred.astype(np.float32)
+    if differs.any():
+        raise ValueError(f"the ONNX model differs from the random forest in {differs.sum()} of {len(x)} rows")
+    return float(np.abs(onnx_pred.astype(np.float64) - rf_pred).max())
+
+
 def save_final_model(model: str, fit: Fit, data: TrainingData, models_dir: Path) -> FinalModel:
     metadata = {
         "feature_names": list(MODEL_INPUTS),
@@ -458,10 +526,15 @@ def save_final_model(model: str, fit: Fit, data: TrainingData, models_dir: Path)
         "n_training_rows": len(data.y),
         "nmd_scanner_version": importlib.metadata.version("nmd-scanner"),
     }
+    onnx_path = None
     if model == "rf_tuned":
         path = models_dir / "nmd_efficiency_rf.joblib"
         joblib.dump(fit.estimator, path)
         metadata["sklearn_version"] = importlib.metadata.version("scikit-learn")
+        onnx_path = models_dir / "nmd_efficiency_rf.onnx"
+        save_onnx(fit.estimator, onnx_path)
+        max_diff = check_onnx(fit.estimator, onnx_path, data.x)
+        logger.info("%s predicts the training rows as the random forest, max abs diff %.3g", onnx_path, max_diff)
     elif model == "lgbm_default":
         path = models_dir / "nmd_efficiency_lgbm.txt"
         fit.estimator.booster_.save_model(path)
@@ -474,6 +547,7 @@ def save_final_model(model: str, fit: Fit, data: TrainingData, models_dir: Path)
         model=model,
         path=f"models/{path.name}",
         metadata_path=f"models/{metadata_path.name}",
+        onnx_path=None if onnx_path is None else f"models/{onnx_path.name}",
         params=fit.params,
         inner_r2=fit.inner_r2,
     )
