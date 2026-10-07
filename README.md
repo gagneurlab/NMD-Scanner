@@ -52,18 +52,13 @@ nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa
 The equivalent `python -m nmd_scanner.cli ...` invocation also works without installing the console script.
 
 Arguments:
-- `--vcf`: Path to input VCF, plain or gzip-compressed (SNVs / Indels supported; frameshifts handled). It needs its header, at least the `##fileformat` and `#CHROM` lines, and one ALT allele per record: split multi-allelic records first, e.g. with `bcftools norm -m-`. QUAL, FILTER and INFO are not read. A record whose ALT is a symbolic allele (e.g. `<DEL>`, `<DUP>`, `<INS>`, `<INV>`, `<CNV>`) or a breakend is skipped, and a warning gives their count: NMD-Scanner cannot apply structural variants yet. A record whose ALT is `.` or `*` is skipped too, and a warning gives their count: such a record changes no base. `*` comes from splitting a joint-called site with `bcftools norm -m-`. It stands for the bases that an overlapping deletion removes, and that deletion is processed from its own record.
-- `--annotation`: Path to gene annotation file in GFF3, optionally gzip-compressed, with the suffix `.gff3` or `.gff`. Both GENCODE and Ensembl GFF3 flavors are supported. Each exon and CDS row needs strand `+` or `-`, and each CDS row needs phase 0, 1 or 2, as GFF3 requires. Each CDS row of a transcript with exon rows also needs to lie inside one of these exon rows. Otherwise NMD-Scanner raises a ValueError that names the transcript of the first such row. CDS rows that share bases, e.g. at a ribosomal slippage site, raise no error. NMD-Scanner does not model the slip yet, so the output for such a transcript can be wrong.
-- `--fasta`: Path to reference genome FASTA. It also shows whether a CDS ends in a stop codon, and for an Ensembl GFF3 whether it starts with one.
+- `--vcf`: Path to input VCF, plain or gzip-compressed, with one ALT allele per record. Split multi-allelic records first, e.g. with `bcftools norm -m-`. Records with a symbolic, breakend, `.` or `*` ALT are skipped with a warning.
+- `--annotation`: Path to the gene annotation in GFF3 (GENCODE or Ensembl flavor), optionally gzip-compressed, with the suffix `.gff3` or `.gff`.
+- `--fasta`: Path to reference genome FASTA.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
 
-The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `chr1` or all `1`. The FASTA needs a sequence for each chromosome with variants and CDS rows. Otherwise NMD-Scanner raises a ValueError that names these chromosomes.
-
-The coding region of a transcript is its CDS plus the stop codon. A GFF3 CDS includes the stop codon. Ensembl
-GFF3 has no `stop_codon` rows; whether a transcript ends in a stop codon comes from the last 3 CDS bases in the
-FASTA. Ensembl GFF3 has no `cds_end_NF` tag either. So a `cds_end_NF` transcript gets a stop codon if its CDS
-ends in stop codon bases (13 transcripts in Ensembl 108, none on chr22).
+The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `chr1` or all `1`.
 
 Output:
 - The file specified by `--output`, containing:
@@ -104,7 +99,7 @@ import nmd_scanner
 vcf = nmd_scanner.read_vcf("input.vcf")
 fasta = Fasta("reference.fa")
 # exon rows and coding regions: CDS rows that include the stop codon, with the columns has_start_codon and
-# has_stop_codon. The FASTA shows whether a CDS ends in a stop codon, and for an Ensembl GFF3 whether it starts with one.
+# has_stop_codon.
 # Optional: reassign_exons=True recomputes the exon numbers (recommended for hg19).
 annotation = nmd_scanner.read_annotation("annotation.gff3.gz", fasta, reassign_exons=False)
 
