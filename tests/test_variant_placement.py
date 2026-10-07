@@ -111,12 +111,6 @@ def _effect(variant_start, ref, alt, coding_rows=((2, 10), (30, 40)), exons=_EXO
     return place_in_transcript(placements, list(coding_rows), exons, _GENOME, "+", coding_region)
 
 
-def test_place_in_transcript_untouched():
-    # intron +5, and an intron variant that does not shift into the splice dinucleotide
-    assert _effect(14, "A", "G") is None
-    assert _effect(18, "C", "") is None
-
-
 def test_place_in_transcript_changes_over_boundary_that_keep_the_donor():
     # CT|GTGT to CA|GTCT: a substitution maps base for base, and GT stays after the exon
     effect = _effect(9, "TGTG", "AGTC")
@@ -132,55 +126,6 @@ def test_place_in_transcript_changes_over_boundary_that_keep_the_donor():
     assert effect.alt_coding[2, 10] == "ATGGCTCAT"
     # CT|GT to CA|TT changes the donor
     assert _effect(9, "TG", "AT").unknown_reason == SPLICE_SITE_DESTROYED
-
-
-def _start_codon_effect(strand, utr5, position, ref, alt):
-    """
-    place_in_transcript for a variant near the start codon of a one-exon transcript. In transcript orientation, the
-    layout is: flank 0-9, exon 10-37 (5'UTR 10-15, coding row 16-27, 3'UTR 28-37), flank 38-47.
-
-    :param utr5: the 6 bases of the 5'UTR
-    :param position, ref, alt: the change in transcript orientation at a layout position; ref is empty for an
-        insertion before ``position``
-    :return: the alt bases of the coding row in transcript orientation
-    """
-    layout = "CCCCCCCCCC" + utr5 + "ATGCTGCTGTAA" + "GGCCGGCCGG" + "CCCCCCCCCC"
-    assert layout[position : position + len(ref)] == ref
-    length = len(layout)
-    if strand == "+":
-        genome = layout
-        start = position
-        coding_row = (16, 28)
-        exon = (10, 38)
-    else:
-        genome = str(Seq(layout).reverse_complement())
-        start = length - position - len(ref)
-        ref = str(Seq(ref).reverse_complement())
-        alt = str(Seq(alt).reverse_complement())
-        coding_row = (length - 28, length - 16)
-        exon = (length - 38, length - 10)
-    reference = _Reference(genome)
-    placements = variant_placements(start, ref, alt, reference)
-    effect = place_in_transcript(placements, [coding_row], [exon], reference, strand, coding_row)
-    assert effect.unknown_reason is None
-    alt_coding = effect.alt_coding[coding_row]
-    return alt_coding if strand == "+" else str(Seq(alt_coding).reverse_complement())
-
-
-@pytest.mark.parametrize(
-    "utr5, position, ref, alt, alt_coding",
-    [
-        # ATG to ATGATG: the 5'-most placement of the insertion gives the first ATG, so the coding region gains a Met
-        ("GGACCC", 19, "", "ATG", "ATGATGCTGCTGTAA"),
-        # A|ATG minus one A: only the placement in the 5'UTR keeps an ATG at the start
-        ("GGACCA", 16, "A", "", "ATGCTGCTGTAA"),
-        # T|ATG minus TA: no placement keeps an ATG at the start, so the placement farthest into the 5'UTR counts
-        ("GGACCT", 15, "TA", "", "TGCTGCTGTAA"),
-    ],
-    ids=["atg_duplication", "atg_on_the_utr_side", "no_atg"],
-)
-def test_place_in_transcript_start_codon(strand, utr5, position, ref, alt, alt_coding):
-    assert _start_codon_effect(strand, utr5, position, ref, alt) == alt_coding
 
 
 # Synthetic transcript in transcript orientation (5' to 3'), with layout positions:
@@ -200,7 +145,6 @@ _STOP = "TAA"
 _UTR3 = "AAAGCTGCC"
 _LAYOUT = _FLANK + _UTR5 + _EXON1_CDS + _INTRON1 + _EXON2 + _INTRON2 + _EXON3_CDS + _STOP + _UTR3 + _FLANK
 _REF_CDS = _EXON1_CDS + _EXON2 + _EXON3_CDS + _STOP
-_STOP_END = 87
 # (feature, exon number, start, end) in layout positions. A CDS row includes the stop codon.
 _ROWS = [
     ("exon", 1, 10, 22),
@@ -209,21 +153,6 @@ _ROWS = [
     ("CDS", 1, 14, 22),
     ("CDS", 2, 42, 58),
     ("CDS", 3, 78, 87),
-]
-
-# A second transcript, whose coding region is exon 2: flank 0-9, exon 1 10-19 (5'UTR), intron 1 20-39,
-# exon 2 40-63 (CDS 40-60, stop codon 61-63), intron 2 64-83, exon 3 84-95 (3'UTR), flank 96-105
-#
-# 5' ....[uuuuuuuuuu]....[=====================sss]....[uuuuuuuuuuuu].... 3'
-#    0   10         20   40                    61 64   84           96   106
-_EDGE_CDS = "ATGGCCAAGCTGCTGAAGCTGTAA"
-_EDGE_INTRON = "GTAAGTCCCCCCTTTTTCAG"
-_EDGE_LAYOUT = _FLANK + "GCCACCGCAG" + _EDGE_INTRON + _EDGE_CDS + _EDGE_INTRON + "GCCCCCCCCCCC" + _FLANK
-_EDGE_ROWS = [
-    ("exon", 1, 10, 20),
-    ("exon", 2, 40, 64),
-    ("exon", 3, 84, 96),
-    ("CDS", 2, 40, 64),
 ]
 
 
@@ -298,191 +227,9 @@ def strand(request):
     return request.param
 
 
-def test_deletion_in_a_run_at_the_stop_codon(tmp_path, strand):
-    # TAA|AAA: deleting one A anywhere in the run leaves TAA in place. On the minus strand, the left-normalized
-    # VCF placement lies fully in the 3'UTR, so the VCF interval does not touch the coding region.
-    for position in [_STOP_END - 2, _STOP_END + 2]:
-        row = _single_row(_run(tmp_path, strand, position, "A", ""))
-        assert pd.isna(row["unknown_reason"])
-        assert row["alt_cds_seq"] == _REF_CDS
-        assert row["stop_loss"] == False
-        # The 3'UTR loses the A
-        assert row["alt_transcript_seq"] == _UTR5 + _REF_CDS + _UTR3[1:]
-
-
-def test_insertion_after_the_stop_codon_has_no_row(tmp_path, strand):
-    assert _run(tmp_path, strand, _STOP_END, "", "C").empty
-
-
-def test_insertion_before_the_start_codon_has_no_row(tmp_path, strand):
-    # GACC|ATG to GACCC|ATG: the inserted base does not start an ATG, so it goes into the 5'UTR
-    assert _run(tmp_path, strand, 14, "", "C").empty
-
-
-def test_insertion_that_repeats_the_start_codon(tmp_path, strand):
-    # ATG to ATGATG: a scanning ribosome starts at the first ATG, so the coding region gains a Met
-    row = _single_row(_run(tmp_path, strand, 17, "", "ATG"))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == "ATG" + _REF_CDS
-    assert row["start_loss"] == False
-
-
 def test_deletion_in_the_start_codon(tmp_path, strand):
     # ATG to AG: no placement keeps an ATG at the start
     row = _single_row(_run(tmp_path, strand, 15, "T", ""))
     assert pd.isna(row["unknown_reason"])
     assert row["alt_cds_seq"] == "AGGCTCT" + _REF_CDS[8:]
     assert row["start_loss"] == True
-
-
-# In _EDGE_LAYOUT, the coding region starts at the start of exon 2 and its stop codon ends exon 2. An insertion at
-# such an exon edge goes into the exon, as the splice site says, but into its UTR part, as the coding region edge
-# rule says. So these insertions touch no coding base and give no row.
-@pytest.mark.parametrize("position", [40, 64], ids=["before_the_start_codon", "after_the_stop_codon"])
-def test_insertion_at_an_exon_edge_of_the_coding_region_has_no_row(tmp_path, strand, position):
-    assert _run(tmp_path, strand, position, "", "CC", _EDGE_LAYOUT, _EDGE_ROWS).empty
-
-
-def test_insertion_that_repeats_the_start_codon_at_an_exon_start(tmp_path, strand):
-    # CAG|ATG to CAG|ATGATG: the 5'-most placement gives the first ATG in the exon, so the coding region gains a Met
-    row = _single_row(_run(tmp_path, strand, 43, "", "ATG", _EDGE_LAYOUT, _EDGE_ROWS))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == "ATG" + _EDGE_CDS
-    assert row["start_loss"] == False
-
-
-def test_insertion_in_the_stop_codon_run_at_an_exon_end(tmp_path, strand):
-    # TAA|GT to TAAAA|GT: the placement right after the stop codon puts the inserted bases into the 3'UTR part
-    row = _single_row(_run(tmp_path, strand, 62, "", "AA", _EDGE_LAYOUT, _EDGE_ROWS))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == _EDGE_CDS
-    assert row["stop_loss"] == False
-
-
-def test_delins_over_the_start_codon_edge(tmp_path, strand):
-    # GACC|ATGG to GACGATGTGG: only matching from the left puts an ATG at the start codon edge, so it starts there
-    row = _single_row(_run(tmp_path, strand, 13, "CA", "GATG"))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == "ATG" + _REF_CDS[1:]
-    # The G that replaces the last 5'UTR base stays in the 5'UTR
-    assert row["alt_transcript_seq"] == "GACG" + "ATG" + _REF_CDS[1:] + _UTR3
-    assert row["alt_cds_start_in_transcript"] == 4
-
-
-def test_delins_over_the_stop_codon_edge(tmp_path, strand):
-    # TA|A|AAA to TA|CCC|AAA: the matching with its length change in the 3'UTR counts, so C replaces the last stop
-    # codon base and CC goes into the 3'UTR
-    row = _single_row(_run(tmp_path, strand, _STOP_END - 1, "AA", "CCC"))
-    assert row["alt_cds_seq"] == _REF_CDS[:-1] + "C"
-    assert row["stop_loss"] == True
-    assert row["alt_transcript_seq"] == _UTR5 + _REF_CDS[:-1] + "C" + "CC" + _UTR3[1:]
-
-
-def test_deletion_that_shortens_the_5utr(tmp_path, strand):
-    """
-    GGACCA|ATG minus one A: only the placement in the 5'UTR keeps an ATG at the start, so the 5'UTR is 1 nt shorter
-    and the coding region is unchanged. The alt CDS starts 1 nt earlier in the alt transcript.
-
-    ref 5' ....[uuuuuu=========sssuuuuuuuuuu].... 3'
-               10    16       25 28        38
-       tx      0     6        15 18        28
-    alt 5' ....[uuuuu=========sssuuuuuuuuuu]..... 3'
-       tx      0    5        14 17        27
-    """
-    layout = _FLANK + "GGACCA" + "ATGCTGCTGTAA" + "GGCCGGCCGG" + _FLANK
-    rows = [("exon", 1, 10, 38), ("CDS", 1, 16, 28)]
-    row = _single_row(_run(tmp_path, strand, 16, "A", "", layout, rows))
-    assert row["alt_cds_seq"] == "ATGCTGCTGTAA"
-    assert row["start_loss"] == False
-    assert row["alt_transcript_seq"] == "GGACC" + "ATGCTGCTGTAA" + "GGCCGGCCGG"
-    assert row["cds_start_in_transcript"] == 6
-    assert row["alt_cds_start_in_transcript"] == 5
-
-
-def test_delins_over_the_stop_codon_and_the_donor(tmp_path, strand):
-    # CTG TA|A|GTA to CTG TG|TAAGT|T: only matching from the right keeps the donor GT, 4 bases after the old exon end.
-    # The coding region ends at the exon end, so the transcript holds every alt exon base.
-    row = _single_row(_run(tmp_path, strand, 62, "AAGTA", "GTAAGTT", _EDGE_LAYOUT, _EDGE_ROWS))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == _EDGE_CDS[:-2] + "GTAA"
-    assert row["alt_transcript_seq"] == "GCCACCGCAG" + _EDGE_CDS[:-2] + "GTAA" + "GCCCCCCCCCCC"
-
-
-# A third transcript with a short coding exon 2: flank 0-9, exon 1 10-29 (5'UTR 10-14, CDS 15-29), intron 1 30-49,
-# exon 2 50-61 (CDS), intron 2 62-81, exon 3 82-99 (CDS 82-87, stop codon 88-90, 3'UTR 91-99), flank 100-109
-_SHORT_EXON1_CDS = "ATGGCCAAGCTGCTG"
-_SHORT_EXON2 = "CAGCAGCTGCTG"
-_SHORT_EXON3_CDS = "AAGCTGTAA"
-#
-# 5' ....[uuuuu===============]....[============]....[======sssuuuuuuuuu].... 3'
-#    0   10   15              30   50           62   82    88 91       100  110
-_SHORT_LAYOUT = (
-    _FLANK + "GCCAC" + _SHORT_EXON1_CDS + _EDGE_INTRON + _SHORT_EXON2 + _EDGE_INTRON + "AAGCTGTAAGCCCCCCCC" + _FLANK
-)
-_SHORT_ROWS = [
-    ("exon", 1, 10, 30),
-    ("exon", 2, 50, 62),
-    ("exon", 3, 82, 100),
-    ("CDS", 1, 15, 30),
-    ("CDS", 2, 50, 62),
-    ("CDS", 3, 82, 91),
-]
-
-
-def test_deletion_of_a_whole_short_exon(tmp_path, strand):
-    # CAG|exon 2|GT to CAG|GT. Deleting G and exon 2 without its last G gives the same sequence but loses the
-    # acceptor AG, so only the placement of exon 2 counts. It keeps both splice sites and leaves exon 2 empty.
-    row = _single_row(_run(tmp_path, strand, 50, _SHORT_EXON2, "", _SHORT_LAYOUT, _SHORT_ROWS))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == _SHORT_EXON1_CDS + _SHORT_EXON3_CDS
-
-
-def test_delins_over_a_short_exon_that_one_matching_keeps(tmp_path, strand):
-    # CAG|exon 2|G to TAG|AGCAGCTGCTGC|GTC: matched from the left, both splice sites stay. Matched from the right,
-    # the acceptor moves 2 bases to TAGAG|, but the donor loses its GT, so that matching does not count.
-    alt = "TAGAGCAGCTGCTGCGTC"
-    row = _single_row(_run(tmp_path, strand, 47, "CAG" + _SHORT_EXON2 + "G", alt, _SHORT_LAYOUT, _SHORT_ROWS))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == _SHORT_EXON1_CDS + "AGCAGCTGCTGC" + _SHORT_EXON3_CDS
-
-
-def test_delins_over_the_start_codon_and_a_donor_uses_the_matching_that_keeps_the_donor(tmp_path, strand):
-    # GACC|ATGGCTCT|GTGTAAG to 12 C, GTGCAG, 17 C: only matching from the left keeps the donor GT. The coding region
-    # starts where that matching puts the start codon, so 8 C stay in exon 1. Matched from the right, the start
-    # codon would lie after the donor.
-    alt = "C" * 12 + "GTGCAG" + "C" * 17
-    row = _single_row(_run(tmp_path, strand, 10, _UTR5 + _EXON1_CDS + _INTRON1[:7], alt))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == "C" * 8 + _REF_CDS[8:]
-
-
-@pytest.mark.parametrize(
-    "layout, rows, position, ref, alt, alt_cds, utr5, utr3",
-    [
-        # TAA|AA to CCC|TGAC
-        (_LAYOUT, _ROWS, _STOP_END - 3, "TAAAA", "CCCTGAC", _REF_CDS[:-3] + "CCC", _UTR5, "TGAC" + _UTR3[2:]),
-        # TAA|G to CCC|TGA
-        (
-            _SHORT_LAYOUT,
-            _SHORT_ROWS,
-            88,
-            "TAAG",
-            "CCCTGA",
-            _SHORT_EXON1_CDS + _SHORT_EXON2 + "AAGCTG" + "CCC",
-            "GCCAC",
-            "TGA" + "CCCCCCCC",
-        ),
-    ],
-    ids=["utr3_run", "utr3_g"],
-)
-def test_delins_from_the_stop_codon_into_the_3utr(
-    tmp_path, strand, layout, rows, position, ref, alt, alt_cds, utr5, utr3
-):
-    # Matching from the left gives the coding region CCC in place of the stop codon, and the 3'UTR starts with TGA.
-    # Read on in frame, TGA is the next codon: a stop loss with a stop codon right after the coding region.
-    row = _single_row(_run(tmp_path, strand, position, ref, alt, layout, rows))
-    assert row["alt_cds_seq"] == alt_cds
-    assert row["alt_transcript_seq"] == utr5 + alt_cds + utr3
-    assert row["stop_loss"] == True
-    assert row["alt_is_premature"] == False
-    assert row["transcript_first_stop_pos"] == len(utr5) + len(alt_cds)

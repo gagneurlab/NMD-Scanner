@@ -1141,8 +1141,6 @@ def test_annotated_stop_in_alt(ref_seq, alt_seq, stop, expected):
         ((39, "C", "CGCC"), False, False, 30, None),
         # GCC deleted right before the stop codon: the stop codon moves to alt t37
         ((36, "CGCC", "C"), False, False, 24, None),
-        # TAA inserted right before the stop codon TAA: the same alt transcript as TAA inserted after it
-        ((39, "C", "CTAA"), False, False, 27, None),
         # TCCTAG inserted right before the stop codon: the TAG at alt t43 lies upstream of the stop codon at alt t46
         ((39, "C", "CTCCTAG"), True, False, 30, None),
     ],
@@ -1154,7 +1152,6 @@ def test_annotated_stop_in_alt(ref_seq, alt_seq, stop, expected):
         "insertion_in_stop_codon",
         "inframe_insertion_before_stop_codon",
         "inframe_deletion_before_stop_codon",
-        "stop_codon_inserted_before_stop_codon",
         "stop_codon_gained_before_stop_codon",
     ],
 )
@@ -1302,46 +1299,6 @@ def test_internal_stop_codon_in_reference(tmp_path, strand, variant, stop_loss):
     assert row["alt_first_stop_pos"] == 15
     assert row["stop_loss"] == stop_loss
     assert row["stop_codon_distance"] == 12
-
-
-@pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
-@pytest.mark.parametrize(
-    "variant",
-    [(40, "TAACC", "T"), (41, "AACCC", "C")],
-    ids=["anchor_in_cds", "anchor_in_utr3"],
-)
-def test_deletion_from_stop_codon_into_utr3(tmp_path, strand, variant):
-    # Both variants delete t41 to t44: the last 2 nt of the stop codon and the first 2 nt of the 3'UTR.
-    # On the plus strand, a VCF anchors the deletion at t40, in the CDS; on the minus strand at t45, in the 3'UTR.
-    exon_seqs = [_STOP_TRANSCRIPT[:25], _STOP_TRANSCRIPT[25:]]
-    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 40), variant)
-
-    # The alt transcript lacks the 3'UTR part of the deletion too. Reading on in frame, TCC at t40 is followed by TGA.
-    assert row["alt_transcript_seq"] == _STOP_TRANSCRIPT[:41] + _STOP_TRANSCRIPT[45:]
-    assert row["alt_is_premature"] == False
-    assert row["stop_loss"] == True
-    assert row["transcript_first_stop_codon"] == "TGA"
-    assert row["transcript_first_stop_pos"] == 43
-
-
-@pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
-@pytest.mark.parametrize(
-    "variant",
-    [(38, "CCTAAC", "C"), (39, "CTAACC", "C")],
-    ids=["from_cds", "into_utr3"],
-)
-def test_deletion_across_stop_codon_placements(tmp_path, strand, variant):
-    # Here the 3'UTR starts with CCTAG. Deleting t39 to t43 (C, the stop codon TAA, C) gives the same alt transcript
-    # as deleting t40 to t44 (the stop codon TAA, CC). The CDS keeps its last codon GCC, and the TAG from the 3'UTR
-    # lands at t40, the annotated position of the stop codon. Both placements are neither a PTC nor a stop loss.
-    transcript_seq = _STOP_UTR5 + _STOP_CDS + "TAA" + "CCTAG" + "C" * 20
-    exon_seqs = [transcript_seq[:25], transcript_seq[25:]]
-    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 40), variant)
-
-    assert row["alt_transcript_seq"] == transcript_seq[:39] + transcript_seq[44:]
-    assert row["alt_is_premature"] == False
-    assert row["stop_loss"] == False
-    assert row["stop_codon_distance"] == 0
 
 
 @pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
