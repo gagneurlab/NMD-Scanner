@@ -2,6 +2,7 @@
 
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -9,7 +10,7 @@ from Bio.Seq import Seq
 
 from nmd_scanner import catch_sequence
 from nmd_scanner._polars_bio import pb
-from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table
+from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table, records
 from nmd_scanner.variant_placement import ReferenceSequence, exon_boundaries, place_in_transcript, variant_placements
 
 logger = logging.getLogger(__name__)
@@ -192,13 +193,15 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     loss_df["transcript_exons"] = loss_df["transcript_id"].map(transcript_exons)
 
     # Splice alternative CDS into reference transcript sequence to create alternative transcript sequence and measure new length
-    loss_df["alt_transcript_seq"] = loss_df.apply(
-        lambda row: (
-            splice_alt_cds_into_transcript(row, row["transcript_seq"])
-            if pd.notnull(row["transcript_seq"]) and pd.notnull(row["alt_cds_seq"])
+    loss_df["alt_transcript_seq"] = pd.Series(
+        [
+            splice_alt_cds_into_transcript(row)
+            if row.transcript_seq is not None and row.alt_cds_seq is not None
             else None
-        ),
-        axis=1,
+            for row in records(loss_df, SpliceRow)
+        ],
+        index=loss_df.index,
+        dtype=object,
     )
     loss_df["alt_transcript_length"] = pd.Series(
         [len(seq) if isinstance(seq, str) else None for seq in loss_df["alt_transcript_seq"]],
@@ -989,30 +992,43 @@ def start_stop_loss(df):
     return df
 
 
-def splice_alt_cds_into_transcript(row, transcript_seq):
+@dataclass(frozen=True, slots=True)
+class SpliceRow:
+    """The columns of a row of extract_ptc that splice_alt_cds_into_transcript reads, see schema.records."""
+
+    transcript_seq: str | None
+    ref_cds_seq: str
+    alt_cds_seq: str | None
+    cds_start_in_transcript: int | None
+    cds_end_in_transcript: int | None
+    # Tuples (ref, alt) in transcript orientation, see create_reference_cds
+    utr5_change: tuple[str, str]
+    utr3_change: tuple[str, str]
+
+
+def splice_alt_cds_into_transcript(row):
     """
     Splice the alternative CDS sequence into the full transcript sequence to create the alternative transcript.
     A variant can change the UTR next to the coding region, too: utr5_change and utr3_change replace the ref UTR
     bases right before and right after it.
-    :param row: A pd.Series row containing "ref_cds_seq" (Reference CDS), "alt_cds_seq" (Alternative / Variant-modified CDS),
-                "cds_start_in_transcript" and "cds_end_in_transcript" (from cds_range_in_transcript), and optionally
-                utr5_change and utr3_change (tuples (ref, alt) in transcript orientation, see create_reference_cds)
-    :param transcript_seq: Full transcript sequence
+    :param row: A SpliceRow, with transcript_seq (the full transcript sequence), alt_cds_seq and the position of the
+                ref CDS in the transcript (from cds_range_in_transcript)
     :return: Modified (alternative) transcript sequence with the alternative CDS spliced in the correct position,
              or None if the CDS position is unknown, or the transcript does not hold the ref CDS or the ref UTR bases
              there
     """
 
-    ref_cds_seq = row["ref_cds_seq"].upper()
-    alt_cds_seq = row["alt_cds_seq"].upper()
-    ref_start_idx = row["cds_start_in_transcript"]
-    ref_end_idx = row["cds_end_in_transcript"]
+    transcript_seq = row.transcript_seq
+    ref_cds_seq = row.ref_cds_seq.upper()
+    alt_cds_seq = row.alt_cds_seq.upper()
+    ref_start_idx = row.cds_start_in_transcript
+    ref_end_idx = row.cds_end_in_transcript
 
     if ref_start_idx is None or transcript_seq[ref_start_idx:ref_end_idx] != ref_cds_seq:
         return None  # Cannot find ref CDS, alignment problem
 
-    utr5_ref, utr5_alt = row.get("utr5_change", ("", ""))
-    utr3_ref, utr3_alt = row.get("utr3_change", ("", ""))
+    utr5_ref, utr5_alt = row.utr5_change
+    utr3_ref, utr3_alt = row.utr3_change
     utr5_start = ref_start_idx - len(utr5_ref)
     utr3_end = ref_end_idx + len(utr3_ref)
     if utr5_start < 0 or transcript_seq[utr5_start:ref_start_idx] != utr5_ref:
