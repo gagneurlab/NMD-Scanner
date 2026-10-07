@@ -942,7 +942,8 @@ def starts_with_annotated_start_codon(row, label):
     :return: False also if the CDS has fewer than 3 nt or is null
     """
 
-    has_start_codon, seq = row.get("has_start_codon"), row.get(f"{label}_cds_seq")
+    has_start_codon = row.get("has_start_codon")
+    seq = row.get(f"{label}_cds_seq")
     return bool(
         pd.notna(has_start_codon)
         and has_start_codon
