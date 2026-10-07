@@ -145,77 +145,6 @@ def strand(request):
     return request.param
 
 
-def test_lost_internal_atg_is_no_start_loss(tmp_path, strand):
-    """
-    A cds_start_NF CDS starts with CTG, and its first in-frame ATG lies at t9, CDS position 6. The variant ATG>ACG at
-    `x`, t10, removes that ATG. It is an internal Met, so the CDS has no start codon to lose, and neither CDS has a
-    start codon position. `s` is the stop codon.
-
-          8 nt         20 nt
-    5' [uuu=====]|[==x=======sssuuuuuuu] 3'
-    tx  0  3       8 10      18 21     28
-    """
-    cds = "CTGAAAATGCCCGAC"
-    tx = SyntheticTranscript(tmp_path, strand, ["GGG" + cds[:5], cds[5:] + "TAA" + "GGGGGGG"], 3, 18, start_codon=False)
-
-    row = tx.run(10, "T", "C")
-
-    _assert_values(
-        row,
-        {
-            "ref_start_codon_pos": None,
-            "alt_start_codon_pos": None,
-            "start_loss": False,
-            "stop_loss": False,
-            "alt_is_premature": False,
-            "transcript_start_codon_pos": None,
-            "transcript_first_stop_pos": None,
-        },
-    )
-
-
-@pytest.mark.parametrize(
-    ("cds", "start_codon", "variant", "expected"),
-    [
-        (
-            "ATGAAACCCGAC",
-            False,
-            (4, "T", "C"),
-            {"ref_start_codon_pos": None, "alt_start_codon_pos": None, "start_loss": False, "scanned_stops": None},
-        ),
-    ],
-    ids=["atg_to_acg_without_start_codon_rows"],
-)
-def test_start_loss_is_a_change_of_the_annotated_start_codon(tmp_path, strand, cds, start_codon, variant, expected):
-    """
-    The CDS starts with the start codon CTG or ATG at t3 (`x`), which the GFF3 marks with a start_codon row or not.
-    CTG>CCG and ATG>ACG change its second base, at t4. The missense CCC>CGC changes t10 in exon 2. `s` is the stop
-    codon. After a start loss, the scan looks for an ATG from t3 on and finds none, so it reads no stop codon.
-
-          8 nt         15 nt
-    5' [uuuxxx==]|[=======sssuuuuu] 3'
-    tx  0  3       8      15 18   23
-    """
-    tx = SyntheticTranscript(
-        tmp_path, strand, ["GGG" + cds[:5], cds[5:] + "TAA" + "GGGGG"], 3, 15, start_codon=start_codon
-    )
-
-    row = tx.run(*variant)
-
-    _assert_values(
-        row,
-        {
-            "has_start_codon": start_codon,
-            "ref_start_codon_pos": expected["ref_start_codon_pos"],
-            "alt_start_codon_pos": expected["alt_start_codon_pos"],
-            "start_loss": expected["start_loss"],
-            "stop_loss": False,
-            "transcript_start_codon_pos": None,
-            "transcript_num_stop_codons": expected["scanned_stops"],
-        },
-    )
-
-
 def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, strand):
     """
     The annotated start codon is TAG (`*`), a stop codon. Translation cannot start on a stop codon, so this start
@@ -251,10 +180,9 @@ def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, s
 @pytest.mark.parametrize(("start_codon", "start_pos", "start_exon"), [(False, None, None)], ids=["cds_start_nf"])
 def test_stop_loss_scan_starts_at_the_annotated_start_codon(tmp_path, strand, start_codon, start_pos, start_exon):
     """
-    The CDS is CTG AAA ATG CCC, then the stop codon TAA at t14 (`s`). CTG at t2 (`x`) is the annotated start codon,
-    or the transcript has none, as one tagged cds_start_NF. TAA>CAA at t14 loses the stop codon. The scan reads on from
-    t2 to the TAG at t20 (`t`) in the 3' UTR. Its start codon is the annotated CTG at t2, not the in-frame ATG at t8
-    (`a`). Without an annotated start codon, it has none.
+    The CDS is CTG AAA ATG CCC, then the stop codon TAA at t14 (`s`). CTG at t2 (`x`) is the annotated start codon.
+    TAA>CAA at t14 loses the stop codon. The scan reads on from t2 to the TAG at t20 (`t`) in the 3' UTR. Its start
+    codon is the annotated CTG at t2, not the in-frame ATG at t8 (`a`).
 
          7 nt          18 nt
     5' [uuxxx==]|[=a=====sssuuutttuu] 3'

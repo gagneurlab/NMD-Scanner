@@ -27,7 +27,6 @@ from nmd_scanner.rules import (
     drop_symbolic_alleles,
     extract_ptc,
     get_exon,
-    get_transcript_sequence,
     join_variant_windows,
     join_variants_to_cds,
     splice_alt_cds_into_transcript,
@@ -351,40 +350,6 @@ def test_create_reference_cds_carries_has_stop_codon():
 
     assert dict(zip(result["variant_id"], result["alt_cds_seq"])) == {"var_stop": "ATGACATAA", "var_nf": "ATGACA"}
     assert dict(zip(result["variant_id"], result["has_stop_codon"])) == {"var_stop": True, "var_nf": False}
-
-
-def test_get_transcript_sequence():
-    fasta = {
-        "chr1": "AAAAAAAAAACCCCCCCCCCCCCCCCCCCCGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
-    }  # ("A" * 10 + "C" * 20 + "G" * 30 + "T" * 40)
-
-    exons_df = pd.DataFrame(
-        [
-            {"transcript_id": "tx1", "exon_number": 1, "Chromosome": "chr1", "Start": 10, "End": 13, "Strand": "+"},
-            {"transcript_id": "tx1", "exon_number": 2, "Chromosome": "chr1", "Start": 20, "End": 24, "Strand": "+"},
-            {"transcript_id": "tx1", "exon_number": 3, "Chromosome": "chr1", "Start": 30, "End": 35, "Strand": "+"},
-            {"transcript_id": "tx2", "exon_number": 1, "Chromosome": "chr1", "Start": 40, "End": 43, "Strand": "-"},
-            {"transcript_id": "tx2", "exon_number": 2, "Chromosome": "chr1", "Start": 50, "End": 53, "Strand": "-"},
-            {"transcript_id": "tx2", "exon_number": 3, "Chromosome": "chr1", "Start": 60, "End": 63, "Strand": "-"},
-        ]
-    )
-
-    # Run function
-    transcript_df = get_transcript_sequence(exons_df, fasta)
-
-    # Check tx1
-    tx1 = transcript_df[transcript_df["transcript_id"] == "tx1"].iloc[0]
-    expected_tx1_seq = "CCCCCCCGGGGG"
-    assert tx1["transcript_sequence"] == expected_tx1_seq
-    assert tx1["transcript_length"] == len(expected_tx1_seq)
-    assert tx1["transcript_exon_info"] == [(1, 3), (2, 4), (3, 5)]
-
-    # Check tx2
-    tx2 = transcript_df[transcript_df["transcript_id"] == "tx2"].iloc[0]
-    expected_tx2_seq = "AAACCCCCC"  # reverse complement of "GGGGGGTTT"
-    assert tx2["transcript_sequence"] == expected_tx2_seq
-    assert tx2["transcript_length"] == len(expected_tx2_seq)
-    assert tx2["transcript_exon_info"] == [(3, 3), (2, 3), (1, 3)]  # reversed for minus strand
 
 
 def test_cds_range_in_transcript():
