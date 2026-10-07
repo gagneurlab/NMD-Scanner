@@ -30,11 +30,15 @@ The kind of a column sets its pandas dtype (`schema.KIND_DTYPES`) and its Arrow 
 | int | `Int64` | `int64` |
 | bool | `boolean` | `bool` |
 | string | `string`, with python storage | `string` |
-| pair_list | `object`: a list of (exon_number, length) tuples | `list<list<int64>>`: each inner list is [exon_number, length] |
+| pair_list | `object`: a list of records, e.g. `{"exon_number": 1, "length": 36}` | `list<struct<exon_number: int64, length: int64>>` |
 | int_list | `object`: a list of exon numbers | `list<int64>` |
-| stop_codon_list | `object`: a list of (position, codon) tuples, e.g. (5442, "TGA") | `list<struct<position: int64, codon: string>>` |
+| stop_codon_list | `object`: a list of records, e.g. `{"position": 5442, "codon": "TGA"}` | `list<struct<position: int64, codon: string>>` |
 
 A null is pd.NA in an int, bool or string column. In a list column, it is None or NaN, so test for it with `pd.isna`. Parquet stores a null as null, and CSV writes it as an empty field.
+
+A record is a dict with the field names of its Arrow struct. So a list value keeps the shape of its elements through `to_arrow`, Parquet and `pd.read_parquet` with default arguments: a record stays a dict with the same keys and values, and an exon number stays an int. Only the container changes. `pd.read_parquet` gives a numpy array instead of a list, and its ints are numpy ints. Read the fields of a record by name, e.g. `exon["length"]`. `for a, b in value` binds the keys of each record, not its values. The list columns are not `pd.ArrowDtype` columns, because `pd.read_parquet` with default arguments cannot read such a column back. It raises on the nested ArrowDtype in the pandas metadata of the file (pandas 2.2 and 3.0). polars reads the records as structs with the same field names.
+
+CSV writes a list column as JSON, e.g. `[{"exon_number": 1, "length": 36}]`, which `json.loads` reads back. This holds for the CLI and `cli.write_results`. `DataFrame.to_csv` writes the Python repr of a list instead.
 
 ### Positions and terms
 
@@ -113,8 +117,8 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 | `alt` | string | ALT allele of the VCF record | never |
 | `variant_start` | int | Genomic start of the variant: VCF POS minus 1 | never |
 | `variant_end` | int | Genomic end of the variant: `variant_start` plus the length of REF | never |
-| `ref_cds_exons` | pair_list | (exon_number, length) of the ref CDS part in each exon, in exon number order | never |
-| `alt_cds_exons` | pair_list | (exon_number, length) of the alt CDS part in each exon, in exon number order | `unknown_reason` is set |
+| `ref_cds_exons` | pair_list | `exon_number` and `length` of the ref CDS part in each exon, in exon number order | never |
+| `alt_cds_exons` | pair_list | `exon_number` and `length` of the alt CDS part in each exon, in exon number order | `unknown_reason` is set |
 | `cds_in_transcript` | bool | Whether `ref_cds_seq` occurs in `transcript_seq` | never |
 | `start_codon_exon` | int | Exon number of the annotated start codon, at CDS position 0 of the ref CDS. The variant does not move it | `has_start_codon` is False; the CDS has fewer than 3 nt |
 | `ref_last_codon` | string | Last 3 nt of the ref CDS | the CDS has fewer than 3 nt |
@@ -122,7 +126,7 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 | `ref_first_stop_codon` | string | First in-frame stop codon of the ref CDS | no in-frame stop codon; the CDS has fewer than 3 nt |
 | `ref_first_stop_pos` | int | CDS position of `ref_first_stop_codon` | as `ref_first_stop_codon` |
 | `ref_stop_codon_count` | int | Number of in-frame stop codons in the ref CDS | the CDS has fewer than 3 nt |
-| `ref_stop_codons` | stop_codon_list | (CDS position, codon) of each in-frame stop codon | the CDS has fewer than 3 nt |
+| `ref_stop_codons` | stop_codon_list | `position` (a CDS position) and `codon` of each in-frame stop codon | the CDS has fewer than 3 nt |
 | `ref_stop_codon_exons` | int_list | Exon number of each in-frame stop codon, in the order of `ref_stop_codons` | the CDS has fewer than 3 nt |
 | `ref_has_ptc` | bool | Whether the first in-frame stop codon starts before the last 3 nt of the CDS, which hold the annotated stop codon. If `has_stop_codon` is False, any in-frame stop codon is premature. False without an in-frame stop codon | the CDS has fewer than 3 nt |
 | `alt_last_codon` | string | As `ref_last_codon`, for the alt CDS | `unknown_reason` is set; as `ref_last_codon` |
@@ -144,14 +148,14 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 | `alt_transcript_seq` | string | `transcript_seq` with `ref_cds_seq` replaced by `alt_cds_seq`, and with the change of the UTRs next to it: the alt bases that the edge rules leave outside the coding region, and the deleted UTR bases (see [Variants at exon boundaries](#variants-at-exon-boundaries)) | `unknown_reason` is set; `transcript_seq` does not hold `ref_cds_seq` at `cds_start_in_transcript`, or the ref bases of a UTR change next to it |
 | `alt_transcript_length` | int | Length of `alt_transcript_seq` | as `alt_transcript_seq` |
 | `alt_cds_start_in_transcript` | int | Position of the 5' base of the alt CDS in `alt_transcript_seq`. It differs from `cds_start_in_transcript` if the variant changes the length of the 5' UTR. The stop codon classification and the scan of the alt transcript read from here | as `alt_transcript_seq` |
-| `transcript_exons` | pair_list | (exon_number, length) of each exon of the transcript, 5' to 3' | never |
-| `alt_transcript_exons` | pair_list | (exon_number, length) of each exon of the alt transcript, 5' to 3', as `transcript_exons` for the ref transcript. An indel changes the length of the exon that holds it, also in the UTR next to the CDS. An exon that the variant deletes has length 0. The lengths add up to `alt_transcript_length`, so they give the exon of a position in `alt_transcript_seq`. The exon numbers of the scan of the alt transcript and the exon features of a PTC row come from here | as `alt_transcript_seq` |
+| `transcript_exons` | pair_list | `exon_number` and `length` of each exon of the transcript, 5' to 3' | never |
+| `alt_transcript_exons` | pair_list | `exon_number` and `length` of each exon of the alt transcript, 5' to 3', as `transcript_exons` for the ref transcript. An indel changes the length of the exon that holds it, also in the UTR next to the CDS. An exon that the variant deletes has length 0. The lengths add up to `alt_transcript_length`, so they give the exon of a position in `alt_transcript_seq`. The exon numbers of the scan of the alt transcript and the exon features of a PTC row come from here | as `alt_transcript_seq` |
 | `alt_scan_start_codon_pos` | int | Position of the start codon of the scan in `alt_transcript_seq`. After a start loss: the ATG that the scan found. After a stop loss without a start loss: the annotated start codon, at `alt_cds_start_in_transcript` | not scanned; after a start loss: no ATG found; after a stop loss: `has_start_codon` is False |
 | `alt_scan_start_codon_exon` | int | Exon number of `alt_scan_start_codon_pos`, from the exon lengths of the alt transcript, `alt_transcript_exons` | as `alt_scan_start_codon_pos`; `alt_transcript_exons` is null |
 | `alt_scan_first_stop_codon` | string | First stop codon that the scan found | not scanned; no stop codon found |
 | `alt_scan_first_stop_pos` | int | Position of `alt_scan_first_stop_codon` in `alt_transcript_seq` | as `alt_scan_first_stop_codon` |
 | `alt_scan_stop_codon_count` | int | Number of stop codons that the scan found | not scanned |
-| `alt_scan_stop_codons` | stop_codon_list | (position in `alt_transcript_seq`, codon) of each stop codon that the scan found | not scanned |
+| `alt_scan_stop_codons` | stop_codon_list | `position` (in `alt_transcript_seq`) and `codon` of each stop codon that the scan found | not scanned |
 | `alt_scan_stop_codon_exons` | int_list | Exon number of each stop codon that the scan found, from the exon lengths of the alt transcript, `alt_transcript_exons` | not scanned; `alt_transcript_exons` is null |
 | `unknown_reason` | string | Why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous` (see [Variants at exon boundaries](#variants-at-exon-boundaries)). The section also lists the columns that are null on such a row | the alt transcript is known |
 

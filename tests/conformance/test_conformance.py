@@ -10,8 +10,10 @@ import re
 import textwrap
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from nmd_scanner import to_arrow
@@ -67,13 +69,16 @@ ARROW_TYPES = {
     "int": pa.int64(),
     "bool": pa.bool_(),
     "string": pa.string(),
-    "pair_list": pa.list_(pa.list_(pa.int64())),
+    "pair_list": pa.list_(pa.struct([("exon_number", pa.int64()), ("length", pa.int64())])),
     "int_list": pa.list_(pa.int64()),
     "stop_codon_list": pa.list_(pa.struct([("position", pa.int64()), ("codon", pa.string())])),
 }
-# The columns of kind stop_codon_list: lists of (position, codon) tuples, which to_arrow turns into records
-STOP_CODON_COLUMNS = ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons")
+# The list columns: lists of {"exon_number", "length"} records, of exon numbers, or of {"position", "codon"} records
+LIST_COLUMNS = tuple(
+    column for column, kind in OUTPUT_COLUMN_KINDS.items() if kind in ("pair_list", "int_list", "stop_codon_list")
+)
 CASES_WITH_A_RESULT = [case for case in CASES if not isinstance(case.expected, Raises)]
+CASES_WITH_A_ROW = [case for case in CASES if isinstance(case.expected, dict)]
 
 
 @pytest.mark.parametrize("sequences", [True, False], ids=["sequences", "no_sequences"])
@@ -81,8 +86,8 @@ CASES_WITH_A_RESULT = [case for case in CASES if not isinstance(case.expected, R
 def test_to_arrow_of_the_case_result(case, sequences, tmp_path):
     """
     to_arrow gives each column of the case result the Arrow type of its kind: with rows, without rows, in a column
-    with only nulls, and without the sequence columns. The stop codon columns hold {"position", "codon"} records with
-    the expected values. to_arrow leaves the result unchanged. Once per case: on the plus strand, with the first
+    with only nulls, and without the sequence columns. The list columns hold the expected values, with the records as
+    structs. to_arrow leaves the result unchanged. Once per case: on the plus strand, with the first
     description of the variant.
     """
     results, _ = run(case, case.change, "+", tmp_path, sequences=sequences)
@@ -103,12 +108,45 @@ def test_to_arrow_of_the_case_result(case, sequences, tmp_path):
     assert table.num_rows == len(by_key) == len(rows)
     keys = zip(table.column("transcript_id").to_pylist(), table.column("variant_id").to_pylist())
     expected = [by_key[key] for key in keys]
-    for column in STOP_CODON_COLUMNS:
-        records = [
-            None if row[column] is None else [{"position": position, "codon": codon} for position, codon in row[column]]
-            for row in expected
-        ]
-        assert table.column(column).to_pylist() == records, column
+    for column in LIST_COLUMNS:
+        assert table.column(column).to_pylist() == [row[column] for row in expected], column
+
+
+@pytest.mark.parametrize("case", CASES_WITH_A_ROW, ids=[case.name for case in CASES_WITH_A_ROW])
+def test_list_columns_keep_their_shape_through_parquet(case, tmp_path):
+    """
+    A list value of the case result and the same value after to_arrow, Parquet and pd.read_parquet with default
+    arguments have elements of the same shape: a record stays a dict with the same keys and values, and an exon
+    number stays an int. Only the container changes, from a list to a numpy array, and an int becomes a numpy int. So
+    code that reads the fields by name works on both. polars reads the records as structs with the same field names.
+    Once per case: on the plus strand, with the first description of the variant.
+    """
+    results, _ = run(case, case.change, "+", tmp_path)
+    path = tmp_path / "results.parquet"
+    pq.write_table(to_arrow(results), path)
+
+    loaded = pd.read_parquet(path)
+
+    for column in LIST_COLUMNS:
+        for before, after in zip(results[column], loaded[column], strict=True):
+            if pd.api.types.is_scalar(before) and pd.isna(before):
+                assert after is None, column
+                continue
+            assert isinstance(before, list) and isinstance(after, np.ndarray), column
+            assert len(after) == len(before), column
+            for element_before, element_after in zip(before, after):
+                if isinstance(element_before, dict):
+                    assert type(element_after) is dict and element_after == element_before, column
+                else:
+                    assert type(element_before) is int and isinstance(element_after, np.integer), column
+                    assert element_after == element_before, column
+    polars = pytest.importorskip("polars")
+    schema = polars.read_parquet(path).schema
+    assert schema["transcript_exons"] == polars.List(
+        polars.Struct({"exon_number": polars.Int64, "length": polars.Int64})
+    )
+    assert schema["ref_stop_codon_exons"] == polars.List(polars.Int64)
+    assert schema["ref_stop_codons"] == polars.List(polars.Struct({"position": polars.Int64, "codon": polars.String}))
 
 
 def test_to_arrow_types_a_column_with_only_nulls(tmp_path):

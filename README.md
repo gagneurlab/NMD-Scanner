@@ -90,6 +90,7 @@ results = nmd_scanner.annotate("input.vcf", "annotation.gff3.gz", "reference.fa"
 results["my_key"] = "sample_1"  # add your own columns
 results.to_csv("results.csv", index=False)
 ```
+`DataFrame.to_csv` writes a list column, e.g. `transcript_exons`, as its Python repr. The CLI writes it as JSON instead (see [Kinds and dtypes](Technical%20Notes.md#kinds-and-dtypes)).
 
 To convert the table to a `pyarrow.Table`, call `to_arrow`. Each column gets the Arrow type of its kind, so the types are the same for every input, also for a result without rows. The CLI writes this table for Parquet output. `to_arrow` takes the output columns, with or without the sequences; a column of your own, such as `my_key` above, raises a KeyError:
 ```python

@@ -527,6 +527,8 @@ def plain(value):
     """A value of the result table as a plain Python value, with None for a missing value."""
     if isinstance(value, (list, tuple)):
         return type(value)(plain(item) for item in value)
+    if isinstance(value, dict):
+        return {key: plain(item) for key, item in value.items()}
     if pd.api.types.is_scalar(value) and pd.isna(value):
         return None
     return value.item() if hasattr(value, "item") else value

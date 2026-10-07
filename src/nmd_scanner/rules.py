@@ -543,7 +543,11 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
 
         # Collect exon numbers and lengths (for tracking exon contribution later on)
         ref_cds_exons = sorted(
-            [(row["exon_number"], len(row["Exon_CDS_seq"])) for _, row in ref_exons.iterrows()], key=lambda x: x[0]
+            [
+                {"exon_number": row["exon_number"], "length": len(row["Exon_CDS_seq"])}
+                for _, row in ref_exons.iterrows()
+            ],
+            key=lambda exon: exon["exon_number"],
         )
 
         # Get strand info (all should be the same within transcript)
@@ -616,7 +620,11 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             alt_exons = alt_exons.sort_values("Start")
 
             alt_cds_exons = sorted(
-                [(row["exon_number"], len(row["Exon_CDS_seq"])) for _, row in alt_exons.iterrows()], key=lambda x: x[0]
+                [
+                    {"exon_number": row["exon_number"], "length": len(row["Exon_CDS_seq"])}
+                    for _, row in alt_exons.iterrows()
+                ],
+                key=lambda exon: exon["exon_number"],
             )
 
             alt_seq = "".join(alt_exons["Exon_CDS_seq"].tolist())
@@ -721,7 +729,7 @@ def get_transcript_sequence(exons_df, fasta):
             exon_seq_str = str(exon_seq).upper()
             seq_parts.append(exon_seq_str)
 
-            exon_info.append((exon_number, len(exon_seq_str)))
+            exon_info.append({"exon_number": exon_number, "length": len(exon_seq_str)})
 
         # join exon sequences into a full transcript sequence
         joined_seq = "".join(seq_parts)
@@ -797,34 +805,44 @@ def cds_range_in_transcript(exons, cds):
 
 def alt_transcript_exons(exon_info, alt_exon_lengths, alt_transcript_seq):
     """
-    Return (exon_number, length) of each exon of the alt transcript, 5' to 3', as transcript_exons does for the
+    Return {"exon_number", "length"} of each exon of the alt transcript, 5' to 3', as transcript_exons does for the
     ref transcript. An indel changes the length of the exon that holds it, in the CDS or in the UTR next to it, and an
     exon that the variant deletes has length 0 (see variant_placement.place_in_transcript).
 
     :param exon_info: transcript_exons of the ref transcript
     :param alt_exon_lengths: {exon_number: length of the exon in the alt transcript}, see apply_variants
     :param alt_transcript_seq: The alt transcript (splice_alt_cds_into_transcript)
-    :return: list of (exon_number, length), or None without an alt transcript, or if the lengths do not add up to its
-             length
+    :return: list of {"exon_number", "length"} records, or None without an alt transcript, or if the lengths do not add
+             up to its length
     """
 
     if not isinstance(alt_transcript_seq, str) or not isinstance(alt_exon_lengths, dict) or not exon_info:
         return None
-    info = [(exon_number, alt_exon_lengths.get(exon_number, length)) for exon_number, length in exon_info]
-    return info if sum(length for _, length in info) == len(alt_transcript_seq) else None
+    info = [
+        {"exon_number": exon["exon_number"], "length": alt_exon_lengths.get(exon["exon_number"], exon["length"])}
+        for exon in exon_info
+    ]
+    return info if sum(exon["length"] for exon in info) == len(alt_transcript_seq) else None
+
+
+def stop_codon_records(stop_codons):
+    """
+    Return the (position, codon) pairs of a codon scan as the {"position", "codon"} records of a stop codon column.
+    """
+    return [{"position": position, "codon": codon} for position, codon in stop_codons]
 
 
 def get_exon(cds_pos, exon_info):
     """
     Map a CDS-relative position to the corresponding exon number using exon_info,
-    which is a list of (exon_number, exon_length) tuples in CDS order.
+    which is a list of {"exon_number", "length"} records in CDS order.
     """
     pos_counter = 0
-    for exon_number, exon_length in exon_info:
-        if cds_pos < pos_counter + exon_length:
-            return exon_number
-        pos_counter += exon_length
-    return exon_info[-1][0]  # fallback
+    for exon in exon_info:
+        if cds_pos < pos_counter + exon["length"]:
+            return exon["exon_number"]
+        pos_counter += exon["length"]
+    return exon_info[-1]["exon_number"]  # fallback
 
 
 def analyze_sequence(results_df):
@@ -901,7 +919,7 @@ def analyze_sequence(results_df):
             df.at[idx, f"{label}_first_stop_codon"] = first_stop
             df.at[idx, f"{label}_first_stop_pos"] = first_stop_pos
             df.at[idx, f"{label}_stop_codon_count"] = len(stop_codons)
-            df.at[idx, f"{label}_stop_codons"] = stop_codons
+            df.at[idx, f"{label}_stop_codons"] = stop_codon_records(stop_codons)
             df.at[idx, f"{label}_stop_codon_exons"] = stop_exons  # exon number
             df.at[idx, f"{label}_has_ptc"] = is_premature
 
@@ -1280,7 +1298,7 @@ def analyze_transcript(results_df):
         df.at[idx, "alt_scan_first_stop_codon"] = first_stop
         df.at[idx, "alt_scan_first_stop_pos"] = first_stop_pos
         df.at[idx, "alt_scan_stop_codon_count"] = len(stop_codons)
-        df.at[idx, "alt_scan_stop_codons"] = stop_codons
+        df.at[idx, "alt_scan_stop_codons"] = stop_codon_records(stop_codons)
         df.at[idx, "alt_scan_stop_codon_exons"] = stop_exons  # for exon number
 
     return df

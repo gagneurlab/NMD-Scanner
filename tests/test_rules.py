@@ -442,7 +442,7 @@ def test_extract_ptc_of_a_transcript_without_exon_rows(tmp_path, strand):
 
 
 def test_get_exon():
-    exon_info = [(1, 10), (2, 20), (3, 30)]
+    exon_info = [{"exon_number": 1, "length": 10}, {"exon_number": 2, "length": 20}, {"exon_number": 3, "length": 30}]
     assert get_exon(5, exon_info) == 1
     assert get_exon(25, exon_info) == 2
     assert get_exon(55, exon_info) == 3
@@ -454,8 +454,8 @@ def test_analyze_sequence():
             {
                 "ref_cds_seq": "ATGAAATAG",
                 "alt_cds_seq": "ATGAAATAA",
-                "ref_cds_exons": [(1, 9)],
-                "alt_cds_exons": [(1, 9)],
+                "ref_cds_exons": [{"exon_number": 1, "length": 9}],
+                "alt_cds_exons": [{"exon_number": 1, "length": 9}],
                 "has_start_codon": True,
                 "has_stop_codon": True,
                 "cds_frame": 0,
@@ -476,8 +476,8 @@ def test_analyze_sequence_without_stop_codon():
             {
                 "ref_cds_seq": "ATGAAATGG",
                 "alt_cds_seq": "ATGAAATAG",
-                "ref_cds_exons": [(1, 9)],
-                "alt_cds_exons": [(1, 9)],
+                "ref_cds_exons": [{"exon_number": 1, "length": 9}],
+                "alt_cds_exons": [{"exon_number": 1, "length": 9}],
                 "has_start_codon": True,
                 "has_stop_codon": False,
                 "cds_frame": 0,
@@ -486,8 +486,8 @@ def test_analyze_sequence_without_stop_codon():
             {
                 "ref_cds_seq": "ATGAAAGTAA",
                 "alt_cds_seq": "ATGAAAGTAA",
-                "ref_cds_exons": [(1, 10)],
-                "alt_cds_exons": [(1, 10)],
+                "ref_cds_exons": [{"exon_number": 1, "length": 10}],
+                "alt_cds_exons": [{"exon_number": 1, "length": 10}],
                 "has_start_codon": True,
                 "has_stop_codon": False,
                 "cds_frame": 0,
@@ -558,8 +558,10 @@ def test_start_loss_judges_the_annotated_start_codon():
                 "ATGCAAACCCTAA",  # insertion after the start codon
                 "GTGAAACCCTAA",  # A>G at the first base, without an annotated start codon
             ],
-            "ref_cds_exons": [[(1, 12)]] * 5,
-            "alt_cds_exons": [[(1, 12)]] * 3 + [[(1, 13)]] + [[(1, 12)]],
+            "ref_cds_exons": [[{"exon_number": 1, "length": 12}]] * 5,
+            "alt_cds_exons": [[{"exon_number": 1, "length": 12}]] * 3
+            + [[{"exon_number": 1, "length": 13}]]
+            + [[{"exon_number": 1, "length": 12}]],
             "has_stop_codon": [True] * 5,
             "cds_frame": [0] * 5,
         }
@@ -589,8 +591,8 @@ def test_start_codon_pos_is_the_annotated_start_codon():
                 "ATGAAAATGCCATAA",  # CCC>CCA
                 "CTGAAAATGCCATAA",  # CCC>CCA
             ],
-            "ref_cds_exons": [[(1, 15)]] * 4,
-            "alt_cds_exons": [[(1, 15)]] * 4,
+            "ref_cds_exons": [[{"exon_number": 1, "length": 15}]] * 4,
+            "alt_cds_exons": [[{"exon_number": 1, "length": 15}]] * 4,
             "has_stop_codon": [True] * 4,
             "cds_frame": [0] * 4,
         }
@@ -655,8 +657,8 @@ def test_analyze_transcript_without_cds_start_in_transcript():
                 "alt_transcript_seq": "CCCATGAAATAATAGGGG",
                 "cds_start_in_transcript": None,
                 "alt_cds_start_in_transcript": None,
-                "transcript_exons": [(1, 10), (2, 10)],
-                "alt_transcript_exons": [(1, 10), (2, 10)],
+                "transcript_exons": [{"exon_number": 1, "length": 10}, {"exon_number": 2, "length": 10}],
+                "alt_transcript_exons": [{"exon_number": 1, "length": 10}, {"exon_number": 2, "length": 10}],
                 "start_loss": True,
                 "stop_loss": False,
             }
@@ -692,8 +694,8 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
         "has_stop_codon": True,
         "ref_cds_seq": "ATGAAATAA",
         "alt_cds_seq": "ATGAAACAA",
-        "transcript_exons": [(1, 20)],
-        "alt_transcript_exons": [(1, 19)],
+        "transcript_exons": [{"exon_number": 1, "length": 20}],
+        "alt_transcript_exons": [{"exon_number": 1, "length": 19}],
         "alt_has_ptc": False,
         "start_loss": False,
         "stop_loss": True,
@@ -705,7 +707,7 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
     assert result["stop_loss"] == True
     assert result["alt_scan_start_codon_pos"] == 2
     assert result["alt_scan_first_stop_pos"] == 14
-    assert result["alt_scan_stop_codons"] == [(14, "TGA")]
+    assert result["alt_scan_stop_codons"] == [{"position": 14, "codon": "TGA"}]
 
 
 # Transcript parts for the scan tests: a 5'UTR of 13 nt with an ATG at transcript position 2, and a 3'UTR from position
@@ -743,7 +745,7 @@ def test_stop_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
     assert row["alt_scan_start_codon_pos"] == 13
     assert row["alt_scan_first_stop_codon"] == "TAG"
     assert row["alt_scan_first_stop_pos"] == 40
-    assert row["alt_scan_stop_codons"] == [(40, "TAG")]
+    assert row["alt_scan_stop_codons"] == [{"position": 40, "codon": "TAG"}]
 
 
 @pytest.mark.parametrize(

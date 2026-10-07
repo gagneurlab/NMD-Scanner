@@ -1,3 +1,5 @@
+import copy
+import json
 import logging
 import os
 import subprocess
@@ -75,6 +77,32 @@ def test_write_results_csv_roundtrip(tmp_path):
     assert list(loaded["transcript_id"]) == ["t1", "t2"]
 
 
+def test_write_results_csv_writes_the_list_columns_as_json(tmp_path):
+    """
+    A .csv output holds each list column as JSON text, which json.loads reads back. A missing value is an empty field.
+    A column of another kind, here the string column transcript_id, is written as before.
+    """
+
+    columns = {
+        "transcript_id": ["t1", "t2"],
+        "transcript_exons": [[{"exon_number": 1, "length": 36}, {"exon_number": 2, "length": 120}], None],
+        "ref_stop_codon_exons": [[2], []],
+        "ref_stop_codons": [[{"position": 5442, "codon": "TGA"}], []],
+    }
+    df = pd.DataFrame(copy.deepcopy(columns))
+    out = tmp_path / "lists.csv"
+
+    write_results(df, str(out))
+
+    loaded = pd.read_csv(out)
+    assert list(loaded.columns) == list(columns)
+    assert loaded["transcript_id"].tolist() == ["t1", "t2"]
+    for column in ["transcript_exons", "ref_stop_codon_exons", "ref_stop_codons"]:
+        assert [None if pd.isna(text) else json.loads(text) for text in loaded[column]] == columns[column], column
+    # write_results does not change df
+    assert df.to_dict("list") == columns
+
+
 def test_write_results_rejects_unsupported_extension(tmp_path):
     df = pd.DataFrame({"x": [1]})
     with pytest.raises(ValueError, match="Unsupported output extension"):
@@ -131,10 +159,9 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
     """
     Run the full pipeline on the bundled chr18 test data, write Parquet, and read it back.
 
-    ``ref_stop_codons`` and ``alt_stop_codons`` hold (position, codon) tuples,
-    e.g. (5442, "TGA"); pyarrow cannot infer a single type for a tuple mixing int and str,
-    so they need a typed struct schema instead. ``transcript_exons`` holds
-    (exon_number, exon_length) tuples, both ints.
+    ``ref_stop_codons`` and ``alt_stop_codons`` hold {"position": ..., "codon": ...} records,
+    e.g. {"position": 5442, "codon": "TGA"}. Parquet stores them with a typed struct schema.
+    ``transcript_exons`` holds {"exon_number": ..., "length": ...} records, both ints.
     """
 
     pytest.importorskip("pyarrow")
@@ -161,27 +188,25 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
     loaded = pd.read_parquet(out)
     assert len(loaded) == len(results)
 
-    # Values are preserved, just reshaped from (position, codon) tuples to records
+    # The records come back unchanged
     has_stop_codons = results["ref_stop_codons"].apply(lambda v: isinstance(v, list) and len(v) > 0)
     sample_pos = results.index[has_stop_codons][0]
-    expected = [{"position": pos, "codon": codon} for pos, codon in results.loc[sample_pos, "ref_stop_codons"]]
-    assert list(loaded.loc[sample_pos, "ref_stop_codons"]) == expected
+    assert list(loaded.loc[sample_pos, "ref_stop_codons"]) == results.loc[sample_pos, "ref_stop_codons"]
 
     # Exon numbers in transcript_exons are one type (int), not a mix of int and str
     exon_info_samples = loaded["transcript_exons"].dropna()
     exon_info_samples = exon_info_samples[exon_info_samples.apply(len) > 0]
     assert not exon_info_samples.empty
-    for exon_number, exon_length in exon_info_samples.iloc[0]:
-        assert not isinstance(exon_number, str)
-        assert not isinstance(exon_length, str)
+    for exon in exon_info_samples.iloc[0]:
+        assert not isinstance(exon["exon_number"], str)
+        assert not isinstance(exon["length"], str)
 
 
 def test_write_results_parquet_types_stop_codon_columns(tmp_path):
     """
-    ``to_arrow`` (used by ``write_results``) turns (position, codon) tuples into
-    {"position": ..., "codon": ...} records for every stop-codon column, including
-    ``alt_scan_stop_codons`` and rows holding None, so Parquet gets a typed struct
-    schema instead of raising ArrowInvalid.
+    ``write_results`` writes the {"position": ..., "codon": ...} records of every stop codon column
+    with the typed struct schema of ``to_arrow``. This holds for ``alt_scan_stop_codons`` too, and
+    for rows that hold None.
     """
 
     pytest.importorskip("pyarrow")
@@ -191,9 +216,9 @@ def test_write_results_parquet_types_stop_codon_columns(tmp_path):
     df = pd.DataFrame(
         {
             "transcript_id": ["t1", "t2"],
-            "ref_stop_codons": [[(5442, "TGA"), (10, "TAA")], []],
-            "alt_stop_codons": [[(3, "TGA")], None],
-            "alt_scan_stop_codons": [None, [(7, "TAG")]],
+            "ref_stop_codons": [[{"position": 5442, "codon": "TGA"}, {"position": 10, "codon": "TAA"}], []],
+            "alt_stop_codons": [[{"position": 3, "codon": "TGA"}], None],
+            "alt_scan_stop_codons": [None, [{"position": 7, "codon": "TAG"}]],
         }
     )
     out = tmp_path / "stop_codons.parquet"
@@ -213,25 +238,25 @@ def test_write_results_parquet_types_stop_codon_columns(tmp_path):
     assert table.column("alt_stop_codons").to_pylist() == [[{"position": 3, "codon": "TGA"}], None]
     assert table.column("alt_scan_stop_codons").to_pylist() == [None, [{"position": 7, "codon": "TAG"}]]
 
-    # write_results (the CSV path) and the in-memory df passed in are untouched
-    assert df["ref_stop_codons"].iloc[0] == [(5442, "TGA"), (10, "TAA")]
+    # write_results does not change df
+    assert df["ref_stop_codons"].iloc[0] == [{"position": 5442, "codon": "TGA"}, {"position": 10, "codon": "TAA"}]
 
 
 def test_the_deprecated_aliases_parquet_schema_and_to_parquet_safe_still_work():
-    no_stop_codons = pd.DataFrame({"transcript_id": ["t1"], "nmd_escape": [True]})
-    with pytest.warns(DeprecationWarning, match="to_arrow"):
-        assert cli_module.to_parquet_safe(no_stop_codons) is no_stop_codons
-
-    df = pd.DataFrame({"transcript_id": ["t1"], "transcript_exons": [[(1, 36)]], "ref_stop_codons": [[(5442, "TGA")]]})
+    df = pd.DataFrame(
+        {
+            "transcript_id": ["t1"],
+            "transcript_exons": [[{"exon_number": 1, "length": 36}]],
+            "ref_stop_codons": [[{"position": 5442, "codon": "TGA"}]],
+        }
+    )
     original = df.copy()
+    # The stop codon columns hold records already, so to_parquet_safe returns its input
     with pytest.warns(DeprecationWarning, match="to_arrow"):
-        safe = cli_module.to_parquet_safe(df)
+        assert cli_module.to_parquet_safe(df) is df
     with pytest.warns(DeprecationWarning, match="to_arrow"):
         schema = cli_module.parquet_schema(df)
 
-    assert safe is not df
-    pd.testing.assert_frame_equal(safe.drop(columns="ref_stop_codons"), df.drop(columns="ref_stop_codons"))
-    assert safe["ref_stop_codons"].tolist() == [[{"position": 5442, "codon": "TGA"}]]
     pd.testing.assert_frame_equal(df, original)
     assert schema.equals(to_arrow(df).schema)
     assert cli_module.STOP_CODON_COLUMNS == STOP_CODON_COLUMNS
@@ -244,7 +269,7 @@ def test_write_results_parquet_keeps_any_missing_stop_codon_value_null(tmp_path,
     pytest.importorskip("pyarrow")
     import pyarrow.parquet as pq
 
-    df = pd.DataFrame({"transcript_id": ["t1", "t2"], "alt_stop_codons": [[(3, "TGA")], missing]})
+    df = pd.DataFrame({"transcript_id": ["t1", "t2"], "alt_stop_codons": [[{"position": 3, "codon": "TGA"}], missing]})
     out = tmp_path / "missing.parquet"
 
     write_results(df, str(out))
@@ -319,11 +344,8 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
         for exp, act in zip(expected, actual):
             if pd.api.types.is_scalar(exp) and pd.isna(exp):
                 assert act is None, column
-            elif column in ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons"):
-                assert act == [{"position": p, "codon": c} for p, c in exp], column
-            elif isinstance(exp, list):
-                assert [list(x) if isinstance(x, tuple) else x for x in exp] == act, column
             else:
+                # A list value comes back as the same list: its records stay records
                 assert exp == act, column
 
 
@@ -519,9 +541,9 @@ def test_main_end_to_end_reassign_exons(tmp_path):
     assert not results.empty
     assert out.exists()
     for exon_info in results["transcript_exons"]:
-        for exon_number, exon_length in exon_info:
-            assert not isinstance(exon_number, str)
-            assert not isinstance(exon_length, str)
+        for exon in exon_info:
+            assert not isinstance(exon["exon_number"], str)
+            assert not isinstance(exon["length"], str)
 
     # chr18.gff3.gz is hg38, where the annotated exon numbers already follow transcript order.
     # extract_ptc casts the annotated ones to int, too.

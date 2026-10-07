@@ -74,10 +74,11 @@ def ptc_in_alt_transcript(row):
 
     exons = []
     end = 0
-    for exon_number, length in exon_info:
-        if int(length) > 0:
-            exons.append((int(exon_number), end, end + int(length)))
-        end += int(length)
+    for exon in exon_info:
+        length = int(exon["length"])
+        if length > 0:
+            exons.append((int(exon["exon_number"]), end, end + length))
+        end += length
     index = next((i for i, (_, exon_start, exon_end) in enumerate(exons) if exon_start <= position < exon_end), None)
     return None if index is None else (position, exons, index)
 
@@ -171,7 +172,7 @@ def calculate_utr_lengths(row):
     if cds_start is None or cds_end is None or not transcript_exons:
         return {"utr5_length": None, "utr3_length": None}
 
-    utr3 = sum(int(length) for _, length in transcript_exons) - cds_end
+    utr3 = sum(int(exon["length"]) for exon in transcript_exons) - cds_end
     return {"utr5_length": cds_start, "utr3_length": utr3 if utr3 >= 0 and has_stop_codon else None}
 
 

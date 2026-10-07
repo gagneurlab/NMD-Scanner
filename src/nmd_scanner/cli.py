@@ -1,6 +1,7 @@
 # Import dependencies
 import argparse
 import functools
+import json
 import logging
 import os
 import warnings
@@ -13,7 +14,7 @@ from pyfaidx import Fasta
 from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import detect_annotation_format, read_annotation, read_vcf
-from nmd_scanner.schema import SEQUENCE_COLUMNS, _arrow_schema, _stop_codon_records, to_arrow
+from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS, _arrow_schema, to_arrow
 
 # Deprecated alias of schema.STOP_CODON_COLUMNS, kept for one release together with parquet_schema and
 # to_parquet_safe. It goes in a later release.
@@ -116,16 +117,36 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, se
 def write_results(results, output):
     """
     Write the results DataFrame to a CSV or Parquet file based on the output extension.
-    A Parquet file gets the table of ``to_arrow``, with the same types for every input.
+    A Parquet file gets the table of ``to_arrow``, with the same types for every input. A CSV file gets each list
+    column as JSON, e.g. [{"exon_number": 1, "length": 36}], which ``json.loads`` reads back.
     """
 
     ext = os.path.splitext(output)[1].lower()
     if ext == ".csv":
-        results.to_csv(output, index=False)
+        _json_lists(results).to_csv(output, index=False)
     elif ext in (".parquet", ".pq"):
         pq.write_table(to_arrow(results), output)
     else:
         raise ValueError(f"Unsupported output extension: {ext!r}. Supported: {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}")
+
+
+def _json_lists(results):
+    """
+    Return a copy of ``results`` in which each list column (kind pair_list, int_list or stop_codon_list) holds JSON
+    text. A missing value stays missing, so CSV writes it as an empty field.
+    """
+
+    results = results.copy()
+    for column in results.columns:
+        if OUTPUT_COLUMN_KINDS.get(column) in ("pair_list", "int_list", "stop_codon_list"):
+            results[column] = results[column].map(_json_list, na_action="ignore")
+    return results
+
+
+def _json_list(value):
+    """Return a list value as JSON text. A numpy int, e.g. of a column read from Parquet, becomes a plain int."""
+
+    return json.dumps(list(value), default=lambda item: item.item())
 
 
 def parquet_schema(results):
@@ -146,15 +167,14 @@ def to_parquet_safe(results):
     """
     Deprecated: use ``nmd_scanner.to_arrow``, which does this conversion. This alias goes in a later release.
 
-    Return a copy of ``results`` with the (position, codon) tuples of schema.STOP_CODON_COLUMNS turned into
-    {"position": ..., "codon": ...} records. Without a stop codon column, return ``results`` itself.
-    ``results`` is not changed.
+    Return ``results`` itself. Its stop codon columns (schema.STOP_CODON_COLUMNS) hold {"position": ..., "codon": ...}
+    records already, which this function made from (position, codon) tuples before 0.4.0.
     """
 
     warnings.warn(
         "nmd_scanner.cli.to_parquet_safe is deprecated, use nmd_scanner.to_arrow", DeprecationWarning, stacklevel=2
     )
-    return _stop_codon_records(results)
+    return results
 
 
 def is_valid_output_path(path):

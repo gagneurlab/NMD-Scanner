@@ -30,16 +30,25 @@ def test_calculate_utr_lengths():
     row1 = {
         "strand": "-",
         "has_stop_codon": True,
-        "ref_cds_exons": [(8, 30), (7, 105), (6, 173), (5, 70), (4, 123), (3, 174), (2, 97), (1, 98)],
+        "ref_cds_exons": [
+            {"exon_number": 8, "length": 30},
+            {"exon_number": 7, "length": 105},
+            {"exon_number": 6, "length": 173},
+            {"exon_number": 5, "length": 70},
+            {"exon_number": 4, "length": 123},
+            {"exon_number": 3, "length": 174},
+            {"exon_number": 2, "length": 97},
+            {"exon_number": 1, "length": 98},
+        ],
         "transcript_exons": [
-            ("1", 250),
-            ("2", 97),
-            ("3", 174),
-            ("4", 123),
-            ("5", 70),
-            ("6", 173),
-            ("7", 105),
-            ("8", 5848),
+            {"exon_number": "1", "length": 250},
+            {"exon_number": "2", "length": 97},
+            {"exon_number": "3", "length": 174},
+            {"exon_number": "4", "length": 123},
+            {"exon_number": "5", "length": 70},
+            {"exon_number": "6", "length": 173},
+            {"exon_number": "7", "length": 105},
+            {"exon_number": "8", "length": 5848},
         ],
         "cds_start_in_transcript": 152,
         "cds_end_in_transcript": 152 + 870,
@@ -52,8 +61,19 @@ def test_calculate_utr_lengths():
     row2 = {
         "strand": "+",
         "has_stop_codon": True,
-        "ref_cds_exons": [(3, 50), (4, 120), (5, 80)],
-        "transcript_exons": [("1", 200), ("2", 150), ("3", 100), ("4", 120), ("5", 80), ("6", 300)],
+        "ref_cds_exons": [
+            {"exon_number": 3, "length": 50},
+            {"exon_number": 4, "length": 120},
+            {"exon_number": 5, "length": 80},
+        ],
+        "transcript_exons": [
+            {"exon_number": "1", "length": 200},
+            {"exon_number": "2", "length": 150},
+            {"exon_number": "3", "length": 100},
+            {"exon_number": "4", "length": 120},
+            {"exon_number": "5", "length": 80},
+            {"exon_number": "6", "length": 300},
+        ],
         "cds_start_in_transcript": 400,
         "cds_end_in_transcript": 650,
     }
@@ -67,8 +87,8 @@ def test_calculate_utr_lengths():
     row3 = {
         "strand": "-",
         "has_stop_codon": True,
-        "ref_cds_exons": [(1, 60)],
-        "transcript_exons": [("1", 150)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 60}],
+        "transcript_exons": [{"exon_number": "1", "length": 150}],
         "cds_start_in_transcript": 40,
         "cds_end_in_transcript": 100,
     }
@@ -92,8 +112,8 @@ def test_calculate_utr_lengths():
     row = {
         "strand": "+",
         "has_stop_codon": True,
-        "ref_cds_exons": [(1, 100), (2, 150)],
-        "transcript_exons": [("1", 200), ("2", 300)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 150}],
+        "transcript_exons": [{"exon_number": "1", "length": 200}, {"exon_number": "2", "length": 300}],
         "cds_start_in_transcript": None,
         "cds_end_in_transcript": None,
     }
@@ -104,7 +124,7 @@ def test_calculate_utr_lengths():
     row = {
         "strand": "-",
         "has_stop_codon": True,
-        "ref_cds_exons": [(1, 100), (2, 150)],
+        "ref_cds_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 150}],
         "cds_start_in_transcript": 0,
         "cds_end_in_transcript": 250,
     }
@@ -119,8 +139,12 @@ def test_calculate_utr_lengths_cds_inside_one_exon():
     row = {
         "strand": "+",
         "has_stop_codon": True,
-        "ref_cds_exons": [(2, 180)],
-        "transcript_exons": [("1", 100), ("2", 300), ("3", 100)],
+        "ref_cds_exons": [{"exon_number": 2, "length": 180}],
+        "transcript_exons": [
+            {"exon_number": "1", "length": 100},
+            {"exon_number": "2", "length": 300},
+            {"exon_number": "3", "length": 100},
+        ],
         "cds_start_in_transcript": 150,
         "cds_end_in_transcript": 330,
     }
@@ -130,7 +154,16 @@ def test_calculate_utr_lengths_cds_inside_one_exon():
 
 
 # Exons of a TCGA example (TXNL1), in transcript order. The CDS starts at transcript position 152, in exon 1.
-TXNL1_EXONS = [(1, 250), (2, 97), (3, 174), (4, 123), (5, 70), (6, 173), (7, 105), (8, 5848)]
+TXNL1_EXONS = [
+    {"exon_number": 1, "length": 250},
+    {"exon_number": 2, "length": 97},
+    {"exon_number": 3, "length": 174},
+    {"exon_number": 4, "length": 123},
+    {"exon_number": 5, "length": 70},
+    {"exon_number": 6, "length": 173},
+    {"exon_number": 7, "length": 105},
+    {"exon_number": 8, "length": 5848},
+]
 
 
 def ptc_row(ptc_pos, exons=TXNL1_EXONS, alt_exons=None, cds_start=152):
@@ -168,7 +201,7 @@ def test_calculate_exon_features():
     }
 
     # Single exon transcript
-    row = ptc_row(90, exons=[(1, 500)], cds_start=100)
+    row = ptc_row(90, exons=[{"exon_number": 1, "length": 500}], cds_start=100)
     assert calculate_exon_features(row) == {"total_exon_count": 1, "upstream_exon_count": 0, "downstream_exon_count": 0}
 
     # After a start loss, the PTC lies at alt_scan_first_stop_pos, in alt transcript positions: 260 is in exon 2
@@ -177,7 +210,7 @@ def test_calculate_exon_features():
 
     # The counts take the alt exons. After a 3 nt deletion in exon 1, transcript position 152 + 95 = 247 is the first
     # base of exon 2. With the ref exon lengths, it would lie in exon 1.
-    alt_exons = [(1, 247), *TXNL1_EXONS[1:]]
+    alt_exons = [{"exon_number": 1, "length": 247}, *TXNL1_EXONS[1:]]
     assert calculate_exon_features(ptc_row(95, alt_exons=alt_exons)) == {
         "total_exon_count": 8,
         "upstream_exon_count": 1,
@@ -186,7 +219,12 @@ def test_calculate_exon_features():
 
     # An exon that the variant deletes (length 0) is not in the mRNA, so it is no upstream or downstream exon. It
     # still counts in total_exon_count, the exons of the ref transcript.
-    alt_exons = [(1, 250), (2, 97), (3, 0), *TXNL1_EXONS[3:]]
+    alt_exons = [
+        {"exon_number": 1, "length": 250},
+        {"exon_number": 2, "length": 97},
+        {"exon_number": 3, "length": 0},
+        *TXNL1_EXONS[3:],
+    ]
     assert calculate_exon_features(ptc_row(100, alt_exons=alt_exons)) == {
         "total_exon_count": 8,
         "upstream_exon_count": 1,
@@ -257,11 +295,11 @@ def test_calculate_ptc_exon_length():
 
     # The alt exons locate the PTC: after a 3 nt deletion in exon 1, transcript position 152 + 95 = 247 is the first
     # base of exon 2
-    alt_exons = [(1, 247), *TXNL1_EXONS[1:]]
+    alt_exons = [{"exon_number": 1, "length": 247}, *TXNL1_EXONS[1:]]
     assert calculate_ptc_exon_length(ptc_row(95, alt_exons=alt_exons)) == 97
 
     # The length is the one in the alt transcript: a 3 nt deletion in exon 2 shortens it to 94 nt
-    alt_exons = [(1, 250), (2, 94), *TXNL1_EXONS[2:]]
+    alt_exons = [{"exon_number": 1, "length": 250}, {"exon_number": 2, "length": 94}, *TXNL1_EXONS[2:]]
     assert calculate_ptc_exon_length(ptc_row(100, alt_exons=alt_exons)) == 94
 
     # Not a PTC row, no PTC position
@@ -278,8 +316,8 @@ def _analyzed(ref_cds_seq, alt_cds_seq):
                 "alt_cds_seq": alt_cds_seq,
                 "ref_cds_length": len(ref_cds_seq),
                 "alt_cds_length": len(alt_cds_seq),
-                "ref_cds_exons": [(1, len(ref_cds_seq))],
-                "alt_cds_exons": [(1, len(alt_cds_seq))],
+                "ref_cds_exons": [{"exon_number": 1, "length": len(ref_cds_seq)}],
+                "alt_cds_exons": [{"exon_number": 1, "length": len(alt_cds_seq)}],
                 "has_start_codon": True,
                 "has_stop_codon": True,
                 "cds_frame": 0,
@@ -290,7 +328,11 @@ def _analyzed(ref_cds_seq, alt_cds_seq):
 
 
 def test_has_stop_codon_is_required():
-    row = {"strand": "+", "ref_cds_exons": [(1, 60)], "transcript_exons": [("1", 100)]}
+    row = {
+        "strand": "+",
+        "ref_cds_exons": [{"exon_number": 1, "length": 60}],
+        "transcript_exons": [{"exon_number": "1", "length": 100}],
+    }
     with pytest.raises(KeyError, match="has_stop_codon"):
         calculate_utr_lengths(row)
     row = {"alt_cds_length": 903, "alt_first_stop_pos": 900, "alt_has_ptc": False}
@@ -373,7 +415,11 @@ def test_calculate_ptc_to_downstream_ej():
     row1 = {
         "alt_has_ptc": True,
         "alt_first_stop_pos": 250,  # PTC position
-        "alt_transcript_exons": [("1", 100), ("2", 200), ("3", 150)],
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 100},
+            {"exon_number": "2", "length": 200},
+            {"exon_number": "3", "length": 150},
+        ],
         "alt_cds_start_in_transcript": 0,
     }
     # End of exon 2: 100 + 200 = 300, distance = 300 - 250 = 50
@@ -387,7 +433,11 @@ def test_calculate_ptc_to_downstream_ej():
     row2 = {
         "alt_has_ptc": True,
         "alt_first_stop_pos": 60,
-        "alt_transcript_exons": [("1", 100), ("2", 200), ("3", 150)],
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 100},
+            {"exon_number": "2", "length": 200},
+            {"exon_number": "3", "length": 150},
+        ],
         "alt_cds_start_in_transcript": 0,
     }
     # End of exon 1: 100, distance = 100 - 60 = 40
@@ -401,7 +451,11 @@ def test_calculate_ptc_to_downstream_ej():
     row3 = {
         "alt_has_ptc": True,
         "alt_first_stop_pos": 430,
-        "alt_transcript_exons": [("1", 100), ("2", 200), ("3", 200)],
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 100},
+            {"exon_number": "2", "length": 200},
+            {"exon_number": "3", "length": 200},
+        ],
         "alt_cds_start_in_transcript": 0,
     }
     # The transcript ends at 100 + 200 + 200 = 500, distance = 500 - 430 = 70
@@ -423,7 +477,12 @@ def test_calculate_ptc_to_downstream_ej():
     row6 = {
         "alt_has_ptc": True,
         "alt_first_stop_pos": 280,
-        "alt_transcript_exons": [("1", 200), ("2", 100), ("3", 60), ("4", 300)],
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 200},
+            {"exon_number": "2", "length": 100},
+            {"exon_number": "3", "length": 60},
+            {"exon_number": "4", "length": 300},
+        ],
         "alt_cds_start_in_transcript": 40,
     }
     # The CDS ends at 300, and exon 3 goes on with 20 nt of 3'UTR: the junction is at 320, distance = 320 - 280 = 40
@@ -439,7 +498,12 @@ def test_calculate_ptc_to_downstream_ej():
     row7 = {
         **row6,
         "alt_first_stop_pos": 250,
-        "alt_transcript_exons": [("1", 199), ("2", 100), ("3", 60), ("4", 300)],
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 199},
+            {"exon_number": "2", "length": 100},
+            {"exon_number": "3", "length": 60},
+            {"exon_number": "4", "length": 300},
+        ],
     }
     # Exon 2 ends at alt transcript position 299, the PTC lies at 40 + 250 = 290: distance = 299 - 290 = 9
     assert calculate_ptc_to_downstream_ej(row7) == 9
@@ -451,7 +515,15 @@ def test_calculate_ptc_to_downstream_ej():
     # alt 5' [uuuu================]|[==========]|[====*===uuu]|[uuuuuuuuuuuuuuu] 3'
     #        -40  0                160          260   280 300 317
     #                                                 *------>|  ptc_to_exon_end = 37
-    row8 = {**row6, "alt_transcript_exons": [("1", 200), ("2", 100), ("3", 57), ("4", 300)]}
+    row8 = {
+        **row6,
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 200},
+            {"exon_number": "2", "length": 100},
+            {"exon_number": "3", "length": 57},
+            {"exon_number": "4", "length": 300},
+        ],
+    }
     # Exon 3 ends at alt transcript position 357, the PTC lies at 40 + 280 = 320: distance = 357 - 320 = 37
     assert calculate_ptc_to_downstream_ej(row8) == 37
 
@@ -465,7 +537,14 @@ def test_calculate_ptc_to_downstream_ej():
     #        0           100                    300            430    500   560
     #                                                          *----------->|  ptc_to_exon_end = 130
     #                                                          *----->|  70 to the CDS end, not measured
-    row10 = {**row3, "alt_transcript_exons": [("1", 100), ("2", 200), ("3", 260)]}
+    row10 = {
+        **row3,
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 100},
+            {"exon_number": "2", "length": 200},
+            {"exon_number": "3", "length": 260},
+        ],
+    }
     # The transcript ends at 560, distance = 560 - 430 = 130: the 3'UTR that the PTC creates, not the 70 nt to the CDS end
     assert calculate_ptc_to_downstream_ej(row10) == 130
 
@@ -476,7 +555,15 @@ def test_calculate_ptc_to_downstream_ej():
     # alt 5' [==========]|[====================]|[=============*======uuuuuu] 3'
     #        0           99                     299            429    499   559
     #                                                          *----------->|  ptc_to_exon_end = 130
-    row11 = {**row10, "alt_first_stop_pos": 429, "alt_transcript_exons": [("1", 99), ("2", 200), ("3", 260)]}
+    row11 = {
+        **row10,
+        "alt_first_stop_pos": 429,
+        "alt_transcript_exons": [
+            {"exon_number": "1", "length": 99},
+            {"exon_number": "2", "length": 200},
+            {"exon_number": "3", "length": 260},
+        ],
+    }
     # The transcript ends at 560 - 1 = 559, distance = 559 - 429 = 130
     assert calculate_ptc_to_downstream_ej(row11) == 130
 
@@ -488,7 +575,7 @@ def test_calculate_ptc_to_downstream_ej():
     row12 = {
         "alt_has_ptc": True,
         "alt_first_stop_pos": 100,
-        "alt_transcript_exons": [("1", 300)],
+        "alt_transcript_exons": [{"exon_number": "1", "length": 300}],
         "alt_cds_start_in_transcript": 50,
     }
     # The transcript ends at 300 - 50 = 250 in CDS coordinates, distance = 250 - 100 = 150
