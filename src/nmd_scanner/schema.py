@@ -204,8 +204,8 @@ SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcr
 # {"position": 5442, "codon": "TGA"}.
 STOP_CODON_COLUMNS = ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons")
 
-# The 19 inputs of the NMD efficiency model best_model.pkl (see scripts/train_new.ipynb), in the order that the
-# model takes them. The model cannot score a row in which one of them is null.
+# The 19 inputs of the NMD efficiency model nmd_efficiency_rf.onnx (see scripts/train_model.py), in the order that
+# the model takes them. The model cannot score a row in which one of them is null.
 MODEL_INPUTS = [
     "start_loss",
     "stop_loss",

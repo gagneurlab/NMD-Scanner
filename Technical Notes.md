@@ -198,7 +198,7 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 
 ### Model status
 
-`add_features_and_rules` adds this column last. It says whether the NMD efficiency model (`best_model.pkl`, see `scripts/train_new.ipynb`) can score the row. The model takes the 19 inputs that `nmd_scanner.schema.MODEL_INPUTS` lists, in that order, and cannot score a row in which one of them is null.
+`add_features_and_rules` adds this column last. It says whether the NMD efficiency model (`nmd_efficiency_rf.onnx`, see `scripts/train_model.py`) can score the row. The model takes the 19 inputs that `nmd_scanner.schema.MODEL_INPUTS` lists, in that order, and cannot score a row in which one of them is null.
 
 | Column             | Kind             | Meaning                                                                        | Null when |
 | ------------------ | ---------------- | ------------------------------------------------------------------------------ | --------- |

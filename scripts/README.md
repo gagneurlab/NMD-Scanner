@@ -75,6 +75,45 @@ This notebook contains the full NMD-Scanner implementation split into individual
 
 ---
 
+### 5. `train_model.py`
+
+Retrains the NMD efficiency model on the features of the installed NMD-Scanner release. It replaces the
+notebooks above for that purpose: it runs end to end and pins its dependencies in a PEP 723 header.
+
+```bash
+uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir out/
+```
+
+- The target is `NMD_efficiency` of the NMDEff TCGA benchmark, downloaded at a pinned commit.
+- The variants are `resources/TCGA_benchmark/tcga_dataset.vcf`.
+- It compares a random forest with the hyperparameters of the former `best_model.pkl`, a tuned random forest
+  and LightGBM with default hyperparameters in nested cross-validation. The folds are grouped by chromosome, and
+  for comparison by variant.
+- It saves the tuned random forest and the LightGBM model, both fit on all usable rows, to `out/models/`.
+- It also saves the tuned random forest as ONNX, to `out/models/nmd_efficiency_rf.onnx`, and checks that the ONNX
+  model predicts the training rows like the random forest. This file is `nmd_efficiency_rf.onnx` at the root of the
+  repository. The main README shows how to load it.
+
+---
+
+### 6. `make_tcga_vcf.py`
+
+Builds `resources/TCGA_benchmark/tcga_dataset.vcf` from the NMDEff study table, so that the VCF is reproducible.
+The output equals the committed file byte for byte.
+
+```bash
+uv run scripts/make_tcga_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
+```
+
+- It downloads `tcga_dataset.csv` at the commit that `train_model.py` pins and checks its sha256. `--csv` reads a
+  local copy instead, with the same check.
+- It parses the substitution from HGVSc, which has the alleles on the transcript strand. It takes the strand from
+  the GENCODE GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses
+  the orientation whose REF matches the FASTA.
+- It fails if a row is not a single-base substitution or if a REF does not match the FASTA.
+
+---
+
 ## Notes
 
 - None of the notebooks are required for end users of the package.
