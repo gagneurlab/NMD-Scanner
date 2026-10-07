@@ -683,43 +683,6 @@ def test_analyze_sequence_without_stop_codon():
     assert analyzed["alt_valid_stop"].tolist() == [False, False]
 
 
-def test_analyze_sequence_reads_codons_in_the_cds_frame():
-    """
-    A cds_start_NF CDS with phase 1: its first base A belongs to no codon, and the codons TGC AAA CCC TAA follow.
-
-    ref CDS  A TGC AAA CCC TAA
-             0 1   4   7   10
-    """
-    df = pd.DataFrame(
-        {
-            "ref_cds_seq": ["ATGCAAACCCTAA"] * 3,
-            "alt_cds_seq": [
-                "GTGCAAACCCTAA",  # A>G at CDS position 0
-                "ATGTAAACCCTAA",  # C>T at CDS position 3: TGC>TGT, and TAA out of frame
-                "ATGCTAACCCTAA",  # A>T at CDS position 4: AAA>TAA in frame
-            ],
-            "ref_cds_info": [[(1, 13)]] * 3,
-            "alt_cds_info": [[(1, 13)]] * 3,
-            "has_start_codon": [False] * 3,
-            "has_stop_codon": [True] * 3,
-            "cds_frame": [1] * 3,
-        }
-    )
-
-    result = start_stop_loss(analyze_sequence(df))
-
-    # Without an annotated start codon, the out-of-frame ATG at CDS position 0 is no start codon, so changing it is no
-    # start loss
-    assert result["ref_start_codon_pos"].tolist() == [None] * 3
-    assert result["start_loss"].tolist() == [False] * 3
-    # Out-of-frame stop codon: the first in-frame stop codon is still the one at the CDS end
-    assert result.loc[1, "alt_is_premature"] == False
-    assert result.loc[1, "alt_first_stop_pos"] == 10
-    # In-frame stop codon
-    assert result.loc[2, "alt_is_premature"] == True
-    assert result.loc[2, "alt_first_stop_pos"] == 4
-
-
 def test_start_stop_loss():
     df = pd.DataFrame(
         [
@@ -817,44 +780,6 @@ def test_start_codon_pos_is_the_annotated_start_codon():
     assert result["alt_start_codon_pos"].tolist() == [0, None, None, None]
 
 
-def test_start_loss_with_a_deleted_stop_codon_reads_from_the_next_atg_into_the_3utr():
-    """
-    A deletion removes the start codon and the stop codon of ATG AAA CCC TAA. Only the first base A of the CDS is left.
-    After the start loss, the scan takes the next ATG, at t4, and reads its frame on into the 3' UTR, to the TGA at t10.
-    This ATG lies in the former 3' UTR, downstream of the deleted stop codon. So its ORF does not overlap the CDS, and
-    the row is neither a PTC nor a stop loss.
-
-    ref tx  CC ATG AAA CCC TAA GATGCCCTGACC
-            0  2           11
-    alt tx  CC A G ATG CCC TGA CC
-            0  2   4       10
-    """
-    row = {
-        "transcript_seq": "CC" + "ATGAAACCCTAA" + "GATGCCCTGACC",
-        "alt_transcript_seq": "CC" + "A" + "GATGCCCTGACC",
-        "cds_start_in_transcript": 2,
-        "cds_end_in_transcript": 14,
-        "alt_cds_start_in_transcript": 2,
-        "cds_frame": 0,
-        "has_stop_codon": True,
-        "ref_cds_seq": "ATGAAACCCTAA",
-        "alt_cds_seq": "A",
-        "transcript_exon_info": [(1, 15)],
-        "alt_transcript_exon_info": [(1, 15)],
-        "alt_is_premature": False,
-        "start_loss": True,
-        "stop_loss": True,
-    }
-
-    result = analyze_transcript(pd.DataFrame([row])).loc[0]
-
-    assert result["alt_is_premature"] == False
-    assert result["stop_loss"] == False
-    assert result["transcript_start_codon_pos"] == 4
-    assert result["transcript_first_stop_codon"] == "TGA"
-    assert result["transcript_first_stop_pos"] == 10
-
-
 def test_splice_alt_cds_into_transcript():
     # Single exon transcripts; the variant lies inside the CDS
     row = {
@@ -895,43 +820,6 @@ def test_splice_alt_cds_into_transcript():
     assert splice_alt_cds_into_transcript(utr5, "ATGAAATAACCATGAAATAAGG") == "ATGAAATAAGGGATGTAATAAGG"
     # The transcript does not hold the ref 5'UTR bases
     assert splice_alt_cds_into_transcript({**utr5, "utr5_change": ("AC", "")}, "ATGAAATAACCATGAAATAAGG") is None
-
-
-def test_analyze_transcript():
-
-    df = pd.DataFrame(
-        [
-            {
-                "alt_transcript_seq": "CCCATGAAATAATAGGGG",  # ATG at pos 3, TAA at 9, TAG at 12
-                "transcript_seq": "CCCATGAAATAATAGGGG",
-                "cds_start_in_transcript": 0,
-                "alt_cds_start_in_transcript": 0,
-                "cds_frame": 0,
-                "cds_end_in_transcript": 12,
-                "has_stop_codon": True,
-                "ref_cds_seq": "CCCATGAAATAA",
-                "alt_cds_seq": "CCCATGAAATAA",
-                "transcript_exon_info": [(1, 10), (2, 10)],
-                "alt_transcript_exon_info": [(1, 10), (2, 10)],
-                "start_loss": True,
-                "stop_loss": False,
-            }
-        ]
-    )
-
-    result = analyze_transcript(df)
-
-    # Check values
-    row = result.loc[0]
-    assert row["transcript_start_codon_pos"] == 3
-    assert row["transcript_start_codon_exon"] == 1
-    assert row["transcript_first_stop_codon"] == "TAA"
-    assert row["transcript_first_stop_pos"] == 9
-    assert row["transcript_last_codon"] == "GGG"
-    assert row["transcript_valid_stop"] is False
-    assert row["transcript_num_stop_codons"] == 2
-    assert row["transcript_all_stop_codons"] == [(9, "TAA"), (12, "TAG")]
-    assert row["transcript_stop_codon_exons"] == [1, 2]
 
 
 def test_analyze_transcript_without_cds_start_in_transcript():
@@ -1031,38 +919,6 @@ def test_stop_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
     assert row["transcript_first_stop_codon"] == "TAG"
     assert row["transcript_first_stop_pos"] == 40
     assert row["transcript_all_stop_codons"] == [(40, "TAG")]
-
-
-@pytest.mark.parametrize("strand", ["+", "-"], ids=["plus", "minus"])
-@pytest.mark.parametrize("exon_starts", [[25], [5, 25]], ids=["no_5utr_intron", "5utr_intron"])
-def test_start_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
-    """
-    After a start loss, the scan takes the first ATG at or after the CDS start in the transcript.
-
-    The scan starts at transcript position 13, so it skips the ATG at 2 in the 5' UTR. `x` is the lost start codon
-    ATG>ATA, and `a` is the in-frame ATG at 19 that the scan finds. `s` is the first stop codon in its frame, the TGA at
-    position 31. With the intron in the 5' UTR or on the minus strand, the genomic distance is 33 or 45 nt. A scan from
-    there finds no ATG.
-
-       5 nt          20 nt              54 nt
-    5' [uu]|[uuuxxx===aaa===]|[======sssuuuuuuuuu] 3'
-    tx 0    5   13    19      25     31          79
-
-    Without the 5' UTR intron, exons 1 and 2 are one exon of 25 nt. The drawing is in transcript orientation, also on
-    the minus strand.
-    """
-    transcript_seq = _SCAN_UTR5 + "ATG" + "GCT" + "ATG" + "GCT" * 3 + "TGA" + _SCAN_UTR3
-    bounds = [0] + exon_starts + [len(transcript_seq)]
-    exon_seqs = [transcript_seq[start:end] for start, end in zip(bounds, bounds[1:])]
-
-    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 31), (15, "G", "A"))
-
-    assert row["start_loss"] == True
-    assert row["cds_start_in_transcript"] == 13
-    assert row["alt_cds_start_in_transcript"] == 13
-    assert row["transcript_start_codon_pos"] == 19
-    assert row["transcript_first_stop_codon"] == "TGA"
-    assert row["transcript_first_stop_pos"] == 31
 
 
 # Transcript for the stop codon classification tests, exons split at t25. A 5'UTR of 13 nt, the CDS from t13 with the

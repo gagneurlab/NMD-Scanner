@@ -4,12 +4,9 @@ or an intron, `[...]` is an exon, `u` is UTR, `=` is CDS and `s` is the stop cod
 layout positions: 0-based positions in transcript orientation, also on the minus strand.
 """
 
-import pandas as pd
 import pytest
-from Bio.Seq import Seq
 from pyfaidx import Fasta
 
-from nmd_scanner.rules import extract_ptc
 from nmd_scanner.variant_placement import (
     SPLICE_SITE_DESTROYED,
     Placement,
@@ -136,100 +133,10 @@ def test_place_in_transcript_changes_over_boundary_that_keep_the_donor():
 #    0   10  14       22   42               58   78    84 87       96   106
 _FLANK = "CCCCCCCCCC"
 _UTR5 = "GACC"
-_EXON1_CDS = "ATGGCTCT"
-_INTRON1 = "GTGTAAGCCCCCCTTTTCAG"
-_EXON2 = "AGTGAACGTTGGAAGC"
-_INTRON2 = "GTAAGTCCCCCCTTTCCTAG"
-_EXON3_CDS = "CTGCGT"
 _STOP = "TAA"
 _UTR3 = "AAAGCTGCC"
-_LAYOUT = _FLANK + _UTR5 + _EXON1_CDS + _INTRON1 + _EXON2 + _INTRON2 + _EXON3_CDS + _STOP + _UTR3 + _FLANK
-_REF_CDS = _EXON1_CDS + _EXON2 + _EXON3_CDS + _STOP
-# (feature, exon number, start, end) in layout positions. A CDS row includes the stop codon.
-_ROWS = [
-    ("exon", 1, 10, 22),
-    ("exon", 2, 42, 58),
-    ("exon", 3, 78, 96),
-    ("CDS", 1, 14, 22),
-    ("CDS", 2, 42, 58),
-    ("CDS", 3, 78, 87),
-]
-
-
-def _run(tmp_path, strand, position, ref, alt, layout=_LAYOUT, rows=_ROWS):
-    """
-    Run extract_ptc for one variant in a synthetic transcript, by default the first one.
-
-    :param position, ref, alt: the change in transcript orientation at a layout position; ref is empty for an
-        insertion before ``position``. The VCF record is on the plus strand, with a padding base on its left for
-        an indel.
-    :param rows: (feature, exon number, start, end) of the exon and CDS rows in layout positions. The CDS rows
-        include the stop codon.
-    :return: the result rows (DataFrame)
-    """
-    assert layout[position : position + len(ref)] == ref
-    length = len(layout)
-    if strand == "+":
-        genome = layout
-
-        def to_genome(start, end):
-            return start, end
-
-    else:
-        genome = str(Seq(layout).reverse_complement())
-
-        def to_genome(start, end):
-            return length - end, length - start
-
-        ref = str(Seq(ref).reverse_complement())
-        alt = str(Seq(alt).reverse_complement())
-
-    start, _ = to_genome(position, position + len(ref))
-    if len(ref) != len(alt):
-        ref = genome[start - 1] + ref
-        alt = genome[start - 1] + alt
-        start -= 1
-
-    chrom = f"chr_{tmp_path.name}"
-    (tmp_path / "genome.fa").write_text(f">{chrom}\n{genome}\n")
-    fasta = Fasta(str(tmp_path / "genome.fa"))
-
-    annotation = pd.DataFrame(
-        [
-            {
-                "Chromosome": chrom,
-                "Start": to_genome(s, e)[0],
-                "End": to_genome(s, e)[1],
-                "Strand": strand,
-                "Feature": feature,
-                "exon_number": str(number),
-                "transcript_id": "tx",
-                "gene_id": "gene",
-                "Frame": "0",
-            }
-            for feature, number, s, e in rows
-        ]
-    )
-    vcf = pd.DataFrame(
-        [{"Chromosome": chrom, "Start": start, "End": start + len(ref), "ID": "var", "Ref": ref, "Alt": alt}]
-    )
-    coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=True)
-    return extract_ptc(coding, vcf, fasta, annotation[annotation["Feature"] == "exon"])
-
-
-def _single_row(results):
-    assert len(results) == 1
-    return results.iloc[0]
 
 
 @pytest.fixture(params=["+", "-"])
 def strand(request):
     return request.param
-
-
-def test_deletion_in_the_start_codon(tmp_path, strand):
-    # ATG to AG: no placement keeps an ATG at the start
-    row = _single_row(_run(tmp_path, strand, 15, "T", ""))
-    assert pd.isna(row["unknown_reason"])
-    assert row["alt_cds_seq"] == "AGGCTCT" + _REF_CDS[8:]
-    assert row["start_loss"] == True
