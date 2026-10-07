@@ -152,23 +152,17 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         if transcript_id in exons_by_transcript
     }
 
-    # Validate that the CDS is present inside the transcript sequence, to make sure the transcript sequence was computed correctly
-    exon_seqs_indexed = exon_seqs.set_index("transcript_id")
-
-    def check_cds_in_transcript(row):
-        transcript_id = row["transcript_id"]
-
-        # Skip if transcript_id not found
-        if transcript_id not in exon_seqs_indexed.index:
-            return False
-
-        transcript_seq = exon_seqs_indexed.loc[transcript_id, "transcript_sequence"]
-        ref_cds_seq = row["ref_cds_seq"]
-
-        # Check if CDS is a substring of the transcript
-        return ref_cds_seq in transcript_seq
-
-    results_df["cds_in_transcript"] = results_df.apply(check_cds_in_transcript, axis=1)
+    # Validate that the CDS is present inside the transcript sequence, to make sure the transcript sequence was computed correctly.
+    # A transcript without exon rows has no transcript sequence.
+    transcript_sequences = exon_seqs.set_index("transcript_id")["transcript_sequence"].to_dict()
+    results_df["cds_in_transcript"] = pd.Series(
+        [
+            transcript_id in transcript_sequences and ref_cds_seq in transcript_sequences[transcript_id]
+            for transcript_id, ref_cds_seq in zip(results_df["transcript_id"], results_df["ref_cds_seq"])
+        ],
+        index=results_df.index,
+        dtype=bool,
+    )
 
     # TODO: Analyze reference and alternative CDS for start / stop codons
     analysis_df = analyze_sequence(results_df)
@@ -182,9 +176,6 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     loss_df["transcript_start"] = loss_df["transcript_id"].map(transcript_starts)
     transcript_ends = exon_seqs.set_index("transcript_id")["end"].to_dict()
     loss_df["transcript_end"] = loss_df["transcript_id"].map(transcript_ends)
-    transcript_sequences = exon_seqs.set_index("transcript_id")[
-        "transcript_sequence"
-    ].to_dict()  # create map of transcript-id to transcript sequence
     loss_df["transcript_seq"] = loss_df["transcript_id"].map(transcript_sequences)
     transcript_lengths = exon_seqs.set_index("transcript_id")["transcript_length"].to_dict()
     loss_df["transcript_length"] = loss_df["transcript_id"].map(transcript_lengths)
@@ -714,7 +705,7 @@ def get_transcript_sequence(exons_df, fasta):
 
     # Process each transcript individually
     for transcript_id, group in exons_df.groupby("transcript_id"):
-        strand = group.iloc[0]["Strand"]
+        strand = group["Strand"].iloc[0]
 
         if strand not in ["+", "-"]:
             logger.warning("Unknown strand for %s", transcript_id)
@@ -729,12 +720,12 @@ def get_transcript_sequence(exons_df, fasta):
         exon_info = []  # for tracking exon_number and length
 
         # fetch exon sequence and metadata
-        for _, row in group_sorted.iterrows():
-            chrom = row["Chromosome"]
-            start = int(row["Start"])
-            end = int(row["End"])
-            exon_number = row["exon_number"]
-
+        for chrom, start, end, exon_number in zip(
+            group_sorted["Chromosome"],
+            group_sorted["Start"].astype(int),
+            group_sorted["End"].astype(int),
+            group_sorted["exon_number"],
+        ):
             starts.append(start)
             ends.append(end)
 
