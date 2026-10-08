@@ -131,7 +131,7 @@ uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fa
 
 ### 8. `validate_model.py`
 
-Computes the table of the section "Model validation" in the main README. It tests `nmd_efficiency_rf.onnx`
+Computes the numbers of the section "Model validation" in the main README. It tests `nmd_efficiency_rf.onnx`
 without retraining on TCGA out of fold, Geuvadis, GTEx and MMRF-TARGET.
 
 ```bash
@@ -142,19 +142,19 @@ uv run scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta G
 - `--train-dir` is the `--out-dir` of the `train_model.py` run that trained the model. The TCGA row uses its
   out-of-fold predictions. The script fails if the model of that run differs from `nmd_efficiency_rf.onnx`.
 - It downloads the other cohorts from pinned public sources and checks their sha256: `MMRF_TARGET_dataset.csv` of
-  NMDEff at the commit that `make_benchmark_vcfs.py` pins, Supplementary Data 2 of Kim et al. 2024 (GTEx), and 2 tables of
-  Zenodo record 16666299 (Geuvadis). The Zenodo record is one zip of 3.2 GB, so the script reads only those 2
-  members with HTTP range requests. `--geuvadis-dir` reads them from a local directory instead, with the same
-  sha256 check.
+  NMDEff at the commit that `make_benchmark_vcfs.py` pins, Supplementary Data 2 of Kim et al. 2024 (GTEx), and 2
+  tables of Zenodo record 16666299 (Geuvadis). The Zenodo record is one zip of 3.2 GB, so the script reads only
+  those 2 members with HTTP range requests. `--geuvadis-dir` reads them from a local directory instead, with the
+  same sha256 check.
 - It builds one VCF of the variants and runs `nmd_scanner.annotate`. For GTEx and MMRF-TARGET, it converts HGVSc
   to genomic alleles with `make_benchmark_vcfs.py`.
 - It keeps the rows with `nmd_model_status` `ok` and a variant allele fraction above 0 in the RNA. For the germline
   variants, the NMD efficiency is -log2(VAF_RNA / 0.5).
 - The 95% CIs come from 2,000 bootstrap resamples of the rows per cohort.
-- It writes the table to `out/validation.md`. `out/validation.json` has the full-precision values, the gains of
-  the model over the rules, and the mean measured NMD efficiency of the rows with `nmd_escape` False. The scored
-  rows of each cohort are in `out/*_rows.parquet`, and the GTEx means per variant are in
-  `out/gtex_variants.parquet`.
+- It writes the numbers to `out/validation.json` and logs a short summary. Per cohort, the file has the Spearman
+  correlations of the model and of the rules, the gain of the model over the rules, and the mean measured NMD
+  efficiency of the rows with `nmd_escape` False. For GTEx, it also has that mean over the variant-tissue rows, in
+  total and per tissue. The README table is written by hand from these numbers.
 
 ---
 
