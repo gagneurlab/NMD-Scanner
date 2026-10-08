@@ -185,7 +185,7 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 
 ### NMD rules
 
-`evaluate_nmd_escape_rules` adds these 6 columns. On a row that is not a PTC row, every rule is null, because the rules do not apply there. This includes the rows with `unknown_reason`. On a PTC row, a rule is null if one of its inputs is null, because its value is unknown then. The column "Null when" names the inputs. So False always means that the PTC does not meet the rule. `nmd_escape` combines the 5 rules with a three-valued OR: it is True if one rule is True, null if no rule is True and one is null, and False otherwise. The rules are model inputs, so a row with `nmd_model_status` `ok` has no null rule. The [figures](#figures-of-the-features-and-the-nmd-rules) below define the rules in detail.
+`evaluate_nmd_escape_rules` adds these 6 columns. On a row that is not a PTC row, every rule is null, because the rules do not apply there. This includes the rows with `unknown_reason`. On a PTC row, a rule is null if one of its inputs is null, because its value is unknown then. The column "Null when" names the inputs. So False always means that the PTC does not meet the rule. `nmd_escape` combines the 5 rules with a three-valued OR: it is True if one rule is True, null if no rule is True and one is null, and False otherwise. The rules are model inputs, so a row with `nmd_model_status` `ok` has no null rule. The [figures](#figures-of-the-features-and-the-nmd-rules) below define the rules in detail. [Comparison with NMDEff and the VEP NMD plugin](#comparison-with-nmdeff-and-the-vep-nmd-plugin) relates them to the rules of these two tools.
 
 | Column                      | Kind | Meaning                                                                                                                                                                                                                           | Null when                                       |
 | --------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -298,3 +298,29 @@ nmd_start_proximal_rule: the PTC lies less than 150 nt downstream of the start c
 5' [uuu=====*===]|[============]|[=========uuuuuuu] 3'
        <---->  < 150 nt
 ```
+
+## Comparison with NMDEff and the VEP NMD plugin
+
+### NMDEff
+
+The TCGA table of NMDEff (Kim et al. 2024) has a column for each of its 4 rules and one for their combination. On the 4,224 training rows of the NMD efficiency model, `nmd_escape` equals the combined column in 99.4% of the rows, and 3 of the rules agree in 99.6% to 99.9%.
+
+The long exon rule agrees in only 87.8%, because NMDEff measures the PTC exon differently. `ptc_exon_length` is the full exon, UTR included. NMDEff counts only the part of the exon in the CDS, stop codon included. So the two lengths differ in exons that hold UTR: in 1,270 of the 1,310 rows where they differ, the difference is the UTR part of the exon. Most of these exons are last exons, which escape NMD by the last exon rule anyway, so `nmd_escape` differs in only 5 rows because of it. The Geuvadis study (Iha et al. 2025) uses the full exon, as NMD-Scanner does.
+
+### VEP NMD plugin
+
+The NMD plugin of Ensembl VEP (`--plugin NMD`) sets `NMD_escaping_variant` if one of 4 rules holds. They differ from the NMD-Scanner rules:
+
+| Rule           | VEP NMD plugin                                             | NMD-Scanner                                                                                                                                                                          |
+| -------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Last exon      | The variant lies in the last exon                          | The PTC lies in the last exon (`nmd_last_exon_rule`)                                                                                                                                 |
+| 50 nt          | The variant lies in the last 52 nt of the penultimate exon | The PTC lies 1 to 50 nt upstream of the last exon junction (`nmd_50nt_penultimate_rule`). If the penultimate exon is shorter than 50 nt, this window reaches into the exon before it |
+| Start-proximal | The variant lies in the first 101 nt of the CDS            | The PTC lies less than 150 nt downstream of the start codon (`nmd_start_proximal_rule`)                                                                                              |
+| Single exon    | The transcript has no intron                               | The transcript has one exon (`nmd_single_exon_rule`)                                                                                                                                 |
+| Long exon      | None                                                       | The PTC exon has more than 407 nt (`nmd_long_exon_rule`)                                                                                                                             |
+
+The plugin tests the position of the variant, and NMD-Scanner that of the PTC. The two are the same for a nonsense SNV. For a frameshift, the PTC lies downstream of the variant.
+
+VEP releases before 110 test the wrong end of the penultimate exon on the minus strand: the 52 nt at its 5' end instead of its 3' end. Release 110 fixed this. In the cohorts of the README's [model validation](README.md#model-validation), the fix changes the flag in 2% to 4% of the rows.
+
+On these cohorts, the plugin loses nothing by leaving out the long exon rule. PTCs that only the long exon rule calls escaping have a measured NMD efficiency between those of the NMD-triggering and the other escaping PTCs. Without the long exon rule, the Spearman correlation of `nmd_escape` with the measured efficiency rises by 0.02 to 0.035 in MMRF-TARGET, GTEx and Geuvadis, and stays the same in TCGA. The NMD efficiency model also takes `ptc_exon_length` as a number, so it can rank these PTCs between the two groups.

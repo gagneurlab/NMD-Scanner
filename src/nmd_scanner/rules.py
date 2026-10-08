@@ -90,16 +90,6 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         logger.info("No variant overlapped a CDS; there are no results to compute.")
         return empty_table(PTC_COLUMN_KINDS)
 
-    ##########################################################################################
-    # TODO: fix minus strand variants (only for TCGA and MMRF VCF!)
-    # Fix REF and ALT for minus-strand CDSs
-    # mask_minus_strand = intersection_cds_vcf["Strand"] == "-"
-    # intersection_cds_vcf.loc[mask_minus_strand, "Ref"] = intersection_cds_vcf.loc[mask_minus_strand, "Ref"].apply(
-    #   lambda seq: str(Seq(seq).reverse_complement()))
-    # intersection_cds_vcf.loc[mask_minus_strand, "Alt"] = intersection_cds_vcf.loc[mask_minus_strand, "Alt"].apply(
-    #   lambda seq: str(Seq(seq).reverse_complement()))
-    ##########################################################################################
-
     # Filter out Variants with a reference mismatch
     mismatched_rows = intersection_cds_vcf[~intersection_cds_vcf["Ref_matches"]].drop_duplicates(
         ["transcript_id", "variant_row"]
