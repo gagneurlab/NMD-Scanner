@@ -164,7 +164,24 @@ assert json.loads(session.get_modelmeta().custom_metadata_map["feature_names"]) 
 nmd_efficiency = session.run(None, {"input": X.to_numpy(dtype="float64")})[0].ravel()
 ```
 
+The model predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts.
+
 To work on single rows, `nmd_scanner.add_nmd_features` and `nmd_scanner.evaluate_nmd_escape_rules` are public too. Run the features **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced by the features. The row functions do not add `nmd_model_status`; `add_features_and_rules` adds it.
+
+## Model validation
+
+`nmd_efficiency_rf.onnx` was tested without retraining on three cohorts besides its TCGA training data. The table gives the Spearman correlation of the predictions with the measured NMD efficiency, with 95% bootstrap CIs. The column "Canonical rules" ranks the same rows by `nmd_escape` alone. All rows have `nmd_model_status` `ok` and a variant allele fraction above 0 in the RNA. For the germline variants, VAF_DNA is 0.5.
+
+| Cohort                                                                                 | Variants        |  Rows | Model               | Canonical rules     |
+| -------------------------------------------------------------------------------------- | --------------- | ----: | ------------------- | ------------------- |
+| TCGA (Kim et al. 2024), out of fold, folds grouped by chromosome                       | somatic, tumors | 4,224 | 0.65 (0.63 to 0.67) | 0.61 (0.59 to 0.63) |
+| Geuvadis (Iha et al. 2025), lymphoblastoid cell lines, the study's accurate annotation | germline        | 1,133 | 0.65 (0.61 to 0.68) | 0.60 (0.55 to 0.64) |
+| GTEx v8 (Kim et al. 2024), 54 tissues, mean per variant                                | germline        | 2,287 | 0.48 (0.45 to 0.52) | 0.44 (0.41 to 0.48) |
+| MMRF-TARGET (Kim et al. 2024)                                                          | somatic, tumors |   509 | 0.46 (0.39 to 0.53) | 0.38 (0.30 to 0.45) |
+
+The model ranks the variants better than the rules in every cohort. The gain is 0.04 to 0.09, and its paired 95% CI lies above 0 in all four cohorts.
+
+The absolute values transfer less well. NMD-triggering variants (`nmd_escape` False) have a mean measured efficiency of 1.67 in TCGA and 1.69 in Geuvadis, but 0.76 in MMRF-TARGET and 0.79 in GTEx. In GTEx, the mean ranges from 0.38 to 1.45 between the 49 tissues with at least 100 rows, so the level depends on the tissue. To compare the predictions with measurements from another tissue, recalibrate them with a linear fit on those measurements.
 
 ## License
 
