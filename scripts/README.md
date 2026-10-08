@@ -129,7 +129,23 @@ uv run scripts/make_tcga_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GR
 
 ---
 
-### 8. `validate_model.py`
+### 8. `make_mmrf_vcf.py`
+
+Builds `resources/MMRF_benchmark/MMRF_TARGET_dataset.vcf` from the NMDEff MMRF / TARGET table in the same way. It
+imports the shared steps from `make_tcga_vcf.py`. The output equals the committed file byte for byte.
+
+```bash
+uv run scripts/make_mmrf_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
+```
+
+- It downloads `MMRF_TARGET_dataset.csv` at the same commit and checks its sha256. `--csv` reads a local copy
+  instead, with the same check.
+- The table has no end column, so the check that start equals end does not apply. The other steps and checks are
+  those of `make_tcga_vcf.py`.
+
+---
+
+### 9. `validate_model.py`
 
 Computes the table of the section "Model validation" in the main README. It tests `nmd_efficiency_rf.onnx`
 without retraining on TCGA out of fold, Geuvadis, GTEx and MMRF-TARGET.
