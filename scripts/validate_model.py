@@ -44,8 +44,8 @@ Steps:
    the Geuvadis tables only inside one zip of 3.2 GB, so fetch just the 2 members by HTTP range requests. With
    --geuvadis-dir, read the 2 members from a local directory instead, with the same check.
 2. GTEx and MMRF-TARGET give the alleles in HGVSc on the transcript strand. Convert them to the forward strand with
-   build_row of scripts/make_tcga_vcf.py. Geuvadis gives genomic alleles. Fail if a REF does not match the FASTA.
-   Write the unique variants of the 3 cohorts to <out-dir>/variants.vcf.
+   add_alleles of scripts/make_benchmark_vcfs.py. Geuvadis gives genomic alleles. Fail if a REF does not match the
+   FASTA. Write the unique variants of the 3 cohorts to <out-dir>/variants.vcf.
 3. Run nmd_scanner.annotate on that VCF. It runs add_features_and_rules. Join each measured row to the NMD-Scanner
    row of its transcript and variant, on the transcript ID without version, chrom, pos, ref and alt. NMD-Scanner's
    start is 0-based, so start + 1 is pos.
@@ -75,12 +75,11 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-# scripts/make_tcga_vcf.py. Python finds it because it puts the folder of the running script on sys.path.
-import make_tcga_vcf
 import numpy as np
 import onnxruntime
 import pandas as pd
 import pyarrow.parquet as pq
+from make_benchmark_vcfs import add_alleles, read_strands
 from pyfaidx import Fasta
 from scipy.stats import rankdata
 
@@ -91,7 +90,7 @@ logger = logging.getLogger("validate_model")
 
 DEFAULT_ONNX = Path(__file__).resolve().parent.parent / "nmd_efficiency_rf.onnx"
 
-# The same commit as tcga_dataset.csv in train_model.py, the tag v1.0 of NMDEff
+# The commit that make_benchmark_vcfs.py pins, the tag v1.0 of NMDEff
 MMRF_URL = (
     "https://raw.githubusercontent.com/hjkng/nmdeff/08c92768fcb689236a833db6a2f2d9bcbe919f12/MMRF_TARGET_dataset.csv"
 )
@@ -296,41 +295,14 @@ def check_train_dir(train_dir: Path, onnx_path: Path) -> None:
         raise ValueError(f"{trained} differs from {onnx_path}, so its out-of-fold predictions are of another model")
 
 
-def add_alleles(table: pd.DataFrame, strands: dict[str, str], fasta: Fasta) -> pd.DataFrame:
-    """
-    Add ref and alt on the forward strand to each row of a table with the columns chromosome, start, end,
-    Transcript_ID and HGVSc. make_tcga_vcf.build_row fails on anything but a single-base substitution, and on a REF
-    that does not match the FASTA.
-    """
-    vcf_rows = [
-        make_tcga_vcf.build_row(
-            make_tcga_vcf.TableRow(
-                chromosome=chrom, start=int(start), end=int(end), transcript_id=transcript, hgvsc=hgvsc
-            ),
-            strands,
-            fasta,
-        )
-        for chrom, start, end, transcript, hgvsc in zip(
-            table["chromosome"], table["start"], table["end"], table["Transcript_ID"], table["HGVSc"], strict=True
-        )
-    ]
-    return table.assign(ref=[row.ref for row in vcf_rows], alt=[row.alt for row in vcf_rows])
-
-
 def read_mmrf(path: Path, strands: dict[str, str], fasta: Fasta) -> pd.DataFrame:
-    table = pd.read_csv(path)
-    # The table has no end column. All its rows are single-base substitutions, which add_alleles checks.
-    table = add_alleles(table.assign(end=table["start"]), strands, fasta)
-    return table.rename(columns={"chromosome": "chrom", "start": "pos", "Transcript_ID": "transcript"})
+    return add_alleles(pd.read_csv(path), strands, fasta)
 
 
 def read_gtex(path: Path, strands: dict[str, str], fasta: Fasta) -> pd.DataFrame:
     # The first line of the sheet is its title
     table = pd.read_excel(path, sheet_name=GTEX_SHEET, header=1)
-    table = add_alleles(table, strands, fasta)
-    return table.rename(
-        columns={"chromosome": "chrom", "start": "pos", "Transcript_ID": "transcript", "Tissue_type": "tissue"}
-    )
+    return add_alleles(table, strands, fasta).rename(columns={"Tissue_type": "tissue"})
 
 
 def read_geuvadis(nonsense_list: Path, isoforms: Path, fasta: Fasta) -> pd.DataFrame:
@@ -608,7 +580,7 @@ def main() -> None:
     gtex_path = download(GTEX_URL, GTEX_SHA256, download_dir / "42003_2024_7136_MOESM3_ESM.xlsx")
     nonsense_list, isoforms = zenodo_members(download_dir, args.geuvadis_dir)
 
-    strands = make_tcga_vcf.read_strands(args.gff3)
+    strands = read_strands(args.gff3)
     fasta = Fasta(str(args.fasta))
     geuvadis = read_geuvadis(nonsense_list, isoforms, fasta)
     gtex = read_gtex(gtex_path, strands, fasta)

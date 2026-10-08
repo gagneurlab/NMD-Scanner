@@ -111,41 +111,25 @@ uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh
 
 ---
 
-### 7. `make_tcga_vcf.py`
+### 7. `make_benchmark_vcfs.py`
 
-Builds `resources/TCGA_benchmark/tcga_dataset.vcf` from the NMDEff study table, so that the VCF is reproducible.
-The output equals the committed file byte for byte.
+Builds `resources/TCGA_benchmark/tcga_dataset.vcf` and `resources/MMRF_benchmark/MMRF_TARGET_dataset.vcf` from the
+NMDEff study tables, so that the VCFs are reproducible. The outputs equal the committed files byte for byte.
 
 ```bash
-uv run scripts/make_tcga_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
+uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
 ```
 
-- It downloads `tcga_dataset.csv` at the commit that `train_model.py` pins and checks its sha256. `--csv` reads a
-  local copy instead, with the same check.
+- It downloads `tcga_dataset.csv` and `MMRF_TARGET_dataset.csv` at a pinned commit and checks their sha256.
 - It parses the substitution from HGVSc, which has the alleles on the transcript strand. It takes the strand from
   the GENCODE GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses
   the orientation whose REF matches the FASTA.
 - It fails if a row is not a single-base substitution or if a REF does not match the FASTA.
+- `validate_model.py` imports these steps from it.
 
 ---
 
-### 8. `make_mmrf_vcf.py`
-
-Builds `resources/MMRF_benchmark/MMRF_TARGET_dataset.vcf` from the NMDEff MMRF / TARGET table in the same way. It
-imports the shared steps from `make_tcga_vcf.py`. The output equals the committed file byte for byte.
-
-```bash
-uv run scripts/make_mmrf_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
-```
-
-- It downloads `MMRF_TARGET_dataset.csv` at the same commit and checks its sha256. `--csv` reads a local copy
-  instead, with the same check.
-- The table has no end column, so the check that start equals end does not apply. The other steps and checks are
-  those of `make_tcga_vcf.py`.
-
----
-
-### 9. `validate_model.py`
+### 8. `validate_model.py`
 
 Computes the table of the section "Model validation" in the main README. It tests `nmd_efficiency_rf.onnx`
 without retraining on TCGA out of fold, Geuvadis, GTEx and MMRF-TARGET.
@@ -158,12 +142,12 @@ uv run scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta G
 - `--train-dir` is the `--out-dir` of the `train_model.py` run that trained the model. The TCGA row uses its
   out-of-fold predictions. The script fails if the model of that run differs from `nmd_efficiency_rf.onnx`.
 - It downloads the other cohorts from pinned public sources and checks their sha256: `MMRF_TARGET_dataset.csv` of
-  NMDEff at the commit that `train_model.py` pins, Supplementary Data 2 of Kim et al. 2024 (GTEx), and 2 tables of
+  NMDEff at the commit that `make_benchmark_vcfs.py` pins, Supplementary Data 2 of Kim et al. 2024 (GTEx), and 2 tables of
   Zenodo record 16666299 (Geuvadis). The Zenodo record is one zip of 3.2 GB, so the script reads only those 2
   members with HTTP range requests. `--geuvadis-dir` reads them from a local directory instead, with the same
   sha256 check.
 - It builds one VCF of the variants and runs `nmd_scanner.annotate`. For GTEx and MMRF-TARGET, it converts HGVSc
-  to genomic alleles with `make_tcga_vcf.py`.
+  to genomic alleles with `make_benchmark_vcfs.py`.
 - It keeps the rows with `nmd_model_status` `ok` and a variant allele fraction above 0 in the RNA. For the germline
   variants, the NMD efficiency is -log2(VAF_RNA / 0.5).
 - The 95% CIs come from 2,000 bootstrap resamples of the rows per cohort.
