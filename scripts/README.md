@@ -92,22 +92,22 @@ This notebook contains the full NMD-Scanner implementation split into individual
 
 ### 6. `train_model.py`
 
-Retrains the NMD efficiency model on the features of the installed NMD-Scanner release. It replaces the
+Retrains the NMD efficiency model `nmd_efficiency_rf.onnx` on the features of NMD-Scanner 0.4.0. It replaces the
 notebooks above for that purpose: it runs end to end and pins its dependencies in a PEP 723 header.
 
 ```bash
 uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir out/
 ```
 
-- The target is `NMD_efficiency` of the NMDEff TCGA benchmark, downloaded at a pinned commit.
-- The variants are `resources/TCGA_benchmark/tcga_dataset.vcf`.
-- It compares a random forest with the hyperparameters of the former `best_model.pkl`, a tuned random forest
-  and LightGBM with default hyperparameters in nested cross-validation. The folds are grouped by chromosome, and
-  for comparison by variant.
-- It saves the tuned random forest and the LightGBM model, both fit on all usable rows, to `out/models/`.
-- It also saves the tuned random forest as ONNX, to `out/models/nmd_efficiency_rf.onnx`, and checks that the ONNX
+- The target is `NMD_efficiency` of the NMDEff TCGA benchmark, downloaded at a pinned commit. The variants are
+  those of `resources/TCGA_benchmark/tcga_dataset.vcf`, built with the steps of `make_benchmark_vcfs.py`.
+- It tunes a random forest with a grid search. The folds are grouped by chromosome.
+- In nested cross-validation with the same folds, it predicts each row out of fold and writes the predictions to
+  `out/oof_predictions.parquet`. `validate_model.py` reads them.
+- It saves the random forest tuned on all rows as ONNX, to `out/nmd_efficiency_rf.onnx`, and checks that the ONNX
   model predicts the training rows like the random forest. This file is `nmd_efficiency_rf.onnx` at the root of the
   repository. The main README shows how to load it.
+- `out/cv_results.json` has the R2 of each fold and the hyperparameters.
 
 ---
 
@@ -125,7 +125,7 @@ uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fa
   the GENCODE GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses
   the orientation whose REF matches the FASTA.
 - It fails if a row is not a single-base substitution or if a REF does not match the FASTA.
-- `validate_model.py` imports these steps from it.
+- `train_model.py` and `validate_model.py` import these steps from it.
 
 ---
 

@@ -16,7 +16,7 @@ Run it with:
     uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
 
 Each VCF has one row per table row, in table order. ID, QUAL, FILTER and INFO are ".". add_alleles explains how REF
-and ALT come from HGVSc. validate_model.py imports the shared steps from this file.
+and ALT come from HGVSc. train_model.py and validate_model.py import the shared steps from this file.
 """
 
 import argparse
@@ -45,6 +45,8 @@ VCFS = {
     "MMRF_TARGET_dataset.csv": RESOURCES / "MMRF_benchmark" / "MMRF_TARGET_dataset.vcf",
 }
 
+# The columns that join a measured row to the NMD-Scanner row of its transcript and variant
+KEY = ["transcript", "chrom", "pos", "ref", "alt"]
 HGVSC_SUBSTITUTION = re.compile(r"^(?:[^:]+:)?c\.\d+([ACGT])>([ACGT])$")
 COMPLEMENT = str.maketrans("ACGT", "TGCA")
 
@@ -116,6 +118,19 @@ def write_vcf(variants: pd.DataFrame, path: Path) -> None:
         handle.write("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
         for chrom, pos, ref, alt in variants[["chrom", "pos", "ref", "alt"]].itertuples(index=False):
             handle.write(f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t.\t.\t.\n")
+
+
+def add_key(features: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add the columns of KEY to the result of nmd_scanner.annotate. NMD-Scanner's start is 0-based, so start + 1 is pos.
+    """
+    return features.assign(
+        transcript=features["transcript_id"].astype(str).str.split(".").str[0],
+        chrom=features["chrom"].astype(str),
+        pos=features["start"].astype("int64") + 1,
+        ref=features["ref"].astype(str),
+        alt=features["alt"].astype(str),
+    )
 
 
 def main() -> None:

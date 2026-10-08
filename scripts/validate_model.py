@@ -29,8 +29,7 @@ The script pins nmd-scanner 0.5.0. Version 0.5.0 computes the same features as 0
 PyPI got 0.5.0 after the date of exclude-newer, so exclude-newer-package sets a later date for nmd-scanner alone.
 
 Cohorts:
-- TCGA: the out-of-fold predictions of the tuned random forest, folds grouped by chromosome, from
-  oof_predictions.parquet in --train-dir. nmd_escape comes from training_rows.parquet.
+- TCGA: the out-of-fold predictions in oof_predictions.parquet of --train-dir.
 - Geuvadis: germline nonsense variants in lymphoblastoid cell lines (Iha et al. 2025), Zenodo record 16666299. Their
   NMD efficiency is -log2(VAF_mean / 0.5). Only the variants of the study's accurate annotation count: no rescued MNV,
   no nontranslating gene, no mixed NMD isoforms.
@@ -290,7 +289,7 @@ def zenodo_members(download_dir: Path, geuvadis_dir: Path | None) -> list[Path]:
 
 def check_train_dir(train_dir: Path, onnx_path: Path) -> None:
     """Fail if the random forest of the training run differs from the model to validate."""
-    trained = train_dir / "models" / "nmd_efficiency_rf.onnx"
+    trained = train_dir / "nmd_efficiency_rf.onnx"
     if sha256(trained) != sha256(onnx_path):
         raise ValueError(f"{trained} differs from {onnx_path}, so its out-of-fold predictions are of another model")
 
@@ -377,20 +376,11 @@ def status_ok(joined: pd.DataFrame) -> pd.DataFrame:
 
 
 def tcga_rows(train_dir: Path) -> CohortRows:
-    oof = pd.read_parquet(train_dir / "oof_predictions.parquet")
-    oof = oof[(oof["model"] == "rf_tuned") & (oof["grouping"] == "chromosome")]
-    training = pd.read_parquet(train_dir / "training_rows.parquet").rename(columns={"start_1based": "pos"})
-    rows = oof.merge(training[["tcga_row", *KEY, "nmd_escape"]], on="tcga_row", how="inner", validate="one_to_one")
+    # Every row of tcga_dataset.csv has VAF_RNA above 0
+    rows = pd.read_parquet(train_dir / "oof_predictions.parquet").rename(columns={"NMD_efficiency": "y"})
+    row_counts = [StepCount("out-of-fold rows, folds grouped by chromosome", len(rows))]
     rows = rows.astype({"nmd_escape": bool})
-    vaf_rna = pd.read_csv(train_dir / "tcga_dataset.csv")["VAF_RNA"].to_numpy()
-    rows = rows.assign(VAF_RNA=vaf_rna[rows["tcga_row"].to_numpy()])
-    positive = rows[rows["VAF_RNA"] > 0]
-    row_counts = [
-        StepCount("training rows (nmd_model_status ok)", len(training)),
-        StepCount("out-of-fold rows of rf_tuned, folds grouped by chromosome", len(rows)),
-        StepCount("VAF_RNA > 0", len(positive)),
-    ]
-    return CohortRows(positive[["tcga_row", *KEY, "y", "prediction", "nmd_escape"]], "rows", row_counts)
+    return CohortRows(rows[["tcga_row", *KEY, "y", "prediction", "nmd_escape"]], "rows", row_counts)
 
 
 def geuvadis_rows(measured: pd.DataFrame, scored: pd.DataFrame) -> CohortRows:
