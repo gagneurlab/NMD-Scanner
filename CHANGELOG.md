@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/gagneurlab/NMD-Scanner/compare/v0.5.0...v0.5.1) (2026-10-08)
+
+
+### Documentation
+
+* validate the NMD efficiency model on four cohorts ([#54](https://github.com/gagneurlab/NMD-Scanner/issues/54)) ([bb60598](https://github.com/gagneurlab/NMD-Scanner/commit/bb60598aa47ab424cf3df022efff2b7c60170b29))
+
 ## [0.5.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.4.0...v0.5.0) (2026-10-07)
 
 
