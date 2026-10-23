@@ -22,7 +22,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Start-proximal rule
   - Single-exon rule
 - Predicts the NMD efficiency of each PTC with a random forest (see [NMD efficiency score](#nmd-efficiency-score))
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 81 columns and dtypes for every input, or 77 without the sequence columns
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
@@ -35,8 +35,6 @@ From [PyPI](https://pypi.org/project/nmd-scanner/):
 ```bash
 pip install nmd-scanner
 ```
-
-`polars-bio` reads the VCF and GFF3 files, `pyarrow` writes Parquet output, and `onnxruntime` runs the NMD efficiency model. All three come with the package, so Parquet output and the score need no extra install. `polars-bio` and its dependencies add about 700 MB to the install.
 
 ## Usage
 
@@ -66,7 +64,7 @@ Arguments:
 - `--fasta`: Path to reference genome FASTA.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
-- `--no-sequences`: (flag) Leave out the 4 sequence columns `ref_cds_seq`, `alt_cds_seq`, `transcript_seq` and `alt_transcript_seq`. The output then has 77 columns. On the pathogenic ClinVar variants of chr22, these 4 columns make up 92% of the compressed Parquet bytes and about 216 of 272 MiB in pandas.
+- `--no-sequences`: (flag) Leave out the 4 sequence columns `ref_cds_seq`, `alt_cds_seq`, `transcript_seq` and `alt_transcript_seq`. The output then has 77 columns. These columns make up most of the output size.
 - `--no-score`: (flag) Leave out the column `nmd_pred_score`, the prediction of the [NMD efficiency model](#nmd-efficiency-score). The output then has 80 columns.
 
 The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `chr1` or all `1`.
@@ -81,7 +79,7 @@ Output:
   - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
   - `nmd_model_status` and `nmd_pred_score`: whether the NMD efficiency model can score the row, and the NMD efficiency it predicts (see [NMD efficiency score](#nmd-efficiency-score))
 
-`nmd_scanner.schema.output_column_kinds()` gives the 81 output columns and their dtypes. `output_column_kinds(sequences=False)` gives the 77 columns without the sequences, and `output_column_kinds(score=False)` the 80 columns without `nmd_pred_score`. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
+[Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 
@@ -99,27 +97,11 @@ To get the result table of the CLI as a `pandas.DataFrame` without writing it, c
 import nmd_scanner
 
 results = nmd_scanner.annotate("input.vcf", "annotation.gff3.gz", "reference.fa", reassign_exons=False)
-results["my_key"] = "sample_1"  # add your own columns
-results.to_csv("results.csv", index=False)
 ```
-
-`DataFrame.to_csv` writes a list column, e.g. `transcript_exons`, as its Python repr. The CLI writes it as JSON instead (see [Kinds and dtypes](Technical%20Notes.md#kinds-and-dtypes)).
-
-To convert the table to a `pyarrow.Table`, call `to_arrow`. Each column gets the Arrow type of its kind, so the types are the same for every input, also for a result without rows. The CLI writes this table for Parquet output. `to_arrow` takes the output columns, with or without the sequences; a column of your own, such as `my_key` above, raises a KeyError:
-
-```python
-import pyarrow.parquet as pq
-
-results = nmd_scanner.annotate("input.vcf", "annotation.gff3.gz", "reference.fa")
-pq.write_table(nmd_scanner.to_arrow(results), "results.parquet")
-```
-
-`polars-bio` shows tqdm progress bars on stderr, e.g. one for every file it reads. To turn them off, set `TQDM_DISABLE=1` in the environment before Python starts. Importing `nmd_scanner` imports `polars-bio`, which sets `POLARS_FORCE_NEW_STREAMING` in `os.environ` if it is not set, and adds 4 filters to the `warnings` module.
 
 For reconstructing reference and alternative coding and transcript sequences, PTC detection and start / stop-loss information:
 
 ```python
-import pandas as pd
 from pyfaidx import Fasta
 
 import nmd_scanner
@@ -140,7 +122,7 @@ results = nmd_scanner.extract_ptc(cds_df, vcf, fasta, exons_df)
 
 `results` has one row per VCF record and transcript where the variant of the record touches the coding region (CDS plus stop codon) or the splice dinucleotide next to one of its exon edges. An indel in a repeat counts with every equivalent placement, not only the one in the VCF. If the variant destroys a splice site or leaves an exon boundary ambiguous, the alt transcript is unknown. Then `unknown_reason` says why, and the alt columns and the predictions are empty. [Variants at exon boundaries](Technical%20Notes.md#variants-at-exon-boundaries) in the Technical Notes gives the rules.
 
-Add the extra NMD-related features (utr lengths, exon counts, ptc-related features) and the NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results. The columns, column order and dtypes are the same for every input, also for a result without rows (see `nmd_scanner.schema`):
+Add the extra NMD-related features (utr lengths, exon counts, ptc-related features) and the NMD escape rules (last exon rule, 50 nt penultimate rule, long exon rule, start proximal rule, single exon rule, nmd escape) to the above computed results:
 
 ```python
 results = nmd_scanner.add_features_and_rules(results)

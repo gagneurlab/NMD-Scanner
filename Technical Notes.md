@@ -4,7 +4,7 @@
 
 1. Read the VCF, the FASTA and the GFF3. The annotation gives the exon rows and the coding regions, i.e. the CDS rows plus the stop codon. With `reassign_exons=True`, `scan.compute_exon_numbers` recomputes the exon numbers. The pipeline does not model ribosomal slippage, i.e. CDS rows that share bases, so the output for such a transcript can be wrong.
 2. `rules.extract_ptc` gives the [PTC columns](#ptc-columns). It finds the placements of each variant and joins them with the coding regions and the splice dinucleotides at their exon edges (see [Variants at exon boundaries](#variants-at-exon-boundaries)). A variant whose REF does not match the reference genome gives no row, and a warning lists it. `extract_ptc` applies each variant to the coding rows of each transcript, or sets `unknown_reason` if the alt transcript is unknown. It builds the ref and alt CDS and the ref and alt transcript, and scans the ref and alt CDS for codons. Last, `rules.analyze_transcript` sets `alt_has_ptc` and `stop_loss` from the first in-frame stop codon of the alt transcript (see [Stop codon classification](#stop-codon-classification)). After a start or stop loss, it then scans the alt transcript.
-3. `extra_features.add_features_and_rules` adds the [NMD features](#nmd-features), then the [NMD rules](#nmd-rules), which read the features. Last, it adds [`nmd_model_status`](#model-status) and applies the output schema.
+3. `extra_features.add_features_and_rules` adds the [NMD features](#nmd-features), then the [NMD rules](#nmd-rules), which read the features. Last, it adds [`nmd_model_status`](#model-status).
 4. `model.add_nmd_pred_score` adds [`nmd_pred_score`](#nmd-efficiency-score). With `score=False`, `annotate` skips this step.
 
 With `sequences=False`, `annotate` drops the 4 sequence columns between step 3 and step 4.
@@ -13,35 +13,11 @@ With `sequences=False`, `annotate` drops the 4 sequence columns between step 3 a
 
 Each row of the result is the variant of one VCF record in one transcript whose coding region the variant touches. Two records with the same CHROM, POS, REF and ALT give a row each, and each row has the ID of its record as `variant_id`. The coding region is the CDS plus the stop codon. A variant touches it if one of its placements changes a base of the coding region, or of a splice dinucleotide at one of its exon edges (see [Variants at exon boundaries](#variants-at-exon-boundaries)). A variant gives no row if it touches no coding region, if its REF does not match the reference genome, or if its ALT is symbolic, a breakend, `.` or `*`.
 
-The tables below list the 81 columns of the default result in output order, as `output_column_kinds()` in `nmd_scanner.schema` does. There is one table for each of its five parts: the PTC columns, the NMD features, the NMD rules, the model status and the NMD efficiency score. The first four parts are the 80 columns of `OUTPUT_COLUMN_KINDS`, which `add_features_and_rules` returns. With `score=False` (CLI flag `--no-score`), the result has these 80 columns only. The tables assume a well-formed GFF3. "Input Defects.md" lists the null cases that a misannotation adds.
+The tables below list the 81 columns of the default result in output order. There is one table for each of five parts: the PTC columns, the NMD features, the NMD rules, the model status and the NMD efficiency score. With `--no-score` (`score=False`), the result has the first four parts, which are 80 columns. The tables assume a well-formed GFF3. "Input Defects.md" lists the null cases that a misannotation adds.
 
-With `sequences=False` (CLI flag `--no-sequences`), the result lacks the 4 sequence columns of `schema.SEQUENCE_COLUMNS` and has 77 columns, or 76 with `score=False`; the other columns stay the same.
+With `--no-sequences` (`sequences=False`), the result lacks the 4 sequence columns and has 77 columns, or 76 with `--no-score`; the other columns stay the same.
 
-### Kinds and dtypes
-
-The kind of a column sets its pandas dtype (`schema.KIND_DTYPES`) and its Arrow and Parquet type (`schema.KIND_ARROW_TYPES`, used by `nmd_scanner.to_arrow`):
-
-| Kind                | pandas dtype                                                                         | Parquet type                                      |
-| ------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| int                 | `Int64`                                                                              | `int64`                                           |
-| bool                | `boolean`                                                                            | `bool`                                            |
-| string              | `string`, with python storage                                                        | `string`                                          |
-| float               | `float64`                                                                            | `double`                                          |
-| pair_list           | `object`: a list of records, e.g. `{"exon_number": 1, "length": 36}`                 | `list<struct<exon_number: int64, length: int64>>` |
-| int_list            | `object`: a list of exon numbers                                                     | `list<int64>`                                     |
-| stop_codon_list     | `object`: a list of records, e.g. `{"position": 5442, "codon": "TGA"}`               | `list<struct<position: int64, codon: string>>`    |
-| strand              | `category` with the categories `+` and `-`                                           | `dictionary<int8, string>`                        |
-| unknown_reason      | `category` with the categories `splice_site_destroyed` and `exon_boundary_ambiguous` | `dictionary<int8, string>`                        |
-| nmd_model_status    | `category` with the 8 values of `schema.MODEL_STATUSES` as categories                | `dictionary<int8, string>`                        |
-| stop_classification | `category` with the categories `alt_transcript`, `start_loss_scan` and `alt_cds`     | `dictionary<int8, string>`                        |
-
-A null is pd.NA in an int, bool or string column, and NaN in a float or categorical column. In a list column, it is None or NaN, so test for it with `pd.isna`. Parquet stores a null as null, and CSV writes it as an empty field.
-
-The kinds strand, unknown_reason, nmd_model_status and stop_classification are categorical. Each holds the closed value set of the column of the same name, and `schema.CATEGORIES` lists the values. A categorical column has all of them as categories, also if a value does not occur. So its dtype does not depend on the data. `schema.apply_schema` raises a ValueError for a value outside the categories. Parquet stores a categorical column as a dictionary, which `pd.read_parquet` reads back as a categorical and polars as a `Categorical`. CSV writes its values as text.
-
-A record is a dict with the field names of its Arrow struct. So a list value keeps the shape of its elements through `to_arrow`, Parquet and `pd.read_parquet` with default arguments: a record stays a dict with the same keys and values, and an exon number stays an int. Only the container changes. `pd.read_parquet` gives a numpy array instead of a list, and its ints are numpy ints. Read the fields of a record by name, e.g. `exon["length"]`. `for a, b in value` binds the keys of each record, not its values. The list columns are not `pd.ArrowDtype` columns, because `pd.read_parquet` with default arguments cannot read such a column back. It raises on the nested ArrowDtype in the pandas metadata of the file (pandas 2.2 and 3.0). polars reads the records as structs with the same field names.
-
-CSV writes a list column as JSON, e.g. `[{"exon_number": 1, "length": 36}]`, which `json.loads` reads back. This holds for the CLI and `cli.write_results`. `DataFrame.to_csv` writes the Python repr of a list instead.
+In CSV output, a list column is JSON, e.g. `[{"exon_number": 1, "length": 36}]`, and a null is an empty field.
 
 ### Positions and terms
 
@@ -200,13 +176,13 @@ A second scan reads `alt_transcript_seq` and gives the 7 columns from `alt_scan_
 
 ### Model status
 
-`add_features_and_rules` adds this column last. It says whether the [NMD efficiency model](#nmd-efficiency-score) can score the row. The model takes the 19 inputs that `nmd_scanner.schema.MODEL_INPUTS` lists, in that order, and cannot score a row in which one of them is null.
+`add_features_and_rules` adds this column last. It says whether the [NMD efficiency model](#nmd-efficiency-score) can score the row. The model takes 19 inputs (see [NMD efficiency score](#nmd-efficiency-score)) and cannot score a row in which one of them is null.
 
 | Column             | Kind             | Meaning                                                                        | Null when |
 | ------------------ | ---------------- | ------------------------------------------------------------------------------ | --------- |
 | `nmd_model_status` | nmd_model_status | `ok` if the model can score the row, else the first reason why not (see below) | never     |
 
-A row gets the first value whose condition holds, in this order (`MODEL_STATUSES` in `nmd_scanner.schema`):
+A row gets the first value whose condition holds, in this order:
 
 | Value                | Condition                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -223,7 +199,7 @@ A row gets the first value whose condition holds, in this order (`MODEL_STATUSES
 
 ### NMD efficiency score
 
-`model.add_nmd_pred_score` adds this column after `nmd_model_status`. `annotate` calls it unless `score=False` (CLI flag `--no-score`). `add_features_and_rules` does not call it, so the column has its kind in `schema.SCORE_COLUMN_KINDS`, not in `OUTPUT_COLUMN_KINDS`.
+`model.add_nmd_pred_score` adds this column after `nmd_model_status`. `annotate` calls it unless `score=False` (CLI flag `--no-score`).
 
 | Column           | Kind  | Meaning                                                                                                                      | Null when                      |
 | ---------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
