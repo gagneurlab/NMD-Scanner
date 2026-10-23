@@ -1,8 +1,7 @@
 """
 The NMD efficiency model: a random forest that predicts the NMD efficiency of a PTC from the columns of MODEL_INPUTS.
 
-scripts/train_model.py trains it and saves it as ONNX. The section "NMD efficiency score" of "Technical Notes.md"
-describes the ONNX file.
+scripts/train_model.py trains it and saves it as ONNX.
 """
 
 import importlib.resources
