@@ -205,7 +205,7 @@ A row gets the first value whose condition holds, in this order:
 | ---------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | `nmd_pred_score` | float | The NMD efficiency that the model predicts: -log2(VAF_RNA / VAF_DNA), on the scale of the TCGA training data. 0 means no NMD | `nmd_model_status` is not `ok` |
 
-The model is a random forest that `scripts/train_model.py` trains on the features of NMD-Scanner 0.4.0. The package ships it as ONNX, in `src/nmd_scanner/nmd_efficiency_rf.onnx`. In an installed package, `nmd_scanner.model.MODEL_PATH` points to it. `add_nmd_pred_score` runs it with onnxruntime on the CPU.
+The model is a random forest that `scripts/train_model.py` trains. The package ships it as ONNX, in `src/nmd_scanner/nmd_efficiency_rf.onnx`. In an installed package, `nmd_scanner.model.MODEL_PATH` points to it. `add_nmd_pred_score` runs it with onnxruntime on the CPU.
 
 - The input `input` is a float64 matrix of shape [N, 19]. Its columns are the 19 columns of `nmd_scanner.schema.MODEL_INPUTS`, in that order. A bool input is 0.0 or 1.0.
 - The output `variable` is a float32 matrix of shape [N, 1]. `add_nmd_pred_score` stores it as float64.

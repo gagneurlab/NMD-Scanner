@@ -134,7 +134,7 @@ To work on single rows, `nmd_scanner.add_nmd_features` and `nmd_scanner.evaluate
 
 ## NMD efficiency score
 
-NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains on the features of NMD-Scanner 0.4.0 (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its score by default, as the column `nmd_pred_score` right after `nmd_model_status`. `--no-score` and `score=False` leave it out. `nmd_scanner.add_nmd_pred_score(results)` adds the score to a result of `add_features_and_rules`.
+NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its score by default, as the column `nmd_pred_score` right after `nmd_model_status`. `--no-score` and `score=False` leave it out. `nmd_scanner.add_nmd_pred_score(results)` adds the score to a result of `add_features_and_rules`.
 
 `nmd_pred_score` predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. `nmd_pred_score` is null in every row whose `nmd_model_status` is not `ok`. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts. [NMD efficiency score](Technical%20Notes.md#nmd-efficiency-score) in the Technical Notes describes the model file and its inputs.
 
