@@ -1,5 +1,6 @@
 from .cli import annotate
 from .extra_features import add_features_and_rules, add_nmd_features, evaluate_nmd_escape_rules
+from .model import add_nmd_pred_score
 from .rules import extract_ptc
 from .scan import (
     compute_exon_numbers,

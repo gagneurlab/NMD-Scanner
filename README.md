@@ -21,7 +21,8 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 80 columns and dtypes for every input, or 76 without the sequence columns
+- Predicts the NMD efficiency of each PTC with a random forest (see [NMD efficiency score](#nmd-efficiency-score))
+- Writes the results as CSV or Parquet, or returns them as a pandas DataFrame, with the same 81 columns and dtypes for every input, or 77 without the sequence columns
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
 
@@ -35,7 +36,7 @@ From [PyPI](https://pypi.org/project/nmd-scanner/):
 pip install nmd-scanner
 ```
 
-`polars-bio` reads the VCF and GFF3 files and `pyarrow` writes Parquet output. Both come with the package, so Parquet output needs no extra install. `polars-bio` and its dependencies add about 700 MB to the install.
+`polars-bio` reads the VCF and GFF3 files, `pyarrow` writes Parquet output, and `onnxruntime` runs the NMD efficiency model. All three come with the package, so Parquet output and the score need no extra install. `polars-bio` and its dependencies add about 700 MB to the install.
 
 ## Usage
 
@@ -65,7 +66,8 @@ Arguments:
 - `--fasta`: Path to reference genome FASTA.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet. The parent directory must already exist; the file is overwritten if present.
 - `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
-- `--no-sequences`: (flag) Leave out the 4 sequence columns `ref_cds_seq`, `alt_cds_seq`, `transcript_seq` and `alt_transcript_seq`. The output then has 76 columns. On the pathogenic ClinVar variants of chr22, these 4 columns make up 92% of the compressed Parquet bytes and about 216 of 272 MiB in pandas.
+- `--no-sequences`: (flag) Leave out the 4 sequence columns `ref_cds_seq`, `alt_cds_seq`, `transcript_seq` and `alt_transcript_seq`. The output then has 77 columns. On the pathogenic ClinVar variants of chr22, these 4 columns make up 92% of the compressed Parquet bytes and about 216 of 272 MiB in pandas.
+- `--no-score`: (flag) Leave out the column `nmd_pred_score`, the prediction of the [NMD efficiency model](#nmd-efficiency-score). The output then has 80 columns.
 
 The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `chr1` or all `1`.
 
@@ -77,8 +79,9 @@ Output:
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.
   - `unknown_reason`: empty if the alt transcript is known. Otherwise it says why the alt transcript is unknown: `splice_site_destroyed` or `exon_boundary_ambiguous`. The alt columns, the start / stop-loss flags, the PTC features and the NMD escape rules are empty then.
+  - `nmd_model_status` and `nmd_pred_score`: whether the NMD efficiency model can score the row, and the NMD efficiency it predicts (see [NMD efficiency score](#nmd-efficiency-score))
 
-`nmd_scanner.schema` lists the 80 output columns and their dtypes. `nmd_scanner.schema.output_column_kinds(sequences=False)` gives the 76 columns without the sequences. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
+`nmd_scanner.schema.output_column_kinds()` gives the 81 output columns and their dtypes. `output_column_kinds(sequences=False)` gives the 77 columns without the sequences, and `output_column_kinds(score=False)` the 80 columns without `nmd_pred_score`. The columns and dtypes are the same for every input, also for a result without rows. [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 
@@ -90,7 +93,7 @@ This is useful if you want to
 - integrate NMD-Scanner into a larger workflow
 - build custom features
 
-To get the result table of the CLI as a `pandas.DataFrame` without writing it, call `annotate`. It takes the inputs and options of the CLI, except the output path; `sequences=False` is the flag `--no-sequences`. It does not configure logging or write files:
+To get the result table of the CLI as a `pandas.DataFrame` without writing it, call `annotate`. It takes the inputs and options of the CLI, except the output path; `sequences=False` is the flag `--no-sequences`, and `score=False` is the flag `--no-score`. It does not configure logging or write files:
 
 ```python
 import nmd_scanner
@@ -143,34 +146,19 @@ Add the extra NMD-related features (utr lengths, exon counts, ptc-related featur
 results = nmd_scanner.add_features_and_rules(results)
 ```
 
-The last column, `nmd_model_status`, says whether the NMD efficiency model can score a row: `ok`, or the first reason why not, e.g. `no_annotated_stop`. `nmd_scanner.schema.MODEL_INPUTS` lists the 19 model inputs in model order. [Model status](Technical%20Notes.md#model-status) in the Technical Notes lists all values:
-
-```python
-from nmd_scanner.schema import MODEL_INPUTS
-
-scorable = results[results["nmd_model_status"] == "ok"]
-X = scorable[MODEL_INPUTS]  # no null value
-```
-
-The NMD efficiency model is `nmd_efficiency_rf.onnx` at the root of this repository. It is not part of the package. `scripts/train_model.py` trains this random forest on the features of NMD-Scanner 0.4.0 (see [scripts/README.md](scripts/README.md)). The model input `input` is a float64 matrix with the columns of `MODEL_INPUTS`, in that order. The output `variable` is a float32 matrix with one column. The metadata key `feature_names` lists the input columns as JSON. To score the rows with [onnxruntime](https://onnxruntime.ai):
-
-```python
-import json
-
-import onnxruntime
-
-session = onnxruntime.InferenceSession("nmd_efficiency_rf.onnx")
-assert json.loads(session.get_modelmeta().custom_metadata_map["feature_names"]) == MODEL_INPUTS
-nmd_efficiency = session.run(None, {"input": X.to_numpy(dtype="float64")})[0].ravel()
-```
-
-The model predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts.
+The last column, `nmd_model_status`, says whether the NMD efficiency model can score a row: `ok`, or the first reason why not, e.g. `no_annotated_stop`. [Model status](Technical%20Notes.md#model-status) in the Technical Notes lists all values. To add the score of the model, call `nmd_scanner.add_nmd_pred_score(results)` (see [NMD efficiency score](#nmd-efficiency-score)).
 
 To work on single rows, `nmd_scanner.add_nmd_features` and `nmd_scanner.evaluate_nmd_escape_rules` are public too. Run the features **before** the escape rules: `evaluate_nmd_escape_rules` reads the exon-count and ptc-exon-length columns produced by the features. The row functions do not add `nmd_model_status`; `add_features_and_rules` adds it.
 
+## NMD efficiency score
+
+NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains on the features of NMD-Scanner 0.4.0 (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its score by default, as the column `nmd_pred_score` right after `nmd_model_status`. `--no-score` and `score=False` leave it out. `nmd_scanner.add_nmd_pred_score(results)` adds the score to a result of `add_features_and_rules`.
+
+`nmd_pred_score` predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. `nmd_pred_score` is null in every row whose `nmd_model_status` is not `ok`. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts. [NMD efficiency score](Technical%20Notes.md#nmd-efficiency-score) in the Technical Notes describes the model file and its inputs.
+
 ## Model validation
 
-`nmd_efficiency_rf.onnx` was tested without retraining on three cohorts besides its TCGA training data. The table gives the Spearman correlation of the predictions with the measured NMD efficiency, with 95% bootstrap CIs. The column "Canonical rules" ranks the same rows by `nmd_escape` alone. All rows have `nmd_model_status` `ok` and a variant allele fraction above 0 in the RNA. For the germline variants, VAF_DNA is 0.5. `scripts/validate_model.py` computes the table from pinned public sources (see [scripts/README.md](scripts/README.md)).
+The NMD efficiency model was tested without retraining on three cohorts besides its TCGA training data. The table gives the Spearman correlation of the predictions with the measured NMD efficiency, with 95% bootstrap CIs. The column "Canonical rules" ranks the same rows by `nmd_escape` alone. All rows have `nmd_model_status` `ok` and a variant allele fraction above 0 in the RNA. For the germline variants, VAF_DNA is 0.5. `scripts/validate_model.py` computes the table from pinned public sources (see [scripts/README.md](scripts/README.md)).
 
 | Cohort                                                                                 | Variants        |  Rows | Model               | Canonical rules     |
 | -------------------------------------------------------------------------------------- | --------------- | ----: | ------------------- | ------------------- |

@@ -555,13 +555,14 @@ def write_inputs(transcript, changes, strand, directory):
 def run(case, change, strand, directory, sequences=True):
     """
     Run annotate() on the case, with the given description of its variant and the further variants of the case.
-    Return the result table and the VCF record of the given description, None without one.
+    Return the result table and the VCF record of the given description, None without one. The cases pin the columns
+    of OUTPUT_COLUMN_KINDS, so annotate() runs with score=False. tests/test_model.py tests nmd_pred_score.
 
     :param sequences: the sequences argument of annotate()
     """
     changes = ([] if change is None else [change]) + list(case.more_changes)
     paths, records = write_inputs(case.layout.transcript, changes, strand, directory)
-    results = annotate(*paths, reassign_exons=case.reassign_exons, sequences=sequences)
+    results = annotate(*paths, reassign_exons=case.reassign_exons, sequences=sequences, score=False)
     return results, (records[0] if change is not None else None)
 
 

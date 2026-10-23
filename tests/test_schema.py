@@ -9,6 +9,7 @@ from nmd_scanner.extra_features import (
     evaluate_nmd_escape_rules,
     nmd_model_status,
 )
+from nmd_scanner.model import add_nmd_pred_score
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.schema import (
     KIND_ARROW_TYPES,
@@ -19,6 +20,7 @@ from nmd_scanner.schema import (
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
     PTC_COLUMN_KINDS,
+    SCORE_COLUMN_KINDS,
     SEQUENCE_COLUMNS,
     apply_schema,
     empty_table,
@@ -36,8 +38,9 @@ def assert_schema(table, column_kinds):
 
 
 def test_every_kind_has_a_dtype_and_an_arrow_type():
-    assert set(OUTPUT_COLUMN_KINDS.values()) <= set(KIND_DTYPES)
-    assert set(OUTPUT_COLUMN_KINDS.values()) <= set(KIND_ARROW_TYPES)
+    kinds = set(OUTPUT_COLUMN_KINDS.values()) | set(SCORE_COLUMN_KINDS.values())
+    assert kinds <= set(KIND_DTYPES)
+    assert kinds <= set(KIND_ARROW_TYPES)
 
 
 def test_output_columns_are_the_ptc_feature_rule_and_status_columns_in_order():
@@ -109,28 +112,42 @@ def test_empty_table_has_the_schema():
 
 
 def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_columns():
+    full = output_column_kinds()
     reduced = output_column_kinds(sequences=False)
 
     assert len(OUTPUT_COLUMN_KINDS) == 80
-    assert len(reduced) == 76
+    assert len(full) == 81
+    assert len(reduced) == 77
     assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
-    assert reduced == {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
-    assert list(reduced) == [column for column in OUTPUT_COLUMN_KINDS if column not in SEQUENCE_COLUMNS]
-    assert output_column_kinds() == OUTPUT_COLUMN_KINDS
-    assert output_column_kinds() is not OUTPUT_COLUMN_KINDS
+    assert reduced == {column: kind for column, kind in full.items() if column not in SEQUENCE_COLUMNS}
+    assert list(reduced) == [column for column in full if column not in SEQUENCE_COLUMNS]
+    assert output_column_kinds(score=False) == OUTPUT_COLUMN_KINDS
+    assert output_column_kinds(score=False) is not OUTPUT_COLUMN_KINDS
 
 
-def test_empty_table_without_sequences_has_the_76_columns_and_their_dtypes():
+def test_empty_table_without_sequences_has_the_77_columns_and_their_dtypes():
     table = empty_table(output_column_kinds(sequences=False))
 
     assert len(table) == 0
-    assert len(table.columns) == 76
+    assert len(table.columns) == 77
     assert_schema(table, output_column_kinds(sequences=False))
 
 
 @pytest.mark.parametrize("sequences", [True, False])
-def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences):
+def test_output_column_kinds_adds_nmd_pred_score_after_nmd_model_status_unless_score_is_false(sequences):
     kinds = output_column_kinds(sequences)
+
+    assert list(kinds) == [*output_column_kinds(sequences, score=False), "nmd_pred_score"]
+    assert len(kinds) == (81 if sequences else 77)
+    assert kinds["nmd_pred_score"] == "float"
+    assert_schema(empty_table(kinds), kinds)
+    assert empty_table(kinds)["nmd_pred_score"].dtype == np.float64
+
+
+@pytest.mark.parametrize("score", [False, True])
+@pytest.mark.parametrize("sequences", [True, False])
+def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences, score):
+    kinds = output_column_kinds(sequences, score)
 
     table = to_arrow(empty_table(kinds))
 
@@ -193,7 +210,7 @@ def test_empty_and_nonempty_results_have_the_same_schema(run_main, request, vcf,
     assert (len(ptc_table) > 0) == has_rows
     assert (len(written) > 0) == has_rows
     assert_schema(ptc_table, PTC_COLUMN_KINDS)
-    assert_schema(written, OUTPUT_COLUMN_KINDS)
+    assert_schema(written, output_column_kinds())
 
 
 def test_feature_and_rule_columns_match_the_schema(run_main):
@@ -225,14 +242,14 @@ def test_add_features_and_rules_gives_the_same_dtypes_for_zero_and_many_rows(run
     assert dict(zero.dtypes) == dict(many.dtypes)
 
 
-def test_add_features_and_rules_equals_what_main_writes(run_main):
+def test_main_writes_the_result_of_add_features_and_rules_with_the_score(run_main):
     ptc_table, written = run_main("resources/test_files/test_variants.vcf")
     # main() already passed ptc_table to add_features_and_rules, so a copy taken now could miss a change
     unchanged = run_main.ptc_table_before_main
 
     result = add_features_and_rules(ptc_table)
 
-    pd.testing.assert_frame_equal(result, written)
+    pd.testing.assert_frame_equal(add_nmd_pred_score(result), written)
     pd.testing.assert_frame_equal(ptc_table, unchanged)
 
 
