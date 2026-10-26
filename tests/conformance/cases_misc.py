@@ -710,7 +710,7 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # "Input Defects.md": a transcript without a transcript row, and a transcript row without its type
+    # input_defects.md: a transcript without a transcript row, and a transcript row without its type
     Case(
         "gencode_transcript_without_a_transcript_row_has_a_null_transcript_type_and_null_transcript_tags",
         MISSENSE_DRAWING

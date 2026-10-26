@@ -1,6 +1,6 @@
 """
 Conformance cases of the null cases: each case pins a constellation where the column tables of "Technical Notes.md"
-or "Input Defects.md" say "Null when", and some misannotations that make a column null. A CDS row outside the exon rows of its
+or input_defects.md say "Null when", and some misannotations that make a column null. A CDS row outside the exon rows of its
 transcript is an error.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
@@ -750,7 +750,7 @@ CASES = [
     # Defects.md": "A variant that leaves it unchanged gives a PTC row whose PTC is this start codon"). So
     # ptc_less_than_150nt_to_start and nmd_start_proximal_rule are null ("`ptc_to_start_codon` is null"). The row keeps
     # the flags from the CDS: the ref transcript, read in frame, stops at the TAG and not at the annotated stop codon.
-    # likely_misannotated is False ("Input Defects.md": "`likely_misannotated` does not flag it, because its start codon
+    # likely_misannotated is False (input_defects.md: "`likely_misannotated` does not flag it, because its start codon
     # check only asks for an annotated start codon at CDS position 0").
     # `ptc_without_an_annotated_start_codon_has_no_ptc_to_start_codon` pins the other clause, a PTC row without an
     # annotated start codon.
@@ -1683,7 +1683,7 @@ CASES = [
         },
         equivalent=(Change("gacc[GCCCGGGAAAT>]GAgcc"),),
     ),
-    # The only transcript has no exon rows. "Input Defects.md" gives null transcript columns, cds_in_transcript False,
+    # The only transcript has no exon rows. input_defects.md gives null transcript columns, cds_in_transcript False,
     # likely_misannotated True, and the flags from the CDS (alt_transcript_seq is null).
     Case(
         "missense_in_a_transcript_without_exon_rows_gives_null_transcript_columns",

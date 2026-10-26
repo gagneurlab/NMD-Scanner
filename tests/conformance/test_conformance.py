@@ -249,7 +249,7 @@ def test_every_reason_for_no_row_has_a_case(reason):
     assert any(isinstance(case.expected, NoRow) and case.expected.reason == reason for case in CASES)
 
 
-# The null cases: one entry per "Null when" clause of the column tables in "Technical Notes.md" and "Input Defects.md".
+# The null cases: one entry per "Null when" clause of the column tables in "Technical Notes.md" and input_defects.md.
 # A predicate tells whether an expected row shows the constellation of its clause, without another clause of the
 # column that would make the column null too.
 
@@ -563,10 +563,10 @@ def test_every_null_case_has_a_case(column, clause, predicate):
     assert any(row[column] is None and predicate(row) for row in _rows())
 
 
-def _null_when(name, width):
-    """{column: "Null when" cell} of the column table rows in the file name, rows of width cells."""
+def _null_when(path, width):
+    """{column: "Null when" cell} of the column table rows in the file at path, rows of width cells."""
     null_when = {}
-    for line in (Path(__file__).parents[2] / name).read_text().splitlines():
+    for line in path.read_text().splitlines():
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if len(cells) == width and cells[0].strip("`") in OUTPUT_COLUMN_KINDS:
             null_when[cells[0].strip("`")] = cells[-1]
@@ -574,10 +574,10 @@ def _null_when(name, width):
 
 
 def _documented_null_clauses():
-    """(column, clause) of each "Null when" clause in "Technical Notes.md" and "Input Defects.md"."""
-    null_when = _null_when("Technical Notes.md", 4)
+    """(column, clause) of each "Null when" clause in "Technical Notes.md" and input_defects.md."""
+    null_when = _null_when(Path(__file__).parents[2] / "Technical Notes.md", 4)
     assert sorted(null_when) == sorted(OUTPUT_COLUMN_KINDS)
-    defects = _null_when("Input Defects.md", 2)
+    defects = _null_when(Path(__file__).parent / "input_defects.md", 2)
 
     def clauses(column):
         # "as `x`" stands for the clauses of column x in both files
