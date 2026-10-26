@@ -35,7 +35,7 @@ The VCFs contain edge-case variants such as start and stop-loss mutations, frame
 
 ### `test_output_files/`
 
-Contains intermediate and final output files used for testing of the computation of NMD features (see `../tests/test_rules.py`).
+The input and the expected output of `rules.create_reference_cds`, for a test in `../tests/test_rules.py`.
 
 ---
 
