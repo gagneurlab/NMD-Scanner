@@ -48,8 +48,10 @@ Steps:
    nmd_efficiency_prediction. Join each measured row to the NMD-Scanner row of its transcript and variant.
 4. Keep the rows with nmd_efficiency_prediction_status "ok" and a variant allele fraction above 0 in the RNA.
 5. Per cohort, compute the Spearman correlation of the predictions and of (not nmd_escape) with the measured NMD
-   efficiency. The 95% CIs are percentiles of N_RESAMPLES bootstrap resamples of the rows. The gain, model minus
-   rules, has a paired CI from the same resamples. Each cohort draws from its own generator, seeded with SEED.
+   efficiency. The 95% CIs are percentiles of N_RESAMPLES bootstrap resamples of the genes. A resample draws genes
+   with replacement and takes all rows of each drawn gene. Rows of one gene share a transcript structure, so they are
+   not independent. The gene of a row is the gene of its transcript in the GFF3. The gain, model minus rules, has a
+   paired CI from the same resamples. Each cohort draws from its own generator, seeded with SEED.
 6. Per cohort, compute the mean measured NMD efficiency of the rows with nmd_escape False. For GTEx, also compute it
    over the variant-tissue rows, in total and per tissue with at least MIN_TISSUE_ROWS of them.
 
@@ -79,7 +81,17 @@ from figures import (
     in_notebook,
     save_figure,
 )
-from make_benchmark_vcfs import KEY, add_alleles, add_key, check_sha256, download, read_nmdeff, read_strands, write_vcf
+from make_benchmark_vcfs import (
+    KEY,
+    add_alleles,
+    add_key,
+    check_sha256,
+    download,
+    read_genes,
+    read_nmdeff,
+    read_strands,
+    write_vcf,
+)
 from plotnine import (
     aes,
     annotate,
@@ -234,22 +246,26 @@ def percentiles(values: np.ndarray) -> list[float]:
 def correlations(rows: pd.DataFrame) -> dict:
     """
     Spearman correlation of the prediction and of the rules with NMD_efficiency, and their difference, with bootstrap
-    CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first.
+    CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first. Each resample draws
+    the genes of the column gene with replacement, and it takes all rows of each drawn gene.
     """
     y = rows["NMD_efficiency"].to_numpy(dtype="float64")
     model = rows["prediction"].to_numpy(dtype="float64")
     rules = (~rows["nmd_escape"]).to_numpy(dtype="float64")
+    # The positions of the rows of each gene
+    gene_rows = list(rows.groupby("gene").indices.values())
     rng = np.random.default_rng(SEED)
     model_resampled = np.empty(N_RESAMPLES)
     rules_resampled = np.empty(N_RESAMPLES)
     for resample in range(N_RESAMPLES):
-        i = rng.integers(0, len(y), len(y))
+        i = np.concatenate([gene_rows[gene] for gene in rng.integers(0, len(gene_rows), len(gene_rows))])
         model_resampled[resample] = spearman(model[i], y[i])
         rules_resampled[resample] = spearman(rules[i], y[i])
     model_value = spearman(model, y)
     rules_value = spearman(rules, y)
     return {
         "n": len(y),
+        "genes": len(gene_rows),
         "model": model_value,
         "model_ci": percentiles(model_resampled),
         "rules": rules_value,
@@ -340,6 +356,7 @@ if trained.read_bytes() != MODEL_PATH.read_bytes():
 
 # %%
 strands = read_strands(args.gff3)
+genes = read_genes(args.gff3)
 fasta = Fasta(str(args.fasta))
 geuvadis = read_geuvadis(args.geuvadis_dir, fasta)
 # The first line of the sheet is its title
@@ -358,7 +375,7 @@ accurate = ~geuvadis[ACCURATE_ANNOTATION_FLAGS].astype("boolean").fillna(False).
 geuvadis = geuvadis[accurate].assign(NMD_efficiency=lambda rows: -np.log2(rows["VAF_mean"] / GERMLINE_VAF_DNA))
 # ASE_altered is VAF_RNA. For VAF_RNA 0, the table caps NMD_efficiency at 10.
 gtex = scored_rows(gtex, scored, "ASE_altered")
-gtex_variants = gtex.groupby(KEY).agg(
+gtex_variants = gtex.groupby(KEY, as_index=False).agg(
     NMD_efficiency=("NMD_efficiency", "mean"),
     prediction=("prediction", "first"),
     nmd_escape=("nmd_escape", "first"),
@@ -370,15 +387,21 @@ cohorts = {
     "gtex": gtex_variants,
     "mmrf_target": scored_rows(mmrf, scored, "VAF_RNA"),
 }
+# correlations resamples the genes
+cohorts = {
+    cohort: rows.assign(gene=[genes[transcript] for transcript in rows["transcript"]])
+    for cohort, rows in cohorts.items()
+}
 
 # %%
 validation = {}
 for cohort, rows in cohorts.items():
     result = {**correlations(rows), "mean_nmd_triggering": mean_nmd_triggering(rows)}
     logger.info(
-        "%s, %d rows: model %s, rules %s, gain %s, NMD-triggering mean %.2f",
+        "%s, %d rows of %d genes: model %s, rules %s, gain %s, NMD-triggering mean %.2f",
         cohort,
         result["n"],
+        result["genes"],
         estimate(result["model"], result["model_ci"]),
         estimate(result["rules"], result["rules_ci"]),
         estimate(result["gain"], result["gain_ci"]),
@@ -530,9 +553,10 @@ transcript_split = {
 }
 for group, result in transcript_split.items():
     logger.info(
-        "mmrf_target, %s, %d rows: model %s, rules %s, gain %s",
+        "mmrf_target, %s, %d rows of %d genes: model %s, rules %s, gain %s",
         group,
         result["n"],
+        result["genes"],
         estimate(result["model"], result["model_ci"]),
         estimate(result["rules"], result["rules_ci"]),
         estimate(result["gain"], result["gain_ci"]),

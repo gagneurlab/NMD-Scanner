@@ -20,6 +20,7 @@ uv run --group scripts python scripts/make_benchmark_vcfs.py --gff3 gencode.v42.
 - It parses the substitution from HGVSc, which has the alleles on the transcript strand. It takes the strand from the GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses the orientation whose REF matches the FASTA.
 - It fails if a row is not a single-base substitution, or if a REF does not match the FASTA.
 - `train_model.py` and `validate_model.py` import these steps from it.
+- `read_genes` returns the gene of each transcript, for the gene bootstrap of `validate_model.py`.
 
 ## train_model.py
 
@@ -85,8 +86,8 @@ uv run --group scripts jupytext --to ipynb scripts/validate_model.py &&
   - 2 tables of Zenodo record 16666299 (Geuvadis). The record is one zip of 3.2 GB, so the script reads only those 2 members with HTTP range requests. `--geuvadis-dir` reads them from a local directory instead, with the same sha256 check.
 - It builds one VCF of the variants and runs `nmd_scanner.annotate`. For GTEx and MMRF-TARGET, it converts HGVSc to genomic alleles with `make_benchmark_vcfs.py`.
 - It keeps the rows the model can predict that have a variant allele fraction above 0 in the RNA. For the germline variants, the NMD efficiency is -log2(VAF_RNA / 0.5).
-- The 95% CIs come from 2,000 bootstrap resamples of the rows per cohort.
-- Outputs: `validation.json` in `--out-dir`, a short summary in the log, and the figures. Per cohort, `validation.json` has the Spearman correlations of the model and of the rules, the gain of the model over the rules, and the mean measured NMD efficiency of the rows with `nmd_escape` False. For GTEx, it also has that mean over the variant-tissue rows, in total and per tissue. The README table is written by hand from these numbers.
+- The 95% CIs come from 2,000 bootstrap resamples of the genes per cohort. A resample draws genes with replacement and takes all rows of each drawn gene, because rows of one gene share a transcript structure.
+- Outputs: `validation.json` in `--out-dir`, a short summary in the log, and the figures. Per cohort, `validation.json` has the numbers of rows and genes, the Spearman correlations of the model and of the rules, the gain of the model over the rules, and the mean measured NMD efficiency of the rows with `nmd_escape` False. For GTEx, it also has that mean over the variant-tissue rows, in total and per tissue. The README table is written by hand from these numbers.
 - Figures:
   - `measured_vs_predicted`: per cohort, the measured NMD efficiency over the prediction, with the Spearman correlation.
   - `calibration`: per cohort, the calibration plot of `calibration_oof`. Its least-squares line is the linear recalibration that the main README suggests.

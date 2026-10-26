@@ -17,6 +17,7 @@ import io
 import logging
 import re
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
@@ -39,6 +40,8 @@ VCFS = {
 # The columns that join a measured row to the NMD-Scanner row of its transcript and variant
 KEY = ["transcript", "chrom", "pos", "ref", "alt"]
 HGVSC_SUBSTITUTION = re.compile(r"^(?:[^:]+:)?c\.\d+([ACGT])>([ACGT])$")
+# The gene ID without version in the attributes of a transcript line
+PARENT_GENE = re.compile(r";Parent=([^;.]+)")
 COMPLEMENT = str.maketrans("ACGT", "TGCA")
 
 
@@ -59,18 +62,32 @@ def read_nmdeff(name: str) -> pd.DataFrame:
     return pd.read_csv(io.BytesIO(download(NMDEFF_URL + name, NMDEFF_SHA256[name])))
 
 
-def read_strands(gff3: Path) -> dict[str, str]:
+def transcript_lines(gff3: Path) -> Iterator[tuple[str, list[str]]]:
     """
-    Map each transcript ID without version to its strand. A transcript line is any line whose ID attribute starts with
-    ENST (exon, CDS and UTR lines have IDs like exon:ENST...).
+    Yield the transcript ID without version and the fields of each transcript line of the GFF3. A transcript line is
+    any line whose ID attribute starts with ENST (exon, CDS and UTR lines have IDs like exon:ENST...).
     """
-    strands = {}
     with gzip.open(gff3, "rt") if gff3.suffix == ".gz" else open(gff3) as handle:
         for line in handle:
             fields = line.split("\t")
             if not line.startswith("#") and fields[8].startswith("ID=ENST"):
-                strands[fields[8].split(";", 1)[0].removeprefix("ID=").split(".")[0]] = fields[6]
-    return strands
+                yield fields[8].split(";", 1)[0].removeprefix("ID=").split(".")[0], fields
+
+
+def read_strands(gff3: Path) -> dict[str, str]:
+    """Map each transcript ID without version to its strand."""
+    return {transcript: fields[6] for transcript, fields in transcript_lines(gff3)}
+
+
+def read_genes(gff3: Path) -> dict[str, str]:
+    """Map each transcript ID without version to the ID without version of its gene, the Parent of its line."""
+    genes = {}
+    for transcript, fields in transcript_lines(gff3):
+        match = PARENT_GENE.search(fields[8])
+        if match is None:
+            raise ValueError(f"the line of {transcript} in {gff3} has no Parent")
+        genes[transcript] = match.group(1)
+    return genes
 
 
 def add_alleles(table: pd.DataFrame, strands: dict[str, str], fasta: Fasta) -> pd.DataFrame:
