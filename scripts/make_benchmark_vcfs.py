@@ -1,19 +1,10 @@
-# /// script
-# requires-python = "==3.12.*"
-# dependencies = [
-#     "pandas==3.0.6",
-#     "pyfaidx==0.9.0.4",
-# ]
-# [tool.uv]
-# exclude-newer = "2026-10-07T16:00:00Z"
-# ///
 """
 Build resources/TCGA_benchmark/tcga_dataset.vcf and resources/MMRF_benchmark/MMRF_TARGET_dataset.vcf from the tables
 of NMDEff (https://github.com/hjkng/nmdeff), with REF and ALT on the forward strand of GRCh38.
 
 Run it with:
 
-    uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
+    uv run --group scripts python scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
 
 Each VCF has one row per table row, in table order. ID, QUAL, FILTER and INFO are ".". add_alleles explains how REF
 and ALT come from HGVSc. train_model.py and validate_model.py import the shared steps from this file.
