@@ -11,7 +11,7 @@ from Bio.Seq import Seq
 from pyfaidx import Fasta
 
 import nmd_scanner
-from nmd_scanner.cli import main
+from nmd_scanner.cli import _main
 
 # pytest-fixtures as inputs for the tests
 
@@ -206,18 +206,6 @@ def test_read_annotation_gives_whole_coding_regions_on_real_transcripts(gff3_pat
     cds_end_nf = cds["tag"].fillna("").str.contains("cds_end_NF")
     assert cds_end_nf.any()
     assert not cds.loc[cds_end_nf, "has_stop_codon"].any()
-
-
-# Test reading FASTA file
-
-
-def test_read_fasta_file(fasta_path):
-    fasta = nmd_scanner.scan.read_fasta(fasta_path)
-    assert fasta is not None
-
-    keys = list(fasta.keys())
-    assert isinstance(keys, list)
-    assert len(keys) > 0
 
 
 def test_compute_exon_numbers():
@@ -757,10 +745,10 @@ def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected
     )
     fasta = str(tmp_path / "genome.fa")
     gff3_path = _write(tmp_path, "a.gff3", gff3)
-    results = main(vcf, gff3_path, fasta, str(tmp_path / "out.csv"))
+    results = _main(vcf, gff3_path, fasta, str(tmp_path / "out.csv"))
     columns = ["variant_id", "transcript_id", "has_stop_codon", "ref_cds_length", "alt_cds_length", "ref_cds_exons"]
     assert [tuple(row) for row in results[columns].itertuples(index=False)] == expected
-    reassigned = main(vcf, gff3_path, fasta, str(tmp_path / "reassigned.csv"), reassign_exons=True)
+    reassigned = _main(vcf, gff3_path, fasta, str(tmp_path / "reassigned.csv"), reassign_exons=True)
     pd.testing.assert_frame_equal(reassigned, results)
 
 
@@ -1051,7 +1039,7 @@ _ROW_WITHOUT_EXON_ROWS = {
     "ref": "C",
     "alt": "A",
     "cds_in_transcript": False,
-    "start_codon_exon": None,
+    "start_codon_exon_number": None,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -1080,7 +1068,7 @@ _ROW_WITHOUT_EXON_ROWS = {
     "transcript_exons": None,
     "alt_transcript_exons": None,
     "alt_scan_start_codon_pos": None,
-    "alt_scan_start_codon_exon": None,
+    "alt_scan_start_codon_exon_number": None,
     "alt_scan_first_stop_codon": None,
     "alt_scan_first_stop_pos": None,
     "alt_scan_stop_codon_count": None,
@@ -1182,7 +1170,7 @@ def test_main_gives_null_transcript_columns_for_a_gff3_transcript_without_exon_r
     vcf = _write(tmp_path, "variants.vcf", VCF_HEADER + f"chr1\t{position}\tv0\tC\tA\t.\tPASS\t.\n")
     gff3_path = _write(tmp_path, "a.gff3", "".join(without_exons))
 
-    results = main(vcf, gff3_path, str(tmp_path / "genome.fa"), str(tmp_path / "out.csv"))
+    results = _main(vcf, gff3_path, str(tmp_path / "genome.fa"), str(tmp_path / "out.csv"))
 
     assert len(results) == 1
     row = {

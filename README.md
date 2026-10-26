@@ -49,7 +49,7 @@ nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa
 nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.parquet
 
 # option: fix exon numbering (recommended for hg19)
-nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.csv --reassign_exons
+nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.csv --reassign-exons
 
 # option: leave out the 4 sequence columns
 nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa --output results/input.parquet --no-sequences
@@ -61,7 +61,7 @@ Arguments:
 - `--annotation`: Path to the gene annotation in GFF3 (GENCODE or Ensembl flavor), optionally gzip-compressed, with the suffix `.gff3` or `.gff`.
 - `--fasta`: Path to reference genome FASTA.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet.
-- `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
+- `--reassign-exons`: (flag) Recompute exon numbers (recommended for hg19)
 - `--no-sequences`: (flag) Leave out the 4 sequence columns `ref_cds_seq`, `alt_cds_seq`, `transcript_seq` and `alt_transcript_seq`. These columns make up most of the output size.
 - `--no-prediction`: (flag) Leave out the column `nmd_efficiency_prediction`, the prediction of the [NMD efficiency model](#nmd-efficiency-prediction).
 
@@ -87,6 +87,7 @@ Output:
 import nmd_scanner
 
 results = nmd_scanner.annotate("input.vcf", "annotation.gff3.gz", "reference.fa", reassign_exons=False)
+nmd_scanner.write_results(results, "results.parquet")  # or "results.csv"
 ```
 
 The steps of `annotate` are public too; see [How `annotate` builds the result](Technical%20Notes.md#how-annotate-builds-the-result).

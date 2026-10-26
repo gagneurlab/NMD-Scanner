@@ -9,11 +9,10 @@ import numpy as np
 import pandas as pd
 import polars as pl
 from Bio.Seq import Seq
-from pyfaidx import Fasta
 
 from nmd_scanner._polars_bio import pb
 
-# Create the functions used for reading in the files (VCF, GFF3, FASTA)
+# Create the functions used for reading in the files (VCF, GFF3)
 
 GFF3_SUFFIXES = (".gff3", ".gff3.gz", ".gff", ".gff.gz")
 
@@ -798,15 +797,6 @@ def _check_ids_resolved(df, mask):
     unresolved = int(df.loc[mask, "transcript_id"].isna().sum())
     if unresolved:
         raise ValueError(f"Could not resolve transcript_id via the ID/Parent hierarchy for {unresolved} row(s).")
-
-
-def read_fasta(fasta_path):
-    """
-    Reads a genome FASTA file using pyfaidx.Fasta and returns a pyfaidx.Fasta object.
-    """
-    if not os.path.exists(fasta_path):
-        raise FileNotFoundError(f"FASTA file not found: {fasta_path}")
-    return Fasta(fasta_path)
 
 
 def compute_exon_numbers(annotation):

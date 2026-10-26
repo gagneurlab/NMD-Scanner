@@ -51,7 +51,7 @@ REF_COLUMNS = (
     "cds_frame",
     "ref_cds_exons",
     "cds_in_transcript",
-    "start_codon_exon",
+    "start_codon_exon_number",
     "ref_last_codon",
     "ref_valid_stop",
     "ref_first_stop_codon",
@@ -101,7 +101,7 @@ IDS = {
 }
 NOT_SCANNED = {
     "alt_scan_start_codon_pos": None,
-    "alt_scan_start_codon_exon": None,
+    "alt_scan_start_codon_exon_number": None,
     "alt_scan_first_stop_codon": None,
     "alt_scan_first_stop_pos": None,
     "alt_scan_stop_codon_count": None,

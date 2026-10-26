@@ -13,9 +13,9 @@ import pytest
 
 import nmd_scanner.cli as cli_module
 from nmd_scanner.cli import (
+    _is_valid_output_path,
+    _main,
     annotate,
-    is_valid_output_path,
-    main,
     main_cli,
     write_results,
 )
@@ -39,29 +39,29 @@ def _no_process_setup(monkeypatch):
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "results.csv")) is True
+    assert _is_valid_output_path(str(tmp_path / "results.csv")) is True
 
 
 def test_is_valid_output_path_accepts_parquet_extensions(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "results.parquet")) is True
-    assert is_valid_output_path(str(tmp_path / "results.pq")) is True
+    assert _is_valid_output_path(str(tmp_path / "results.parquet")) is True
+    assert _is_valid_output_path(str(tmp_path / "results.pq")) is True
 
 
 def test_is_valid_output_path_accepts_bare_filename_in_cwd():
-    assert is_valid_output_path("results.csv") is True
+    assert _is_valid_output_path("results.csv") is True
 
 
 def test_is_valid_output_path_rejects_existing_directory(tmp_path):
-    assert is_valid_output_path(str(tmp_path)) is False
+    assert _is_valid_output_path(str(tmp_path)) is False
 
 
 def test_is_valid_output_path_rejects_missing_parent_directory(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "missing" / "results.csv")) is False
+    assert _is_valid_output_path(str(tmp_path / "missing" / "results.csv")) is False
 
 
 def test_is_valid_output_path_rejects_unsupported_extension(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "results.tsv")) is False
-    assert is_valid_output_path(str(tmp_path / "results")) is False
+    assert _is_valid_output_path(str(tmp_path / "results.tsv")) is False
+    assert _is_valid_output_path(str(tmp_path / "results")) is False
 
 
 def test_write_results_csv_roundtrip(tmp_path):
@@ -102,6 +102,12 @@ def test_write_results_csv_writes_the_list_columns_as_json(tmp_path):
     assert df.to_dict("list") == columns
 
 
+def test_write_results_is_exported_from_the_package():
+    import nmd_scanner
+
+    assert nmd_scanner.write_results is write_results
+
+
 def test_write_results_rejects_unsupported_extension(tmp_path):
     df = pd.DataFrame({"x": [1]})
     with pytest.raises(ValueError, match="Unsupported output extension"):
@@ -125,7 +131,7 @@ def test_main_end_to_end_smoke(tmp_path):
     """Run the full pipeline on the bundled chr18 test data and check the output file."""
 
     out = tmp_path / "smoke_results.csv"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -168,7 +174,7 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
     import pyarrow.parquet as pq
 
     out = tmp_path / "typed_results.parquet"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -260,7 +266,7 @@ def _results_schema(tmp_path, vcf_path, name):
     import pyarrow.parquet as pq
 
     out = tmp_path / name
-    main(
+    _main(
         vcf_path=vcf_path,
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -298,7 +304,7 @@ def test_parquet_schema_is_the_same_for_every_run(tmp_path):
         pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())]))
     )
     assert schema_with.field("alt_scan_stop_codon_exons").type.equals(pa.list_(pa.int64()))
-    assert schema_with.field("alt_scan_start_codon_exon").type.equals(pa.int64())
+    assert schema_with.field("alt_scan_start_codon_exon_number").type.equals(pa.int64())
     assert schema_with.field("alt_scan_first_stop_codon").type.equals(pa.string())
 
 
@@ -307,7 +313,7 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
     import pyarrow.parquet as pq
 
     out = tmp_path / "roundtrip.parquet"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -344,7 +350,7 @@ def test_main_keeps_numeric_and_NA_variant_ids_as_text(tmp_path, output_name, id
         f"chr18\t21383521\t{ids[1]}\tG\tGTTT\t.\t.\t.\n"
     )
     out = tmp_path / output_name
-    results = main(
+    results = _main(
         vcf_path=str(vcf),
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -362,7 +368,7 @@ def test_main_keeps_numeric_and_NA_variant_ids_as_text(tmp_path, output_name, id
 def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, caplog):
     out = tmp_path / "empty.csv"
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=intergenic_vcf,
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
@@ -388,14 +394,14 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     import pyarrow.parquet as pq
 
     empty_out = tmp_path / "empty.parquet"
-    main(
+    _main(
         vcf_path=intergenic_vcf,
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(empty_out),
     )
     full_out = tmp_path / "full.parquet"
-    main(
+    _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -425,7 +431,7 @@ def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, ca
         "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383521\tv1\tG\tGT\t.\t.\t.\n"
     )
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=str(vcf),
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
@@ -445,7 +451,7 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
         "chr18\t21383521\tv1\tG\tGT\t.\t.\t.\n"
     )
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=str(vcf),
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
@@ -466,7 +472,7 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
 def test_main_with_only_reference_mismatches_writes_empty_csv(tmp_path, reference_mismatch_vcf, caplog):
     out = tmp_path / "mismatch.csv"
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=reference_mismatch_vcf,
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
@@ -487,14 +493,14 @@ def test_main_with_only_reference_mismatches_writes_empty_parquet_with_the_usual
     import pyarrow.parquet as pq
 
     empty_out = tmp_path / "mismatch.parquet"
-    main(
+    _main(
         vcf_path=reference_mismatch_vcf,
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(empty_out),
     )
     full_out = tmp_path / "full.parquet"
-    main(
+    _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -506,10 +512,10 @@ def test_main_with_only_reference_mismatches_writes_empty_parquet_with_the_usual
 
 
 def test_main_end_to_end_reassign_exons(tmp_path):
-    """``--reassign_exons`` runs on the bundled chr18 data and yields int exon numbers."""
+    """``reassign_exons=True`` runs on the bundled chr18 data and yields int exon numbers."""
 
     out = tmp_path / "reassigned.csv"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -526,7 +532,7 @@ def test_main_end_to_end_reassign_exons(tmp_path):
 
     # chr18.gff3.gz is hg38, where the annotated exon numbers already follow transcript order.
     # extract_ptc casts the annotated ones to int, too.
-    annotated = main(
+    annotated = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -538,7 +544,7 @@ def test_main_end_to_end_reassign_exons(tmp_path):
 def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
     """Variants over a splice site get a row without prediction, and unknown_reason says why."""
 
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -607,11 +613,12 @@ def _patch_main(monkeypatch):
 
     def fake_main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
         calls["annotation_path"] = annotation_path
+        calls["reassign_exons"] = reassign_exons
         calls["sequences"] = sequences
         calls["prediction"] = prediction
         return pd.DataFrame()
 
-    monkeypatch.setattr(cli_module, "main", fake_main)
+    monkeypatch.setattr(cli_module, "_main", fake_main)
     return calls
 
 
@@ -645,6 +652,16 @@ def test_main_cli_annotation_option_reaches_main(monkeypatch, tmp_path):
     assert calls["annotation_path"] == "annotation.gff3"
 
 
+@pytest.mark.parametrize("flags, reassign_exons", [([], False), (["--reassign-exons"], True)])
+def test_main_cli_reassign_exons_flag_reaches_main(monkeypatch, tmp_path, flags, reassign_exons):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    argv = ["nmd-scanner", "--vcf", "in.vcf", "--annotation", "annotation.gff3", "--fasta", "ref.fa", "--output"]
+    monkeypatch.setattr(sys, "argv", [*argv, str(out), *flags])
+    main_cli()
+    assert calls["reassign_exons"] is reassign_exons
+
+
 @pytest.mark.parametrize("flags, sequences", [([], True), (["--no-sequences"], False)])
 def test_main_cli_no_sequences_flag_reaches_main(monkeypatch, tmp_path, flags, sequences):
     out = tmp_path / "out.csv"
@@ -663,6 +680,18 @@ def test_main_cli_no_prediction_flag_reaches_main(monkeypatch, tmp_path, flags, 
     monkeypatch.setattr(sys, "argv", [*argv, str(out), *flags])
     main_cli()
     assert calls["prediction"] is prediction
+
+
+def test_main_cli_rejects_an_abbreviated_flag(monkeypatch, tmp_path, capsys):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    argv = ["nmd-scanner", "--vcf", "in.vcf", "--annotation", "annotation.gff3", "--fasta", "ref.fa", "--output"]
+    monkeypatch.setattr(sys, "argv", [*argv, str(out), "--no-seq"])
+    with pytest.raises(SystemExit) as excinfo:
+        main_cli()
+    assert excinfo.value.code == 2
+    assert "unrecognized arguments: --no-seq" in capsys.readouterr().err
+    assert calls == {}
 
 
 def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
@@ -692,8 +721,8 @@ def test_main_cli_rejects_an_annotation_of_unknown_format(monkeypatch, tmp_path,
 def test_main_accepts_a_path_object_for_the_annotation(tmp_path):
     out = str(tmp_path / "out.csv")
     vcf = "resources/part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf"
-    via_path = main(vcf, Path("resources/chr18.gff3.gz"), "resources/chr18.fa.gz", out)
-    via_str = main(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", out)
+    via_path = _main(vcf, Path("resources/chr18.gff3.gz"), "resources/chr18.fa.gz", out)
+    via_str = _main(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", out)
     assert not via_path.empty
     pd.testing.assert_frame_equal(via_path, via_str)
 
@@ -715,7 +744,7 @@ chr18\tensembl\tCDS\t47390\t48447\t.\t-\t2\tID=CDS:P1;Parent=transcript:T1
 
 def test_annotate_returns_what_main_writes(tmp_path):
     out = tmp_path / "main.csv"
-    expected = main(
+    expected = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -832,7 +861,7 @@ def test_annotate_sets_nmd_efficiency_prediction_status_ok_exactly_for_the_rows_
 
 def test_annotate_reassign_exons_matches_main(tmp_path):
     args = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-    expected = main(*args, str(tmp_path / "main.csv"), reassign_exons=True)
+    expected = _main(*args, str(tmp_path / "main.csv"), reassign_exons=True)
 
     results = annotate(*args, reassign_exons=True)
 
@@ -854,7 +883,7 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     gff3.write_text(_TUBB8B_GFF3)
 
     results = annotate(str(vcf), str(gff3), fasta_path)
-    expected = main(str(vcf), str(gff3), fasta_path, str(tmp_path / "main.csv"))
+    expected = _main(str(vcf), str(gff3), fasta_path, str(tmp_path / "main.csv"))
 
     assert list(results.columns) == list(output_column_kinds())
     assert list(results["transcript_id"]) == ["T1"]
@@ -879,7 +908,7 @@ def test_main_without_sequences_writes_the_full_output_without_the_4_sequence_co
     reduced_out = tmp_path / f"reduced{extension}"
     write_results(annotate(*args), str(full_out))
 
-    reduced = main(*args, str(reduced_out), sequences=False)
+    reduced = _main(*args, str(reduced_out), sequences=False)
 
     assert list(reduced.columns) == list(output_column_kinds(sequences=False))
     if extension == ".csv":

@@ -338,8 +338,8 @@ NULL_CASES = [
             *("alt_transcript_exons", "annotated_stop_distance"),
         )
     ],
-    ("start_codon_exon", NO_START_CODON, lambda row: not row["has_start_codon"]),
-    ("start_codon_exon", SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_length"] < 3),
+    ("start_codon_exon_number", NO_START_CODON, lambda row: not row["has_start_codon"]),
+    ("start_codon_exon_number", SHORT_CDS, lambda row: row["has_start_codon"] and row["ref_cds_length"] < 3),
     *[
         (column, SHORT_CDS, lambda row: row["ref_cds_length"] < 3)
         for column in (
@@ -404,7 +404,7 @@ NULL_CASES = [
     ),
     *[
         entry
-        for column in ("alt_scan_start_codon_pos", "alt_scan_start_codon_exon")
+        for column in ("alt_scan_start_codon_pos", "alt_scan_start_codon_exon_number")
         for entry in [
             (column, NOT_SCANNED, lambda row: not _scanned(row)),
             (
@@ -424,7 +424,7 @@ NULL_CASES = [
         ]
     ],
     (
-        "alt_scan_start_codon_exon",
+        "alt_scan_start_codon_exon_number",
         NO_ALT_EXONS,
         lambda row: (
             _scanned(row) and row["alt_scan_start_codon_pos"] is not None and row["alt_transcript_exons"] is None

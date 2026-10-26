@@ -10,7 +10,7 @@ import nmd_scanner
 import nmd_scanner.model as model_module
 from nmd_scanner.cli import annotate
 from nmd_scanner.model import MODEL_PATH, add_nmd_efficiency_prediction
-from nmd_scanner.schema import MODEL_INPUTS, empty_table, output_column_kinds, to_arrow
+from nmd_scanner.schema import MODEL_INPUTS, OUTPUT_COLUMN_KINDS, empty_table, output_column_kinds, to_arrow
 
 ARGS = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
@@ -62,7 +62,9 @@ def test_without_a_row_to_prediction_the_prediction_is_float64_and_the_model_doe
         raise AssertionError("the model ran")
 
     monkeypatch.setattr(onnxruntime.InferenceSession, "run", run)
-    table = results[results["nmd_efficiency_prediction_status"] != "ok"] if has_rows else empty_table()
+    table = (
+        results[results["nmd_efficiency_prediction_status"] != "ok"] if has_rows else empty_table(OUTPUT_COLUMN_KINDS)
+    )
 
     predicted = add_nmd_efficiency_prediction(table)
 

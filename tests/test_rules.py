@@ -606,7 +606,7 @@ def test_start_codon_pos_is_the_annotated_start_codon():
 
     rows = records(result, StartCodonRow)
     assert [starts_with_annotated_start_codon(row, "ref") for row in rows] == [True, True, False, False]
-    assert result["start_codon_exon"].tolist() == [1, 1, None, None]
+    assert result["start_codon_exon_number"].tolist() == [1, 1, None, None]
     # ATG>ACG changes the annotated start codon, so the alt CDS has none
     assert [starts_with_annotated_start_codon(row, "alt") for row in rows] == [True, False, False, False]
 

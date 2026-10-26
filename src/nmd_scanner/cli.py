@@ -25,6 +25,7 @@ def annotate(
     vcf_path: str | os.PathLike,
     annotation_path: str | os.PathLike,
     fasta_path: str | os.PathLike,
+    *,
     reassign_exons: bool = False,
     sequences: bool = True,
     prediction: bool = True,
@@ -54,8 +55,8 @@ def annotate(
                   nmd_scanner.model.add_nmd_efficiency_prediction). With False, it is left out, and the other
                   columns stay the same.
     :return: DataFrame summarizing all annotated variants, with the columns and dtypes of
-             output_column_kinds(sequences, prediction) (see nmd_scanner.schema). It has zero rows if no variant gives a
-             result.
+             output_column_kinds(sequences=sequences, prediction=prediction) (see nmd_scanner.schema). It has
+             zero rows if no variant gives a result.
     """
 
     # read VCF file (variants)
@@ -74,11 +75,7 @@ def annotate(
     annotation = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
     logger.info("Annotation file shape: %s", annotation.shape)
     cds_df = annotation[annotation["Feature"] == "CDS"]
-
-    # extract exon regions from the annotation and compute exon related metrics:
-    # exon length & number of exons contained in each transcript
-    exons_df = annotation[annotation["Feature"] == "exon"].copy()
-    exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
+    exons_df = annotation[annotation["Feature"] == "exon"]
 
     # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
     logger.info("Creating sequences and analyzing...")
@@ -98,7 +95,7 @@ def annotate(
     return results
 
 
-def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
+def _main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
     """
     Main function for NMD scanner: annotate the variants and write the results to a file
 
@@ -158,9 +155,9 @@ def _json_list(value):
     return json.dumps(list(value), default=lambda item: item.item())
 
 
-def is_valid_output_path(path):
+def _is_valid_output_path(path):
     """
-    Validate that ``path`` is a writable output file path.
+    Return whether ``path`` is a valid output file path. It does not test write permission.
 
     Rules:
     - Must not point at an existing directory (single-file output only).
@@ -197,7 +194,7 @@ def main_cli():
 
     _set_up_process()
 
-    parser = argparse.ArgumentParser(description="Run NMD pipeline")
+    parser = argparse.ArgumentParser(description="Run NMD pipeline", allow_abbrev=False)
     parser.add_argument("--vcf", required=True, help="Path to VCF file")
     parser.add_argument(
         "--annotation",
@@ -227,7 +224,10 @@ def main_cli():
 
     # If user adds flag, reassign exon numbers
     parser.add_argument(
-        "--reassign_exons", action="store_true", help="Recompute exon numbers (recommended for hg19; may be slow)"
+        "--reassign-exons",
+        dest="reassign_exons",
+        action="store_true",
+        help="Recompute exon numbers (recommended for hg19; may be slow)",
     )
     parser.add_argument(
         "--no-sequences",
@@ -256,16 +256,15 @@ def main_cli():
         parser.error(f"argument --annotation: {error}")
 
     # Check that the output path is valid
-    if not is_valid_output_path(args.output):
+    if not _is_valid_output_path(args.output):
         raise SystemExit(
             f"Invalid output path: {args.output!r}. "
-            f"Must be a non-existing or overwritable file with one of these extensions: "
-            f"{', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}, "
-            f"and its parent directory must exist."
+            f"It must not be a directory, its parent directory must exist, "
+            f"and its extension must be one of {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}."
         )
 
     # Run the main pipeline
-    main(
+    _main(
         args.vcf,
         args.annotation,
         args.fasta,

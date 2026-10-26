@@ -114,7 +114,7 @@ PTC_COLUMN_KINDS = {
     "ref_cds_exons": "pair_list",
     "alt_cds_exons": "pair_list",
     "cds_in_transcript": "bool",
-    "start_codon_exon": "int",
+    "start_codon_exon_number": "int",
     "ref_last_codon": "string",
     "ref_valid_stop": "bool",
     "ref_first_stop_codon": "string",
@@ -146,7 +146,7 @@ PTC_COLUMN_KINDS = {
     "transcript_exons": "pair_list",
     "alt_transcript_exons": "pair_list",
     "alt_scan_start_codon_pos": "int",
-    "alt_scan_start_codon_exon": "int",
+    "alt_scan_start_codon_exon_number": "int",
     "alt_scan_first_stop_codon": "string",
     "alt_scan_first_stop_pos": "int",
     "alt_scan_stop_codon_count": "int",
@@ -207,10 +207,6 @@ PREDICTION_COLUMN_KINDS = {"nmd_efficiency_prediction": "float"}
 # annotate(..., sequences=False) and the CLI flag --no-sequences leave them out (see output_column_kinds).
 SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
 
-# The columns of kind stop_codon_list. They hold lists of {"position": ..., "codon": ...} records, e.g.
-# {"position": 5442, "codon": "TGA"}.
-STOP_CODON_COLUMNS = ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons")
-
 # The 19 inputs of the NMD efficiency model (see nmd_scanner.model and scripts/train_model.py), in the order that
 # the model takes them. The model cannot predict a row in which one of them is null.
 MODEL_INPUTS = [
@@ -236,7 +232,7 @@ MODEL_INPUTS = [
 ]
 
 
-def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
+def apply_schema(table, column_kinds):
     """
     Return a copy of ``table`` with the columns of ``column_kinds``, in that order, and the dtype of each
     column's kind (see KIND_DTYPES). A missing value in an int, bool or string column becomes pd.NA, and one
@@ -270,7 +266,7 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
     return table[list(column_kinds)].astype({column: KIND_DTYPES[kind] for column, kind in column_kinds.items()})
 
 
-def output_column_kinds(sequences=True, prediction=True):
+def output_column_kinds(*, sequences=True, prediction=True):
     """
     Return the kind of every column that ``annotate`` returns with the same arguments, in output order. By default,
     these are the columns of OUTPUT_COLUMN_KINDS and the column of PREDICTION_COLUMN_KINDS after
@@ -292,7 +288,7 @@ def output_column_kinds(sequences=True, prediction=True):
     return kinds
 
 
-def empty_table(column_kinds=OUTPUT_COLUMN_KINDS):
+def empty_table(column_kinds):
     """
     Return a DataFrame without rows, with the columns and dtypes of ``column_kinds``.
     """

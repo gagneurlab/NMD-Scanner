@@ -886,7 +886,7 @@ def analyze_sequence(results_df):
 
     # Initialize result columns for both reference and alternative sequence. The loop collects the results per row
     # position in lists. Setting cells of the DataFrame in the loop is slow.
-    results = {"start_codon_exon": [None] * len(df)}  # exon number
+    results = {"start_codon_exon_number": [None] * len(df)}
     for label in ["ref", "alt"]:
         results[f"{label}_last_codon"] = [None] * len(df)
         results[f"{label}_valid_stop"] = [None] * len(df)
@@ -933,7 +933,7 @@ def analyze_sequence(results_df):
 
             # Store results. The exon of the annotated start codon is the same in the ref and the alt CDS.
             if label == "ref" and start_pos is not None:
-                results["start_codon_exon"][idx] = get_exon(start_pos, exon_info)  # exon number
+                results["start_codon_exon_number"][idx] = get_exon(start_pos, exon_info)
             results[f"{label}_last_codon"][idx] = last_codon
             results[f"{label}_valid_stop"][idx] = is_valid_stop
             results[f"{label}_first_stop_codon"][idx] = first_stop
@@ -1284,7 +1284,7 @@ def analyze_transcript(results_df):
     # DataFrame in the loop is slow, so it does so only for alt_has_ptc and stop_loss.
     new_columns = [
         "alt_scan_start_codon_pos",
-        "alt_scan_start_codon_exon",  # for exon number
+        "alt_scan_start_codon_exon_number",
         "alt_scan_first_stop_codon",
         "alt_scan_first_stop_pos",
         "alt_scan_stop_codon_count",
@@ -1364,7 +1364,7 @@ def analyze_transcript(results_df):
 
         # Store results
         results["alt_scan_start_codon_pos"][position] = start_pos
-        results["alt_scan_start_codon_exon"][position] = start_exon  # for exon number
+        results["alt_scan_start_codon_exon_number"][position] = start_exon
         results["alt_scan_first_stop_codon"][position] = first_stop
         results["alt_scan_first_stop_pos"][position] = first_stop_pos
         results["alt_scan_stop_codon_count"][position] = len(stop_codons)

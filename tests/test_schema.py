@@ -110,7 +110,7 @@ def test_apply_schema_rejects_a_value_outside_the_categories():
 
 
 def test_empty_table_has_the_schema():
-    table = empty_table()
+    table = empty_table(OUTPUT_COLUMN_KINDS)
 
     assert len(table) == 0
     assert_schema(table, OUTPUT_COLUMN_KINDS)
@@ -142,9 +142,9 @@ def test_empty_table_without_sequences_has_the_79_columns_and_their_dtypes():
 def test_output_column_kinds_adds_nmd_efficiency_prediction_after_nmd_efficiency_prediction_status_unless_prediction_is_false(
     sequences,
 ):
-    kinds = output_column_kinds(sequences)
+    kinds = output_column_kinds(sequences=sequences)
 
-    assert list(kinds) == [*output_column_kinds(sequences, prediction=False), "nmd_efficiency_prediction"]
+    assert list(kinds) == [*output_column_kinds(sequences=sequences, prediction=False), "nmd_efficiency_prediction"]
     assert len(kinds) == (83 if sequences else 79)
     assert kinds["nmd_efficiency_prediction"] == "float"
     assert_schema(empty_table(kinds), kinds)
@@ -154,7 +154,7 @@ def test_output_column_kinds_adds_nmd_efficiency_prediction_after_nmd_efficiency
 @pytest.mark.parametrize("prediction", [False, True])
 @pytest.mark.parametrize("sequences", [True, False])
 def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences, prediction):
-    kinds = output_column_kinds(sequences, prediction)
+    kinds = output_column_kinds(sequences=sequences, prediction=prediction)
 
     table = to_arrow(empty_table(kinds))
 
@@ -177,9 +177,9 @@ def test_to_arrow_is_exported_from_the_package():
 @pytest.fixture
 def run_main(tmp_path, monkeypatch):
     """
-    Return a function that runs main() on a VCF with the chr18 annotation. It returns the table that
-    extract_ptc returned to main() and the table that main() wrote. After each call, the attribute
-    ptc_table_before_main of the function holds a copy of the first table, taken before main() used it.
+    Return a function that runs _main() on a VCF with the chr18 annotation. It returns the table that
+    extract_ptc returned to _main() and the table that _main() wrote. After each call, the attribute
+    ptc_table_before_main of the function holds a copy of the first table, taken before _main() used it.
     """
 
     def run(vcf_path):
@@ -195,7 +195,7 @@ def run_main(tmp_path, monkeypatch):
 
         monkeypatch.setattr(cli, "extract_ptc", recording_extract_ptc)
         monkeypatch.setattr(cli, "write_results", recording_write_results)
-        cli.main(vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", str(tmp_path / "out.parquet"))
+        cli._main(vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", str(tmp_path / "out.parquet"))
         return tables["extract_ptc"], tables["written"]
 
     return run
@@ -251,7 +251,7 @@ def test_add_features_and_rules_gives_the_same_dtypes_for_zero_and_many_rows(run
 
 def test_main_writes_the_result_of_add_features_and_rules_with_the_prediction(run_main):
     ptc_table, written = run_main("resources/test_files/test_variants.vcf")
-    # main() already passed ptc_table to add_features_and_rules, so a copy taken now could miss a change
+    # _main() already passed ptc_table to add_features_and_rules, so a copy taken now could miss a change
     unchanged = run_main.ptc_table_before_main
 
     result = add_features_and_rules(ptc_table)
