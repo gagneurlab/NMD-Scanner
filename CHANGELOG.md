@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.5.0...v1.0.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* the column nmd_model_status is now nmd_efficiency_prediction_status, and schema.MODEL_STATUSES is now schema.PREDICTION_STATUSES.
+
+### Features
+
+* add the NMD efficiency prediction to the output by default ([#57](https://github.com/gagneurlab/NMD-Scanner/issues/57)) ([fdb2ee8](https://github.com/gagneurlab/NMD-Scanner/commit/fdb2ee8149c57ec4df38f7b20161aa8b6ad2ee44))
+
+
+### Documentation
+
+* validate the NMD efficiency model on four cohorts ([#54](https://github.com/gagneurlab/NMD-Scanner/issues/54)) ([bb60598](https://github.com/gagneurlab/NMD-Scanner/commit/bb60598aa47ab424cf3df022efff2b7c60170b29))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 ([#60](https://github.com/gagneurlab/NMD-Scanner/issues/60)) ([0b580d2](https://github.com/gagneurlab/NMD-Scanner/commit/0b580d2cf882a63dea88c7ad7e142625d8a7696b))
+
 ## [0.5.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.4.0...v0.5.0) (2026-10-07)
 
 
