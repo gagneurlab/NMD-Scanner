@@ -214,7 +214,7 @@ VALUES = {
     "nmd_start_proximal_rule": {True, False, None},
     "nmd_single_exon_rule": {True, False, None},
     "nmd_escape": {True, False, None},
-    "nmd_model_status": {
+    "nmd_efficiency_prediction_status": {
         "unknown_effect",
         "no_ptc",
         "ref_ptc",

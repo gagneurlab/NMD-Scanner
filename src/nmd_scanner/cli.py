@@ -11,7 +11,7 @@ import tqdm
 from pyfaidx import Fasta
 
 from nmd_scanner.extra_features import add_features_and_rules
-from nmd_scanner.model import add_nmd_pred_score
+from nmd_scanner.model import add_nmd_efficiency_prediction
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.scan import detect_annotation_format, read_annotation, read_vcf
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS, to_arrow
@@ -27,7 +27,7 @@ def annotate(
     fasta_path: str | os.PathLike,
     reassign_exons: bool = False,
     sequences: bool = True,
-    score: bool = True,
+    prediction: bool = True,
 ) -> pd.DataFrame:
     """
     Annotate the variants of a VCF file with NMD features and return the result table.
@@ -41,7 +41,7 @@ def annotate(
     3. Parse and preprocess gene annotations (coding regions, i.e. CDS plus stop codon, and exons)
     4. Extract premature termination codons (PTCs) & Evaluate NMD escape rules
     5. Add extra features to output (e.g. 3' & 5'UTR length, downstream & upstream exon counts, etc.)
-    6. Add the NMD efficiency score
+    6. Add the NMD efficiency prediction
 
     :param vcf_path: path to the input VCF file
     :param annotation_path: path to the input gene annotation file (GFF3, optionally gzip-compressed)
@@ -50,10 +50,10 @@ def annotate(
     :param reassign_exons: recompute the exon numbers of the annotation (recommended for hg19; may be slow)
     :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS. With False, they are left out, which saves
                       most of the table's memory. The other columns stay the same.
-    :param score: add the column nmd_pred_score after nmd_model_status (see nmd_scanner.model.add_nmd_pred_score).
+    :param prediction: add the column nmd_efficiency_prediction after nmd_efficiency_prediction_status (see nmd_scanner.model.add_nmd_efficiency_prediction).
                   With False, it is left out, and the other columns stay the same.
     :return: DataFrame summarizing all annotated variants, with the columns and dtypes of
-             output_column_kinds(sequences, score) (see nmd_scanner.schema). It has zero rows if no variant gives a
+             output_column_kinds(sequences, prediction) (see nmd_scanner.schema). It has zero rows if no variant gives a
              result.
     """
 
@@ -90,14 +90,14 @@ def annotate(
     if not sequences:
         results = results.drop(columns=list(SEQUENCE_COLUMNS))
 
-    # Add the prediction of the NMD efficiency model after nmd_model_status
-    if score:
-        results = add_nmd_pred_score(results)
+    # Add the prediction of the NMD efficiency model after nmd_efficiency_prediction_status
+    if prediction:
+        results = add_nmd_efficiency_prediction(results)
 
     return results
 
 
-def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, score=True):
+def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
     """
     Main function for NMD scanner: annotate the variants and write the results to a file
 
@@ -107,12 +107,12 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, se
     :param output: path to the output file (.csv, .parquet, or .pq)
     :param reassign_exons: recompute the exon numbers of the annotation
     :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS (see annotate())
-    :param score: add the column nmd_pred_score (see annotate())
+    :param prediction: add the column nmd_efficiency_prediction (see annotate())
     :return: DataFrame summarizing all annotated variants: the table that annotate() returns
     """
 
     results = annotate(
-        vcf_path, annotation_path, fasta_path, reassign_exons=reassign_exons, sequences=sequences, score=score
+        vcf_path, annotation_path, fasta_path, reassign_exons=reassign_exons, sequences=sequences, prediction=prediction
     )
 
     # Write output
@@ -238,10 +238,10 @@ def main_cli():
         ),
     )
     parser.add_argument(
-        "--no-score",
-        dest="score",
+        "--no-prediction",
+        dest="prediction",
         action="store_false",
-        help="Leave out the column nmd_pred_score, the NMD efficiency that the model predicts.",
+        help="Leave out the column nmd_efficiency_prediction, the NMD efficiency that the model predicts.",
     )
 
     args = parser.parse_args()
@@ -271,7 +271,7 @@ def main_cli():
         args.output,
         reassign_exons=args.reassign_exons,
         sequences=args.sequences,
-        score=args.score,
+        prediction=args.prediction,
     )
 
 

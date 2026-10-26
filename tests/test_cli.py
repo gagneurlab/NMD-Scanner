@@ -21,9 +21,9 @@ from nmd_scanner.cli import (
 )
 from nmd_scanner.schema import (
     MODEL_INPUTS,
-    MODEL_STATUSES,
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
+    PREDICTION_STATUSES,
     SEQUENCE_COLUMNS,
     output_column_kinds,
 )
@@ -415,8 +415,8 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
         assert schema.field(column).type.equals(pa.bool_()), column
         assert loaded.loc[unknown, column].isna().all(), column
         assert loaded.loc[~unknown, column].notna().any(), column
-    assert (loaded.loc[unknown, "nmd_model_status"] == "unknown_effect").all()
-    assert (loaded.loc[~unknown, "nmd_model_status"] != "unknown_effect").all()
+    assert (loaded.loc[unknown, "nmd_efficiency_prediction_status"] == "unknown_effect").all()
+    assert (loaded.loc[~unknown, "nmd_efficiency_prediction_status"] != "unknown_effect").all()
 
 
 def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, caplog):
@@ -605,10 +605,10 @@ def test_main_cli_shows_no_progress_bars(cli_stderr):
 def _patch_main(monkeypatch):
     calls = {}
 
-    def fake_main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, score=True):
+    def fake_main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
         calls["annotation_path"] = annotation_path
         calls["sequences"] = sequences
-        calls["score"] = score
+        calls["prediction"] = prediction
         return pd.DataFrame()
 
     monkeypatch.setattr(cli_module, "main", fake_main)
@@ -655,14 +655,14 @@ def test_main_cli_no_sequences_flag_reaches_main(monkeypatch, tmp_path, flags, s
     assert calls["sequences"] is sequences
 
 
-@pytest.mark.parametrize("flags, score", [([], True), (["--no-score"], False)])
-def test_main_cli_no_score_flag_reaches_main(monkeypatch, tmp_path, flags, score):
+@pytest.mark.parametrize("flags, prediction", [([], True), (["--no-prediction"], False)])
+def test_main_cli_no_prediction_flag_reaches_main(monkeypatch, tmp_path, flags, prediction):
     out = tmp_path / "out.csv"
     calls = _patch_main(monkeypatch)
     argv = ["nmd-scanner", "--vcf", "in.vcf", "--annotation", "annotation.gff3", "--fasta", "ref.fa", "--output"]
     monkeypatch.setattr(sys, "argv", [*argv, str(out), *flags])
     main_cli()
-    assert calls["score"] is score
+    assert calls["prediction"] is prediction
 
 
 def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
@@ -820,14 +820,14 @@ def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp
     assert list(results.columns) == list(output_column_kinds())
 
 
-def test_annotate_sets_nmd_model_status_ok_exactly_for_the_rows_the_model_can_score():
+def test_annotate_sets_nmd_efficiency_prediction_status_ok_exactly_for_the_rows_the_model_can_prediction():
     results = annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
     new_ptc = results["alt_has_ptc"].fillna(False) & ~results["ref_has_ptc"].fillna(False)
     scorable = new_ptc & results[MODEL_INPUTS].notna().all(axis=1)
-    assert (results["nmd_model_status"] == "ok").tolist() == scorable.tolist()
+    assert (results["nmd_efficiency_prediction_status"] == "ok").tolist() == scorable.tolist()
     assert scorable.any()
-    assert set(results["nmd_model_status"]) <= set(MODEL_STATUSES)
+    assert set(results["nmd_efficiency_prediction_status"]) <= set(PREDICTION_STATUSES)
 
 
 def test_annotate_reassign_exons_matches_main(tmp_path):
@@ -894,9 +894,9 @@ def test_main_without_sequences_writes_the_full_output_without_the_4_sequence_co
 
 @pytest.mark.parametrize("extension", [".csv", ".parquet"])
 @pytest.mark.parametrize("vcf", ["resources/test_files/test_variants.vcf", "intergenic_vcf"])
-def test_main_cli_writes_nmd_pred_score_unless_no_score(monkeypatch, request, tmp_path, vcf, extension):
+def test_main_cli_writes_nmd_efficiency_prediction_unless_no_prediction(monkeypatch, request, tmp_path, vcf, extension):
     """
-    By default, the output has nmd_pred_score after nmd_model_status. With --no-score, it has the 80 columns of
+    By default, the output has nmd_efficiency_prediction after nmd_efficiency_prediction_status. With --no-prediction, it has the 80 columns of
     OUTPUT_COLUMN_KINDS, with the values of the default output.
     """
     import pyarrow as pa
@@ -904,29 +904,31 @@ def test_main_cli_writes_nmd_pred_score_unless_no_score(monkeypatch, request, tm
 
     vcf_path = request.getfixturevalue(vcf) if vcf.endswith("_vcf") else vcf
     args = (vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-    scored_out = tmp_path / f"scored{extension}"
+    predicted_out = tmp_path / f"predicted{extension}"
     plain_out = tmp_path / f"plain{extension}"
     argv = ["nmd-scanner", "--vcf", args[0], "--annotation", args[1], "--fasta", args[2], "--output"]
     expected = annotate(*args)
 
-    monkeypatch.setattr(sys, "argv", [*argv, str(scored_out)])
+    monkeypatch.setattr(sys, "argv", [*argv, str(predicted_out)])
     main_cli()
-    monkeypatch.setattr(sys, "argv", [*argv, str(plain_out), "--no-score"])
+    monkeypatch.setattr(sys, "argv", [*argv, str(plain_out), "--no-prediction"])
     main_cli()
 
     if extension == ".csv":
-        loaded = pd.read_csv(scored_out)
+        loaded = pd.read_csv(predicted_out)
         plain = pd.read_csv(plain_out)
         assert list(plain.columns) == list(OUTPUT_COLUMN_KINDS)
-        pd.testing.assert_frame_equal(plain, loaded.drop(columns="nmd_pred_score"))
+        pd.testing.assert_frame_equal(plain, loaded.drop(columns="nmd_efficiency_prediction"))
     else:
-        table = pq.read_table(scored_out)
-        assert table.schema.field("nmd_pred_score").type.equals(pa.float64())
+        table = pq.read_table(predicted_out)
+        assert table.schema.field("nmd_efficiency_prediction").type.equals(pa.float64())
         plain_table = pq.read_table(plain_out)
         assert plain_table.column_names == list(OUTPUT_COLUMN_KINDS)
-        assert plain_table.equals(table.drop_columns(["nmd_pred_score"]))
+        assert plain_table.equals(table.drop_columns(["nmd_efficiency_prediction"]))
         loaded = table.to_pandas()
     assert list(loaded.columns) == list(output_column_kinds())
     assert len(loaded) == len(expected)
-    # nmd_pred_score is NaN in the rows whose nmd_model_status is not ok. CSV writes it as an empty field.
-    np.testing.assert_allclose(loaded["nmd_pred_score"].to_numpy(dtype=float), expected["nmd_pred_score"])
+    # nmd_efficiency_prediction is NaN in the rows whose nmd_efficiency_prediction_status is not ok. CSV writes it as an empty field.
+    np.testing.assert_allclose(
+        loaded["nmd_efficiency_prediction"].to_numpy(dtype=float), expected["nmd_efficiency_prediction"]
+    )

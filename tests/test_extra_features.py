@@ -22,10 +22,10 @@ from nmd_scanner.extra_features import (
     calculate_ptc_to_start_distance,
     calculate_stop_codon_dist,
     calculate_utr_lengths,
-    nmd_model_status,
+    nmd_efficiency_prediction_status,
 )
 from nmd_scanner.rules import analyze_sequence
-from nmd_scanner.schema import MODEL_INPUTS, MODEL_STATUSES, plain_value
+from nmd_scanner.schema import MODEL_INPUTS, PREDICTION_STATUSES, plain_value
 
 
 def feature_row(**values):
@@ -605,7 +605,7 @@ def test_add_likely_misannotated_flag():
 
 
 def _status_row(**values):
-    """A PTC row that the model can score: a new PTC and all model inputs set. ``values`` overrides columns."""
+    """A PTC row that the model can predict: a new PTC and all model inputs set. ``values`` overrides columns."""
 
     row = {name: 1 for name in MODEL_INPUTS}
     row.update(
@@ -643,7 +643,7 @@ _UNKNOWN_INPUTS = {
         ({"ptc_to_start_codon": None}, "missing_input"),
         ({"ptc_to_exon_end": None}, "missing_input"),
         ({"ref_has_ptc": None}, "ok"),
-        # overlapping reasons: the first one in MODEL_STATUSES wins
+        # overlapping reasons: the first one in PREDICTION_STATUSES wins
         (
             {"unknown_reason": "exon_boundary_ambiguous", "alt_has_ptc": None, "has_stop_codon": False},
             "unknown_effect",
@@ -659,18 +659,18 @@ _UNKNOWN_INPUTS = {
         ({"start_loss": True, "ptc_to_start_codon": None, "ptc_to_exon_end": None}, "start_loss"),
     ],
 )
-def test_nmd_model_status(values, status):
+def test_nmd_efficiency_prediction_status(values, status):
     table = pd.DataFrame([_status_row(), _status_row(**values)], index=[7, 3])
 
-    result = nmd_model_status(table)
+    result = nmd_efficiency_prediction_status(table)
 
     assert result.tolist() == ["ok", status]
     assert result.index.tolist() == [7, 3]
-    assert result.dtype == pd.CategoricalDtype(MODEL_STATUSES)
+    assert result.dtype == pd.CategoricalDtype(PREDICTION_STATUSES)
 
 
-def test_nmd_model_status_values_are_the_documented_ones():
-    assert MODEL_STATUSES == (
+def test_nmd_efficiency_prediction_status_values_are_the_documented_ones():
+    assert PREDICTION_STATUSES == (
         "unknown_effect",
         "no_ptc",
         "ref_ptc",

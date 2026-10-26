@@ -7,20 +7,20 @@ from nmd_scanner.extra_features import (
     add_features_and_rules,
     add_nmd_features,
     evaluate_nmd_escape_rules,
-    nmd_model_status,
+    nmd_efficiency_prediction_status,
 )
-from nmd_scanner.model import add_nmd_pred_score
+from nmd_scanner.model import add_nmd_efficiency_prediction
 from nmd_scanner.rules import extract_ptc
 from nmd_scanner.schema import (
     KIND_ARROW_TYPES,
     KIND_DTYPES,
     MODEL_INPUTS,
-    MODEL_STATUS_COLUMN_KINDS,
     NMD_FEATURE_COLUMN_KINDS,
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
+    PREDICTION_COLUMN_KINDS,
+    PREDICTION_STATUS_COLUMN_KINDS,
     PTC_COLUMN_KINDS,
-    SCORE_COLUMN_KINDS,
     SEQUENCE_COLUMNS,
     apply_schema,
     empty_table,
@@ -38,13 +38,13 @@ def assert_schema(table, column_kinds):
 
 
 def test_every_kind_has_a_dtype_and_an_arrow_type():
-    kinds = set(OUTPUT_COLUMN_KINDS.values()) | set(SCORE_COLUMN_KINDS.values())
+    kinds = set(OUTPUT_COLUMN_KINDS.values()) | set(PREDICTION_COLUMN_KINDS.values())
     assert kinds <= set(KIND_DTYPES)
     assert kinds <= set(KIND_ARROW_TYPES)
 
 
 def test_output_columns_are_the_ptc_feature_rule_and_status_columns_in_order():
-    parts = [*PTC_COLUMN_KINDS, *NMD_FEATURE_COLUMN_KINDS, *NMD_RULE_COLUMN_KINDS, *MODEL_STATUS_COLUMN_KINDS]
+    parts = [*PTC_COLUMN_KINDS, *NMD_FEATURE_COLUMN_KINDS, *NMD_RULE_COLUMN_KINDS, *PREDICTION_STATUS_COLUMN_KINDS]
     assert list(OUTPUT_COLUMN_KINDS) == parts
     assert len(set(parts)) == len(parts)
 
@@ -100,8 +100,13 @@ def test_apply_schema_gives_a_categorical_column_all_its_categories():
 
 
 def test_apply_schema_rejects_a_value_outside_the_categories():
-    with pytest.raises(ValueError, match="nmd_model_status holds values outside its categories .*'start_lost'"):
-        apply_schema(pd.DataFrame({"nmd_model_status": ["ok", "start_lost"]}), {"nmd_model_status": "nmd_model_status"})
+    with pytest.raises(
+        ValueError, match="nmd_efficiency_prediction_status holds values outside its categories .*'start_lost'"
+    ):
+        apply_schema(
+            pd.DataFrame({"nmd_efficiency_prediction_status": ["ok", "start_lost"]}),
+            {"nmd_efficiency_prediction_status": "nmd_efficiency_prediction_status"},
+        )
 
 
 def test_empty_table_has_the_schema():
@@ -121,8 +126,8 @@ def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_co
     assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
     assert reduced == {column: kind for column, kind in full.items() if column not in SEQUENCE_COLUMNS}
     assert list(reduced) == [column for column in full if column not in SEQUENCE_COLUMNS]
-    assert output_column_kinds(score=False) == OUTPUT_COLUMN_KINDS
-    assert output_column_kinds(score=False) is not OUTPUT_COLUMN_KINDS
+    assert output_column_kinds(prediction=False) == OUTPUT_COLUMN_KINDS
+    assert output_column_kinds(prediction=False) is not OUTPUT_COLUMN_KINDS
 
 
 def test_empty_table_without_sequences_has_the_77_columns_and_their_dtypes():
@@ -134,20 +139,22 @@ def test_empty_table_without_sequences_has_the_77_columns_and_their_dtypes():
 
 
 @pytest.mark.parametrize("sequences", [True, False])
-def test_output_column_kinds_adds_nmd_pred_score_after_nmd_model_status_unless_score_is_false(sequences):
+def test_output_column_kinds_adds_nmd_efficiency_prediction_after_nmd_efficiency_prediction_status_unless_prediction_is_false(
+    sequences,
+):
     kinds = output_column_kinds(sequences)
 
-    assert list(kinds) == [*output_column_kinds(sequences, score=False), "nmd_pred_score"]
+    assert list(kinds) == [*output_column_kinds(sequences, prediction=False), "nmd_efficiency_prediction"]
     assert len(kinds) == (81 if sequences else 77)
-    assert kinds["nmd_pred_score"] == "float"
+    assert kinds["nmd_efficiency_prediction"] == "float"
     assert_schema(empty_table(kinds), kinds)
-    assert empty_table(kinds)["nmd_pred_score"].dtype == np.float64
+    assert empty_table(kinds)["nmd_efficiency_prediction"].dtype == np.float64
 
 
-@pytest.mark.parametrize("score", [False, True])
+@pytest.mark.parametrize("prediction", [False, True])
 @pytest.mark.parametrize("sequences", [True, False])
-def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences, score):
-    kinds = output_column_kinds(sequences, score)
+def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences, prediction):
+    kinds = output_column_kinds(sequences, prediction)
 
     table = to_arrow(empty_table(kinds))
 
@@ -242,14 +249,14 @@ def test_add_features_and_rules_gives_the_same_dtypes_for_zero_and_many_rows(run
     assert dict(zero.dtypes) == dict(many.dtypes)
 
 
-def test_main_writes_the_result_of_add_features_and_rules_with_the_score(run_main):
+def test_main_writes_the_result_of_add_features_and_rules_with_the_prediction(run_main):
     ptc_table, written = run_main("resources/test_files/test_variants.vcf")
     # main() already passed ptc_table to add_features_and_rules, so a copy taken now could miss a change
     unchanged = run_main.ptc_table_before_main
 
     result = add_features_and_rules(ptc_table)
 
-    pd.testing.assert_frame_equal(add_nmd_pred_score(result), written)
+    pd.testing.assert_frame_equal(add_nmd_efficiency_prediction(result), written)
     pd.testing.assert_frame_equal(ptc_table, unchanged)
 
 
@@ -260,7 +267,9 @@ def test_add_features_and_rules_equals_the_row_functions_applied_one_by_one(run_
     table = pd.concat([ptc_table, features], axis=1)
     rules = table.apply(evaluate_nmd_escape_rules, axis=1, result_type="expand")
     table = pd.concat([table, rules], axis=1)
-    expected = apply_schema(table.assign(nmd_model_status=nmd_model_status(table)), OUTPUT_COLUMN_KINDS)
+    expected = apply_schema(
+        table.assign(nmd_efficiency_prediction_status=nmd_efficiency_prediction_status(table)), OUTPUT_COLUMN_KINDS
+    )
 
     pd.testing.assert_frame_equal(add_features_and_rules(ptc_table), expected)
 

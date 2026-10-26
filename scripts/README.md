@@ -106,7 +106,7 @@ uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh
   `out/oof_predictions.parquet`. `validate_model.py` reads them.
 - It saves the random forest tuned on all rows as ONNX, to `out/nmd_efficiency_rf.onnx`, and checks that the ONNX
   model predicts the training rows like the random forest. The package ships this file as
-  `src/nmd_scanner/nmd_efficiency_rf.onnx`. NMD-Scanner adds its score to the output by default (see the main README).
+  `src/nmd_scanner/nmd_efficiency_rf.onnx`. NMD-Scanner adds its prediction to the output by default (see the main README).
 - `out/cv_results.json` has the R2 of each fold and the hyperparameters.
 
 ---

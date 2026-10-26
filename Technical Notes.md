@@ -4,8 +4,8 @@
 
 1. Read the VCF, the FASTA and the GFF3. The annotation gives the exon rows and the coding regions, i.e. the CDS rows plus the stop codon. With `reassign_exons=True`, `scan.compute_exon_numbers` recomputes the exon numbers. The pipeline does not model ribosomal slippage, i.e. CDS rows that share bases, so the output for such a transcript can be wrong.
 2. `rules.extract_ptc` gives the [PTC columns](#ptc-columns). It finds the placements of each variant and joins them with the coding regions and the splice dinucleotides at their exon edges (see [Variants at exon boundaries](#variants-at-exon-boundaries)). A variant whose REF does not match the reference genome gives no row, and a warning lists it. `extract_ptc` applies each variant to the coding rows of each transcript, or sets `unknown_reason` if the alt transcript is unknown. It builds the ref and alt CDS and the ref and alt transcript, and scans the ref and alt CDS for codons. Last, `rules.analyze_transcript` sets `alt_has_ptc` and `stop_loss` from the first in-frame stop codon of the alt transcript (see [Stop codon classification](#stop-codon-classification)). After a start or stop loss, it then scans the alt transcript.
-3. `extra_features.add_features_and_rules` adds the [NMD features](#nmd-features), then the [NMD rules](#nmd-rules), which read the features. Last, it adds [`nmd_model_status`](#model-status).
-4. `model.add_nmd_pred_score` adds [`nmd_pred_score`](#nmd-efficiency-score). With `score=False`, `annotate` skips this step.
+3. `extra_features.add_features_and_rules` adds the [NMD features](#nmd-features), then the [NMD rules](#nmd-rules), which read the features. Last, it adds [`nmd_efficiency_prediction_status`](#prediction-status).
+4. `model.add_nmd_efficiency_prediction` adds [`nmd_efficiency_prediction`](#nmd-efficiency-prediction). With `prediction=False`, `annotate` skips this step.
 
 With `sequences=False`, `annotate` drops the 4 sequence columns between step 3 and step 4.
 
@@ -13,9 +13,9 @@ With `sequences=False`, `annotate` drops the 4 sequence columns between step 3 a
 
 Each row of the result is the variant of one VCF record in one transcript whose coding region the variant touches. Two records with the same CHROM, POS, REF and ALT give a row each, and each row has the ID of its record as `variant_id`. The coding region is the CDS plus the stop codon. A variant touches it if one of its placements changes a base of the coding region, or of a splice dinucleotide at one of its exon edges (see [Variants at exon boundaries](#variants-at-exon-boundaries)). A variant gives no row if it touches no coding region, if its REF does not match the reference genome, or if its ALT is symbolic, a breakend, `.` or `*`.
 
-The tables list the columns in output order, in five parts: the PTC columns, the NMD features, the NMD rules, the model status and the NMD efficiency score. The tables assume a well-formed GFF3. "Input Defects.md" lists the null cases that a misannotation adds.
+The tables list the columns in output order, in five parts: the PTC columns, the NMD features, the NMD rules, the prediction status and the NMD efficiency prediction. The tables assume a well-formed GFF3. "Input Defects.md" lists the null cases that a misannotation adds.
 
-`--no-sequences` drops the 4 sequence columns, and `--no-score` drops the last part. The other columns stay the same.
+`--no-sequences` drops the 4 sequence columns, and `--no-prediction` drops the last part. The other columns stay the same.
 
 In CSV output, a list column is JSON and a null is an empty field.
 
@@ -163,7 +163,7 @@ These columns describe the PTC and its transcript. The [figures](#figures-of-the
 
 ### NMD rules
 
-These columns apply the NMD escape rules to the PTC. On a row that is not a PTC row, every rule is null, because the rules do not apply there. This includes the rows with `unknown_reason`. On a PTC row, a rule is null if one of its inputs is null, because its value is unknown then. The column "Null when" names the inputs. So False always means that the PTC does not meet the rule. `nmd_escape` combines the 5 rules with a three-valued OR: it is True if one rule is True, null if no rule is True and one is null, and False otherwise. The rules are model inputs, so a row with `nmd_model_status` `ok` has no null rule.
+These columns apply the NMD escape rules to the PTC. On a row that is not a PTC row, every rule is null, because the rules do not apply there. This includes the rows with `unknown_reason`. On a PTC row, a rule is null if one of its inputs is null, because its value is unknown then. The column "Null when" names the inputs. So False always means that the PTC does not meet the rule. `nmd_escape` combines the 5 rules with a three-valued OR: it is True if one rule is True, null if no rule is True and one is null, and False otherwise. The rules are model inputs, so a row with `nmd_efficiency_prediction_status` `ok` has no null rule.
 
 | Column                      | Kind | Meaning                                                                                                       | Null when                                       |
 | --------------------------- | ---- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -174,20 +174,20 @@ These columns apply the NMD escape rules to the PTC. On a row that is not a PTC 
 | `nmd_single_exon_rule`      | bool | The transcript has one exon: `total_exon_count` is 1                                                          | not a PTC row; `total_exon_count` is null       |
 | `nmd_escape`                | bool | One of the 5 rules above is True                                                                              | not a PTC row; no rule is True, and one is null |
 
-### Model status
+### Prediction status
 
-This column says whether the [NMD efficiency model](#nmd-efficiency-score) can score the row. The model cannot score a row in which one of its inputs is null.
+This column says whether the [NMD efficiency model](#nmd-efficiency-prediction) can predict the row. The model cannot predict a row in which one of its inputs is null.
 
 | Column             | Kind             | Meaning                                                                        | Null when |
 | ------------------ | ---------------- | ------------------------------------------------------------------------------ | --------- |
-| `nmd_model_status` | nmd_model_status | `ok` if the model can score the row, else the first reason why not (see below) | never     |
+| `nmd_efficiency_prediction_status` | nmd_efficiency_prediction_status | `ok` if the model can predict the row, else the first reason why not (see below) | never     |
 
 A row gets the first value whose condition holds, in this order:
 
 | Value                | Condition                                                                                                                                                    |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `unknown_effect`     | `unknown_reason` is set: the alt transcript is unknown, so `alt_has_ptc` and most model inputs are null. `unknown_reason` says why                           |
-| `no_ptc`             | `alt_has_ptc` is not True: there is no PTC to score                                                                                                          |
+| `no_ptc`             | `alt_has_ptc` is not True: there is no PTC to predict                                                                                                          |
 | `ref_ptc`            | `ref_has_ptc` is True: the reference has a PTC already, so the variant does not create it                                                                    |
 | `no_annotated_stop`  | `has_stop_codon` is False, which makes `annotated_stop_distance` and `utr3_length` null                                                                      |
 | `no_annotated_start` | `has_start_codon` is False, which makes `ptc_to_start_codon` null. The true start codon lies upstream of the CDS, at an unknown distance (e.g. cds_start_NF) |
@@ -197,13 +197,13 @@ A row gets the first value whose condition holds, in this order:
 
 A row with both annotation reasons gets `no_annotated_stop`.
 
-### NMD efficiency score
+### NMD efficiency prediction
 
-The model is a random forest trained on TCGA data. It scores only the rows with `nmd_model_status` `ok`.
+The model is a random forest trained on TCGA data. It predicts only the rows with `nmd_efficiency_prediction_status` `ok`.
 
 | Column           | Kind  | Meaning                                                                                                                      | Null when                      |
 | ---------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `nmd_pred_score` | float | The NMD efficiency that the model predicts: -log2(VAF_RNA / VAF_DNA), on the scale of the TCGA training data. 0 means no NMD | `nmd_model_status` is not `ok` |
+| `nmd_efficiency_prediction` | float | The NMD efficiency that the model predicts: -log2(VAF_RNA / VAF_DNA), on the scale of the TCGA training data. 0 means no NMD | `nmd_efficiency_prediction_status` is not `ok` |
 
 ## Figures of the features and the NMD rules
 

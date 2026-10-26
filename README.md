@@ -21,7 +21,7 @@ It can handle single-nucleotide variants, multiple base substitutions, long and 
   - Long exon rule
   - Start-proximal rule
   - Single-exon rule
-- Predicts the NMD efficiency of each PTC with a random forest (see [NMD efficiency score](#nmd-efficiency-score))
+- Predicts the NMD efficiency of each PTC with a random forest (see [NMD efficiency prediction](#nmd-efficiency-prediction))
 - Writes the results as CSV or Parquet, or returns them as a pandas DataFrame
 
 [Technical Notes](Technical%20Notes.md) defines the features and the NMD escape rules, with figures.
@@ -63,7 +63,7 @@ Arguments:
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet.
 - `--reassign_exons`: (flag) Recompute exon numbers (recommended for hg19)
 - `--no-sequences`: (flag) Leave out the 4 sequence columns `ref_cds_seq`, `alt_cds_seq`, `transcript_seq` and `alt_transcript_seq`. These columns make up most of the output size.
-- `--no-score`: (flag) Leave out the column `nmd_pred_score`, the prediction of the [NMD efficiency model](#nmd-efficiency-score).
+- `--no-prediction`: (flag) Leave out the column `nmd_efficiency_prediction`, the prediction of the [NMD efficiency model](#nmd-efficiency-prediction).
 
 The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `chr1` or all `1`.
 
@@ -74,13 +74,13 @@ Output:
   - PTC detection and start / stop-loss flags
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.
-  - `nmd_model_status` and `nmd_pred_score`: whether the NMD efficiency model can score the row, and the NMD efficiency it predicts (see [NMD efficiency score](#nmd-efficiency-score))
+  - `nmd_efficiency_prediction_status` and `nmd_efficiency_prediction`: whether the NMD efficiency model can predict the row, and the NMD efficiency it predicts (see [NMD efficiency prediction](#nmd-efficiency-prediction))
 
 [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 
 ### Option 2: Import as a python module
 
-`annotate` returns the result table of the CLI as a `pandas.DataFrame`; `sequences=False` and `score=False` are the flags `--no-sequences` and `--no-score`.
+`annotate` returns the result table of the CLI as a `pandas.DataFrame`; `sequences=False` and `prediction=False` are the flags `--no-sequences` and `--no-prediction`.
 
 ```python
 import nmd_scanner
@@ -90,11 +90,11 @@ results = nmd_scanner.annotate("input.vcf", "annotation.gff3.gz", "reference.fa"
 
 The steps of `annotate` are public too; see [How `annotate` builds the result](Technical%20Notes.md#how-annotate-builds-the-result).
 
-## NMD efficiency score
+## NMD efficiency prediction
 
-NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its score by default, as the column `nmd_pred_score`. `--no-score` and `score=False` leave it out. `nmd_scanner.add_nmd_pred_score(results)` adds the score to a result of `add_features_and_rules`.
+NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its prediction by default, as the column `nmd_efficiency_prediction`. `--no-prediction` and `prediction=False` leave it out. `nmd_scanner.add_nmd_efficiency_prediction(results)` adds the prediction to a result of `add_features_and_rules`.
 
-`nmd_pred_score` predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. `nmd_pred_score` is null in every row whose `nmd_model_status` is not `ok`. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts.
+`nmd_efficiency_prediction` predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. `nmd_efficiency_prediction` is null in every row whose `nmd_efficiency_prediction_status` is not `ok`. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts.
 
 ## Model validation
 

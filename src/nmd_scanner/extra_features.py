@@ -13,9 +13,9 @@ from nmd_scanner.rules import (
 from nmd_scanner.schema import (
     KIND_DTYPES,
     MODEL_INPUTS,
-    MODEL_STATUSES,
     NMD_RULE_COLUMN_KINDS,
     OUTPUT_COLUMN_KINDS,
+    PREDICTION_STATUSES,
     apply_schema,
     record,
     records,
@@ -487,8 +487,8 @@ def add_features_and_rules(results):
     Add the NMD features and the NMD escape rules to a result of ``extract_ptc``.
 
     This runs ``add_nmd_features`` on the FeatureRow of each row, then ``evaluate_nmd_escape_rules`` on the RuleRow of
-    each row (it reads columns that the features add). Then it adds the column nmd_model_status (see
-    ``nmd_model_status``) and applies the output schema.
+    each row (it reads columns that the features add). Then it adds the column nmd_efficiency_prediction_status (see
+    ``nmd_efficiency_prediction_status``) and applies the output schema.
     The result has the columns, column order and dtypes of OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero
     rows. ``results`` is not changed.
 
@@ -506,20 +506,20 @@ def add_features_and_rules(results):
         [evaluate_nmd_escape_rules(row) for row in records(results, RuleRow)], index=results.index
     )
     results = pd.concat([results, nmd_results], axis=1)
-    results["nmd_model_status"] = nmd_model_status(results)
+    results["nmd_efficiency_prediction_status"] = nmd_efficiency_prediction_status(results)
     return apply_schema(results, OUTPUT_COLUMN_KINDS)
 
 
-def nmd_model_status(results):
+def nmd_efficiency_prediction_status(results):
     """
-    Return the nmd_model_status of each row: "ok" if the NMD efficiency model can score the row, else the first
-    reason why it cannot. MODEL_STATUSES in nmd_scanner.schema lists the values and their conditions, in the order
+    Return the nmd_efficiency_prediction_status of each row: "ok" if the NMD efficiency model can predict the row, else the first
+    reason why it cannot. PREDICTION_STATUSES in nmd_scanner.schema lists the values and their conditions, in the order
     they are checked.
 
     :param results: DataFrame with unknown_reason, alt_has_ptc, ref_has_ptc, has_stop_codon, has_start_codon
                     and the columns of MODEL_INPUTS
-    :return: Series of the values of MODEL_STATUSES, with the index of ``results`` and the categorical dtype of
-             nmd_model_status
+    :return: Series of the values of PREDICTION_STATUSES, with the index of ``results`` and the categorical dtype of
+             nmd_efficiency_prediction_status
     """
 
     def is_true(column):
@@ -537,5 +537,5 @@ def nmd_model_status(results):
         is_true("start_loss") & results["ptc_to_start_codon"].isna().to_numpy(),
         results[MODEL_INPUTS].isna().any(axis=1).to_numpy(),
     ]
-    status = np.select(conditions, list(MODEL_STATUSES[:-1]), default=MODEL_STATUSES[-1])
-    return pd.Series(status, index=results.index, dtype=KIND_DTYPES["nmd_model_status"])
+    status = np.select(conditions, list(PREDICTION_STATUSES[:-1]), default=PREDICTION_STATUSES[-1])
+    return pd.Series(status, index=results.index, dtype=KIND_DTYPES["nmd_efficiency_prediction_status"])

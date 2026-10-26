@@ -15,10 +15,10 @@ import pyarrow as pa
 
 from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
-# The values of nmd_model_status, in the order they are checked. A row gets the first value whose condition holds:
+# The values of nmd_efficiency_prediction_status, in the order they are checked. A row gets the first value whose condition holds:
 # - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 15 of the 19 model
 #   inputs are null. unknown_reason says why.
-# - no_ptc: alt_has_ptc is not True, so there is no PTC to score.
+# - no_ptc: alt_has_ptc is not True, so there is no PTC to predict.
 # - ref_ptc: ref_has_ptc is True. The reference has a PTC already, so the variant does not create it.
 # - no_annotated_stop: has_stop_codon is False, which makes annotated_stop_distance and utr3_length null.
 # - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
@@ -32,7 +32,7 @@ from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_D
 # - ok: the variant creates the PTC, and no model input is null.
 # no_annotated_stop and no_annotated_start hold for every variant of the transcript. So they go before the values
 # start_loss and missing_input, which depend on the variant.
-MODEL_STATUSES = (
+PREDICTION_STATUSES = (
     "unknown_effect",
     "no_ptc",
     "ref_ptc",
@@ -53,7 +53,7 @@ STOP_CLASSIFICATIONS = ("alt_transcript", "start_loss_scan", "alt_cds")
 CATEGORIES = {
     "strand": ("+", "-"),
     "unknown_reason": (SPLICE_SITE_DESTROYED, EXON_BOUNDARY_AMBIGUOUS),
-    "nmd_model_status": MODEL_STATUSES,
+    "nmd_efficiency_prediction_status": PREDICTION_STATUSES,
     "stop_classification": STOP_CLASSIFICATIONS,
 }
 
@@ -184,11 +184,11 @@ NMD_RULE_COLUMN_KINDS = {
 }
 
 # Kind of the column that add_features_and_rules adds after the rules. It says whether the NMD efficiency model
-# can score the row (see MODEL_STATUSES).
-MODEL_STATUS_COLUMN_KINDS = {"nmd_model_status": "nmd_model_status"}
+# can predict the row (see PREDICTION_STATUSES).
+PREDICTION_STATUS_COLUMN_KINDS = {"nmd_efficiency_prediction_status": "nmd_efficiency_prediction_status"}
 
 # Kind of every column that add_features_and_rules returns, in output order. annotate returns them too, and by
-# default nmd_pred_score after them (see SCORE_COLUMN_KINDS). The kind gives the pandas dtype (KIND_DTYPES) and the
+# default nmd_efficiency_prediction after them (see PREDICTION_COLUMN_KINDS). The kind gives the pandas dtype (KIND_DTYPES) and the
 # Arrow and Parquet type (KIND_ARROW_TYPES, see to_arrow). Without a fixed schema, pandas and pyarrow infer each type from the
 # data. A column with only missing values, or a table without rows, then gets a different type from run
 # to run.
@@ -196,13 +196,13 @@ OUTPUT_COLUMN_KINDS = {
     **PTC_COLUMN_KINDS,
     **NMD_FEATURE_COLUMN_KINDS,
     **NMD_RULE_COLUMN_KINDS,
-    **MODEL_STATUS_COLUMN_KINDS,
+    **PREDICTION_STATUS_COLUMN_KINDS,
 }
 
-# Kind of the column that model.add_nmd_pred_score adds after nmd_model_status: the prediction of the NMD efficiency
-# model. annotate adds it unless score=False (CLI flag --no-score). add_features_and_rules does not add it, so it is
+# Kind of the column that model.add_nmd_efficiency_prediction adds after nmd_efficiency_prediction_status: the prediction of the NMD efficiency
+# model. annotate adds it unless prediction=False (CLI flag --no-prediction). add_features_and_rules does not add it, so it is
 # not part of OUTPUT_COLUMN_KINDS.
-SCORE_COLUMN_KINDS = {"nmd_pred_score": "float"}
+PREDICTION_COLUMN_KINDS = {"nmd_efficiency_prediction": "float"}
 
 # The 4 columns that hold a sequence. They make up most of the table's size, in memory and on disk.
 # annotate(..., sequences=False) and the CLI flag --no-sequences leave them out (see output_column_kinds).
@@ -213,7 +213,7 @@ SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcr
 STOP_CODON_COLUMNS = ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons")
 
 # The 19 inputs of the NMD efficiency model (see nmd_scanner.model and scripts/train_model.py), in the order that
-# the model takes them. The model cannot score a row in which one of them is null.
+# the model takes them. The model cannot predict a row in which one of them is null.
 MODEL_INPUTS = [
     "start_loss",
     "stop_loss",
@@ -271,25 +271,25 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
     return table[list(column_kinds)].astype({column: KIND_DTYPES[kind] for column, kind in column_kinds.items()})
 
 
-def output_column_kinds(sequences=True, score=True):
+def output_column_kinds(sequences=True, prediction=True):
     """
     Return the kind of every column that ``annotate`` returns with the same arguments, in output order. By default,
-    these are the 80 columns of OUTPUT_COLUMN_KINDS and the column of SCORE_COLUMN_KINDS after nmd_model_status. With
-    ``sequences=False``, the 4 columns of SEQUENCE_COLUMNS are left out. With ``score=False``, the column of
-    SCORE_COLUMN_KINDS is left out. The other columns keep their order. Pass the result to ``apply_schema`` or
+    these are the 80 columns of OUTPUT_COLUMN_KINDS and the column of PREDICTION_COLUMN_KINDS after nmd_efficiency_prediction_status. With
+    ``sequences=False``, the 4 columns of SEQUENCE_COLUMNS are left out. With ``prediction=False``, the column of
+    PREDICTION_COLUMN_KINDS is left out. The other columns keep their order. Pass the result to ``apply_schema`` or
     ``empty_table``.
 
     :param sequences: whether to keep the columns of SEQUENCE_COLUMNS
-    :param score: whether to add the column of SCORE_COLUMN_KINDS
+    :param prediction: whether to add the column of PREDICTION_COLUMN_KINDS
     :return: a new dict of column name to kind: OUTPUT_COLUMN_KINDS, without SEQUENCE_COLUMNS if ``sequences`` is
-        False, and with SCORE_COLUMN_KINDS if ``score`` is True
+        False, and with PREDICTION_COLUMN_KINDS if ``prediction`` is True
     """
 
     kinds = {
         column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if sequences or column not in SEQUENCE_COLUMNS
     }
-    if score:
-        kinds.update(SCORE_COLUMN_KINDS)
+    if prediction:
+        kinds.update(PREDICTION_COLUMN_KINDS)
     return kinds
 
 
@@ -356,9 +356,9 @@ def to_arrow(results: pd.DataFrame) -> pa.Table:
     writes this table for a .parquet output, and ``pyarrow.parquet.write_table`` can write it too.
 
     :param results: DataFrame with output columns, e.g. from ``annotate``, with or without SEQUENCE_COLUMNS and
-        nmd_pred_score. Any subset of the output columns works, in any order.
+        nmd_efficiency_prediction. Any subset of the output columns works, in any order.
     :return: pyarrow Table with the columns of ``results``, in that order, and without the index
-    :raises KeyError: if ``results`` has a column that neither OUTPUT_COLUMN_KINDS nor SCORE_COLUMN_KINDS lists
+    :raises KeyError: if ``results`` has a column that neither OUTPUT_COLUMN_KINDS nor PREDICTION_COLUMN_KINDS lists
     """
 
     return pa.Table.from_pandas(results, schema=_arrow_schema(results.columns), preserve_index=False)
@@ -367,8 +367,8 @@ def to_arrow(results: pd.DataFrame) -> pa.Table:
 def _arrow_schema(columns):
     """
     Return the pyarrow schema of ``columns``, with the Arrow type of each column's kind (KIND_ARROW_TYPES).
-    A column that neither OUTPUT_COLUMN_KINDS nor SCORE_COLUMN_KINDS lists raises a KeyError.
+    A column that neither OUTPUT_COLUMN_KINDS nor PREDICTION_COLUMN_KINDS lists raises a KeyError.
     """
 
-    kinds = output_column_kinds(score=True)
+    kinds = output_column_kinds(prediction=True)
     return pa.schema([pa.field(column, KIND_ARROW_TYPES[kinds[column]]) for column in columns])
