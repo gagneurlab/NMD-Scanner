@@ -92,62 +92,46 @@ This notebook contains the full NMD-Scanner implementation split into individual
 
 ### 6. `train_model.py`
 
-Retrains the NMD efficiency model on the features of the installed NMD-Scanner release. It replaces the
+Retrains the NMD efficiency model `nmd_efficiency_rf.onnx` on the features of NMD-Scanner 0.4.0. It replaces the
 notebooks above for that purpose: it runs end to end and pins its dependencies in a PEP 723 header.
 
 ```bash
 uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir out/
 ```
 
-- The target is `NMD_efficiency` of the NMDEff TCGA benchmark, downloaded at a pinned commit.
-- The variants are `resources/TCGA_benchmark/tcga_dataset.vcf`.
-- It compares a random forest with the hyperparameters of the former `best_model.pkl`, a tuned random forest
-  and LightGBM with default hyperparameters in nested cross-validation. The folds are grouped by chromosome, and
-  for comparison by variant.
-- It saves the tuned random forest and the LightGBM model, both fit on all usable rows, to `out/models/`.
-- It also saves the tuned random forest as ONNX, to `out/models/nmd_efficiency_rf.onnx`, and checks that the ONNX
+- The target is `NMD_efficiency` of the NMDEff TCGA benchmark, downloaded at a pinned commit. The variants are
+  those of `resources/TCGA_benchmark/tcga_dataset.vcf`, built with the steps of `make_benchmark_vcfs.py`.
+- It tunes a random forest with a grid search. The folds are grouped by chromosome.
+- In nested cross-validation with the same folds, it predicts each row out of fold and writes the predictions to
+  `out/oof_predictions.parquet`. `validate_model.py` reads them.
+- It saves the random forest tuned on all rows as ONNX, to `out/nmd_efficiency_rf.onnx`, and checks that the ONNX
   model predicts the training rows like the random forest. This file is `nmd_efficiency_rf.onnx` at the root of the
   repository. The main README shows how to load it.
+- `out/cv_results.json` has the R2 of each fold and the hyperparameters.
 
 ---
 
-### 7. `make_tcga_vcf.py`
+### 7. `make_benchmark_vcfs.py`
 
-Builds `resources/TCGA_benchmark/tcga_dataset.vcf` from the NMDEff study table, so that the VCF is reproducible.
-The output equals the committed file byte for byte.
+Builds `resources/TCGA_benchmark/tcga_dataset.vcf` and `resources/MMRF_benchmark/MMRF_TARGET_dataset.vcf` from the
+NMDEff study tables, so that the VCFs are reproducible. The outputs equal the committed files byte for byte.
 
 ```bash
-uv run scripts/make_tcga_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
+uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
 ```
 
-- It downloads `tcga_dataset.csv` at the commit that `train_model.py` pins and checks its sha256. `--csv` reads a
-  local copy instead, with the same check.
+- It downloads `tcga_dataset.csv` and `MMRF_TARGET_dataset.csv` at a pinned commit and checks their sha256.
 - It parses the substitution from HGVSc, which has the alleles on the transcript strand. It takes the strand from
   the GENCODE GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses
   the orientation whose REF matches the FASTA.
 - It fails if a row is not a single-base substitution or if a REF does not match the FASTA.
+- `train_model.py` and `validate_model.py` import these steps from it.
 
 ---
 
-### 8. `make_mmrf_vcf.py`
+### 8. `validate_model.py`
 
-Builds `resources/MMRF_benchmark/MMRF_TARGET_dataset.vcf` from the NMDEff MMRF / TARGET table in the same way. It
-imports the shared steps from `make_tcga_vcf.py`. The output equals the committed file byte for byte.
-
-```bash
-uv run scripts/make_mmrf_vcf.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
-```
-
-- It downloads `MMRF_TARGET_dataset.csv` at the same commit and checks its sha256. `--csv` reads a local copy
-  instead, with the same check.
-- The table has no end column, so the check that start equals end does not apply. The other steps and checks are
-  those of `make_tcga_vcf.py`.
-
----
-
-### 9. `validate_model.py`
-
-Computes the table of the section "Model validation" in the main README. It tests `nmd_efficiency_rf.onnx`
+Computes the numbers of the section "Model validation" in the main README. It tests `nmd_efficiency_rf.onnx`
 without retraining on TCGA out of fold, Geuvadis, GTEx and MMRF-TARGET.
 
 ```bash
@@ -158,19 +142,19 @@ uv run scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta G
 - `--train-dir` is the `--out-dir` of the `train_model.py` run that trained the model. The TCGA row uses its
   out-of-fold predictions. The script fails if the model of that run differs from `nmd_efficiency_rf.onnx`.
 - It downloads the other cohorts from pinned public sources and checks their sha256: `MMRF_TARGET_dataset.csv` of
-  NMDEff at the commit that `train_model.py` pins, Supplementary Data 2 of Kim et al. 2024 (GTEx), and 2 tables of
-  Zenodo record 16666299 (Geuvadis). The Zenodo record is one zip of 3.2 GB, so the script reads only those 2
-  members with HTTP range requests. `--geuvadis-dir` reads them from a local directory instead, with the same
-  sha256 check.
+  NMDEff at the commit that `make_benchmark_vcfs.py` pins, Supplementary Data 2 of Kim et al. 2024 (GTEx), and 2
+  tables of Zenodo record 16666299 (Geuvadis). The Zenodo record is one zip of 3.2 GB, so the script reads only
+  those 2 members with HTTP range requests. `--geuvadis-dir` reads them from a local directory instead, with the
+  same sha256 check.
 - It builds one VCF of the variants and runs `nmd_scanner.annotate`. For GTEx and MMRF-TARGET, it converts HGVSc
-  to genomic alleles with `make_tcga_vcf.py`.
+  to genomic alleles with `make_benchmark_vcfs.py`.
 - It keeps the rows with `nmd_model_status` `ok` and a variant allele fraction above 0 in the RNA. For the germline
   variants, the NMD efficiency is -log2(VAF_RNA / 0.5).
 - The 95% CIs come from 2,000 bootstrap resamples of the rows per cohort.
-- It writes the table to `out/validation.md`. `out/validation.json` has the full-precision values, the gains of
-  the model over the rules, and the mean measured NMD efficiency of the rows with `nmd_escape` False. The scored
-  rows of each cohort are in `out/*_rows.parquet`, and the GTEx means per variant are in
-  `out/gtex_variants.parquet`.
+- It writes the numbers to `out/validation.json` and logs a short summary. Per cohort, the file has the Spearman
+  correlations of the model and of the rules, the gain of the model over the rules, and the mean measured NMD
+  efficiency of the rows with `nmd_escape` False. For GTEx, it also has that mean over the variant-tissue rows, in
+  total and per tissue. The README table is written by hand from these numbers.
 
 ---
 

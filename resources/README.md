@@ -9,12 +9,12 @@ The files in this directory are not required for normal usage of the NMD-Scanner
 
 ### `MMRF_benchmark/`
 
-- **`MMRF_TARGET_dataset.vcf`** : VCF file built from the MMRF / TARGET dataset by `scripts/make_mmrf_vcf.py`, with REF and ALT on the forward strand of GRCh38
+- **`MMRF_TARGET_dataset.vcf`** : VCF file built from the MMRF / TARGET dataset by `scripts/make_benchmark_vcfs.py`, with REF and ALT on the forward strand of GRCh38
   used to benchmark NMD efficiency prediction. The original dataset and processing scripts are provided by the original NMDEff project: <https://github.com/hjkng/nmdeff>
 
 ### `TCGA_benchmark/`
 
-- **`tcga_dataset.vcf`** : VCF file built from the TCGA dataset of the original study (<https://github.com/hjkng/nmdeff>) by `scripts/make_tcga_vcf.py`, with REF and ALT on the forward strand of GRCh38
+- **`tcga_dataset.vcf`** : VCF file built from the TCGA dataset of the original study (<https://github.com/hjkng/nmdeff>) by `scripts/make_benchmark_vcfs.py`, with REF and ALT on the forward strand of GRCh38
   used for NMD efficiency benchmarking and for model training.
 
 ---
