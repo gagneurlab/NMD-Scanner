@@ -1099,6 +1099,7 @@ NO_STOP_CODON_PTC = Layout(
     Transcript(("gggATGGATGCCCTAAAA", "AAAAAAGACcccc"), stop_codon=False, tags=("cds_end_NF",)),
     {
         **NO_STOP_CODON_BASE,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 14),
         "cds_end": per_strand(57, 58),
         "ref_cds_seq": "ATGGATGCCCTA" + "AAA" * 3 + "GAC",
@@ -1112,6 +1113,7 @@ NO_STOP_CODON_STOP_PAST_THE_CDS = Layout(
     Transcript(("gggATGGATGCCCCAAAA", "AAAAAAGACctaacc"), stop_codon=False, tags=("cds_end_NF",)),
     {
         **NO_STOP_CODON_BASE,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 16),
         "cds_end": per_strand(57, 60),
         "ref_cds_seq": "ATGGATGCCCCA" + "AAA" * 3 + "GAC",
@@ -1596,6 +1598,7 @@ ENSEMBL_ATG_IN_PHASE_1 = Layout(
     Transcript(("gggATGCA", "AACCCGACTAAggggg"), frame=1, start_codon=False, flavor="ensembl", tags=("cds_start_NF",)),
     {
         **ATG_START.ref,
+        "transcript_tags": "cds_start_NF",
         "cds_end": per_strand(49, 51),
         "ref_cds_seq": "ATGCAAACCCGACTAA",
         "ref_cds_length": 16,
@@ -1838,6 +1841,7 @@ def frame_layout(frame, edit_gff3=None):
         ),
         {
             **CDS_START_NF_REF,
+            "transcript_tags": "cds_start_NF",
             "cds_start": per_strand(13, 15),
             "cds_end": per_strand(51 + frame, 53 + frame),
             "ref_cds_seq": cds + "TAA",
@@ -2171,6 +2175,7 @@ FRAME_1_STOP_LOSS = Layout(
     Transcript(("gggATGCA", "AACCCTAAgggcccgggtgacc"), frame=1, start_codon=False, tags=("cds_start_NF",)),
     {
         **CDS_START_NF_REF,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(13, 24),
         "cds_end": per_strand(46, 57),
         "ref_cds_seq": "ATGCAAACCCTAA",
@@ -2194,6 +2199,7 @@ NO_START_STOP_LOSS = Layout(
     Transcript(("gggCTGAA", "ACCCGACTAAgggtagccgg"), start_codon=False, tags=("cds_start_NF",)),
     {
         **CDS_START_NF_REF,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(13, 20),
         "cds_end": per_strand(48, 55),
         "ref_cds_seq": "CTGAAACCCGACTAA",
@@ -2217,6 +2223,7 @@ STOP_OUT_OF_FRAME = Layout(
     Transcript(("gggGCCAA", "ACCCGACTAAggggg"), frame=1, start_codon=False, tags=("cds_start_NF",)),
     {
         **CDS_START_NF_REF,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(13, 15),
         "cds_end": per_strand(48, 50),
         "ref_cds_seq": "GCCAAACCCGACTAA",

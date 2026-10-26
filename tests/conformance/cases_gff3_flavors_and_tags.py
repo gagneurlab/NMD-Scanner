@@ -75,6 +75,7 @@ NF_ATG = Layout(
     Transcript(("gggATGAA", "ACCCGACTAAggggg"), start_codon=False, tags=CDS_START_NF),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(13, 15),
         "cds_end": per_strand(48, 50),
         "ref_cds_seq": "ATGAAACCCGACTAA",
@@ -118,6 +119,7 @@ NF_CTG = Layout(
     Transcript((NF_CTG_EXON_1, "CCCGACTAAggctagcc"), start_codon=False, tags=CDS_START_NF),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(13, 18),
         "cds_end": per_strand(105, 110),
         "ref_cds_seq": "CTGATGAAGTGGGAC" + "AAG" * 16 + "CCCGACTAA",
@@ -159,6 +161,7 @@ CDS_END_NF_SENSE = Layout(
     Transcript(("gccATGGCCAAG", "CTGGACTGG"), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 10),
         "cds_end": per_strand(51, 48),
         "ref_cds_seq": "ATGGCCAAGCTGGACTGG",
@@ -235,6 +238,7 @@ CDS_END_NF_TRIMMED = Layout(
     Transcript(TAA_EXONS, stop_codon=False, tags=CDS_END_NF),
     {
         **TAA_KEPT,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 17),
         "cds_end": per_strand(48, 52),
         "ref_cds_seq": "ATGGCCAAGCTGGAC",
@@ -254,7 +258,9 @@ CDS_END_NF_TRIMMED = Layout(
     },
 )
 # cds_end_NF with stop_codon rows: the TAA stays the annotated stop codon
-CDS_END_NF_WITH_STOP_CODON_ROWS = Layout(Transcript(TAA_EXONS, tags=CDS_END_NF), TAA_KEPT)
+CDS_END_NF_WITH_STOP_CODON_ROWS = Layout(
+    Transcript(TAA_EXONS, tags=CDS_END_NF), {**TAA_KEPT, "transcript_tags": "cds_end_NF"}
+)
 # No tag attribute in the GFF3 and no stop_codon rows: the TAA stays in the CDS, but it is no annotated stop codon
 NO_TAG_NO_STOP_CODON_ROWS = Layout(
     Transcript(TAA_EXONS, stop_codon=False),
@@ -268,7 +274,10 @@ NO_TAG_NO_STOP_CODON_ROWS = Layout(
     },
 )
 # Ensembl, tagged cds_start_NF and cds_end_NF on the mRNA row: the codons come from the FASTA, not from the tags
-ENSEMBL_NF_TAGS = Layout(Transcript(TAA_EXONS, tags=CDS_START_NF + CDS_END_NF, flavor="ensembl"), TAA_KEPT)
+ENSEMBL_NF_TAGS = Layout(
+    Transcript(TAA_EXONS, tags=CDS_START_NF + CDS_END_NF, flavor="ensembl"),
+    {**TAA_KEPT, "transcript_tags": "cds_start_NF,cds_end_NF"},
+)
 
 # cds_end_NF without stop_codon rows: the stop codon TA|A is split across the intron. Its A in exon 2 is the only
 # coding base of exon 2. Trimming removes the whole stop codon, and with it the CDS row of exon 2.
@@ -279,6 +288,7 @@ CDS_END_NF_SPLIT_STOP = Layout(
     Transcript(("gccATGGCCAAGCTGTA", "Agccg"), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 37),
         "cds_end": per_strand(25, 49),
         "ref_cds_seq": "ATGGCCAAGCTG",
@@ -320,6 +330,7 @@ CDS_END_NF_TAA_OUT_OF_FRAME = Layout(
     Transcript(("gccATGGCCAAG", "CTGCTAA"), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 10),
         "cds_end": per_strand(49, 46),
         "ref_cds_seq": "ATGGCCAAGCTGCTAA",
@@ -362,6 +373,7 @@ CDS_END_NF_TAA_ACROSS_THE_CDS_END = Layout(
     Transcript(("gaccATGGCCTAagccaggc",), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(14, 18),
         "cds_end": per_strand(22, 26),
         "ref_cds_seq": "ATGGCCTA",
@@ -403,6 +415,7 @@ NF_BOTH = Layout(
     Transcript(("CTGGAAG", "CTGGACAAG"), start_codon=False, stop_codon=False, frame=1, tags=CDS_START_NF + CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF,cds_end_NF",
         "cds_start": per_strand(10, 10),
         "cds_end": per_strand(46, 46),
         "ref_cds_seq": "CTGGAAGCTGGACAAG",

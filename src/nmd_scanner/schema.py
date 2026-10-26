@@ -98,6 +98,8 @@ PTC_COLUMN_KINDS = {
     "alt": "string",
     "variant_id": "string",
     "transcript_id": "string",
+    "transcript_type": "string",
+    "transcript_tags": "string",
     "cds_start": "int",
     "cds_end": "int",
     "ref_cds_seq": "string",
@@ -201,7 +203,7 @@ OUTPUT_COLUMN_KINDS = {
 # not part of OUTPUT_COLUMN_KINDS.
 PREDICTION_COLUMN_KINDS = {"nmd_efficiency_prediction": "float"}
 
-# The 4 columns that hold a sequence. They make up most of the table's size, in memory and on disk.
+# The columns that hold a sequence. They make up most of the table's size, in memory and on disk.
 # annotate(..., sequences=False) and the CLI flag --no-sequences leave them out (see output_column_kinds).
 SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
 
@@ -271,10 +273,10 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
 def output_column_kinds(sequences=True, prediction=True):
     """
     Return the kind of every column that ``annotate`` returns with the same arguments, in output order. By default,
-    these are the 80 columns of OUTPUT_COLUMN_KINDS and the column of PREDICTION_COLUMN_KINDS after nmd_efficiency_prediction_status. With
-    ``sequences=False``, the 4 columns of SEQUENCE_COLUMNS are left out. With ``prediction=False``, the column of
-    PREDICTION_COLUMN_KINDS is left out. The other columns keep their order. Pass the result to ``apply_schema`` or
-    ``empty_table``.
+    these are the columns of OUTPUT_COLUMN_KINDS and the column of PREDICTION_COLUMN_KINDS after
+    nmd_efficiency_prediction_status. With ``sequences=False``, the columns of SEQUENCE_COLUMNS are left out. With
+    ``prediction=False``, the column of PREDICTION_COLUMN_KINDS is left out. The other columns keep their order. Pass
+    the result to ``apply_schema`` or ``empty_table``.
 
     :param sequences: whether to keep the columns of SEQUENCE_COLUMNS
     :param prediction: whether to add the column of PREDICTION_COLUMN_KINDS

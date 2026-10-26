@@ -8,9 +8,13 @@ NMD-Scanner rejects, the misannotations that it accepts, and the null cases that
 - `scan.read_gff3` raises a ValueError for an exon or CDS row whose strand is not + or -, for a CDS row whose phase
   is not 0, 1 or 2, and for a CDS row that does not lie inside an exon row of its transcript. The error names the
   transcript of the first such row. A transcript without exon rows is not checked.
-- `rules.extract_ptc` raises a ValueError if the CDS rows lack the column `has_start_codon` or `has_stop_codon`,
-  i.e. are no coding regions. It also raises one if the FASTA has no sequence for a chromosome with variants and CDS
-  rows, and the error names these chromosomes.
+- `scan.read_gff3` raises a ValueError for an Ensembl transcript without an mRNA row: "Could not resolve
+  transcript_id via the ID/Parent hierarchy for N row(s)." Its exon and CDS rows get their `transcript_id` from that
+  row only.
+- `rules.extract_ptc` raises a ValueError if the CDS rows lack the column `has_start_codon`, `has_stop_codon`,
+  `transcript_type` or `transcript_tags`, i.e. are not the coding regions that `scan.read_annotation` returns. It also
+  raises one if the FASTA has no sequence for a chromosome with variants and CDS rows, and the error names these
+  chromosomes.
 
 ## Misannotations
 
@@ -23,6 +27,9 @@ NMD-Scanner reads a transcript with one of these misannotations. The null cases 
   stop codon, or because an in-frame stop codon lies upstream of it. The rows of the transcript keep the flags from
   the CDS ("Technical Notes.md", section "Stop codon classification").
 - A transcript without exon rows. Its rows have no transcript sequence, and `cds_in_transcript` is False.
+- A GENCODE transcript without a transcript row, or a transcript row without the type of the transcript:
+  `transcript_type` in GENCODE, `biotype` in Ensembl. `transcript_type` and `transcript_tags` come from the transcript
+  row only, and the exon and CDS rows do not fill them in.
 - An exon row that the GFF3 holds twice. `transcript_seq` then holds the exon twice. After an indel in that exon,
   the exon lengths do not add up to `alt_transcript_length`.
 
@@ -31,16 +38,18 @@ NMD-Scanner reads a transcript with one of these misannotations. The null cases 
 These clauses add to the "Null when" column of the tables in "Technical Notes.md". "as `x`" stands for the clauses
 of column `x` in both files.
 
-| Column                    | Null when                                                               |
-| ------------------------- | ----------------------------------------------------------------------- |
-| `transcript_start`        | the transcript has no exon rows                                         |
-| `transcript_end`          | as `transcript_start`                                                   |
-| `transcript_seq`          | as `transcript_start`                                                   |
-| `transcript_length`       | as `transcript_start`                                                   |
-| `cds_start_in_transcript` | the transcript has no exon rows; the 5' CDS base lies outside the exons |
-| `cds_end_in_transcript`   | as `cds_start_in_transcript`                                            |
-| `alt_transcript_seq`      | `cds_start_in_transcript` is null                                       |
-| `transcript_exons`        | the transcript has no exon rows                                         |
-| `alt_transcript_exons`    | the exon lengths do not add up to `alt_transcript_length`               |
-| `total_exon_count`        | the transcript has no exon rows                                         |
-| `ptc_to_start_codon`      | the annotated start codon is a stop codon, such as TAG                  |
+| Column                    | Null when                                                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `transcript_type`         | the GENCODE transcript has no transcript row; the transcript row has no `transcript_type` (GENCODE) or `biotype` (Ensembl) |
+| `transcript_tags`         | the GENCODE transcript has no transcript row                                                                               |
+| `transcript_start`        | the transcript has no exon rows                                                                                            |
+| `transcript_end`          | as `transcript_start`                                                                                                      |
+| `transcript_seq`          | as `transcript_start`                                                                                                      |
+| `transcript_length`       | as `transcript_start`                                                                                                      |
+| `cds_start_in_transcript` | the transcript has no exon rows; the 5' CDS base lies outside the exons                                                    |
+| `cds_end_in_transcript`   | as `cds_start_in_transcript`                                                                                               |
+| `alt_transcript_seq`      | `cds_start_in_transcript` is null                                                                                          |
+| `transcript_exons`        | the transcript has no exon rows                                                                                            |
+| `alt_transcript_exons`    | the exon lengths do not add up to `alt_transcript_length`                                                                  |
+| `total_exon_count`        | the transcript has no exon rows                                                                                            |
+| `ptc_to_start_codon`      | the annotated start codon is a stop codon, such as TAG                                                                     |

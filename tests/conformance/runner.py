@@ -37,6 +37,8 @@ FLAVORS = ("gencode", "ensembl")
 # The columns that depend on the transcript only. A Layout gives their expected values.
 REF_COLUMNS = (
     "transcript_id",
+    "transcript_type",
+    "transcript_tags",
     "gene_id",
     "chrom",
     "strand",
@@ -87,8 +89,16 @@ def per_strand(plus, minus):
     return PerStrand(plus, minus)
 
 
-# Expected values that many cases share
-IDS = {"transcript_id": "tx1", "gene_id": "g1", "chrom": CHROMOSOME, "strand": per_strand("+", "-")}
+# Expected values that many cases share. The transcript row of the GFF3 has the transcript_type of TYPES (GENCODE) or the biotype protein_coding (Ensembl), and a
+# tag only if the Transcript has tags. The Layout of a Transcript with tags gives them as transcript_tags.
+IDS = {
+    "transcript_id": "tx1",
+    "transcript_type": "protein_coding",
+    "transcript_tags": None,
+    "gene_id": "g1",
+    "chrom": CHROMOSOME,
+    "strand": per_strand("+", "-"),
+}
 NOT_SCANNED = {
     "alt_scan_start_codon_pos": None,
     "alt_scan_start_codon_exon": None,

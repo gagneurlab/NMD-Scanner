@@ -30,10 +30,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     start and stop loss, and getting the transcript information.
 
     :param cds_df: Coding regions of the annotation (DataFrame): CDS rows that include the stop codon, one row per
-                   transcript and exon, with exon_number, Frame (the GFF3 phase) and the columns has_start_codon and
-                   has_stop_codon. They say whether the coding region of the transcript starts with an annotated
-                   start codon and ends in an annotated stop codon. ``scan.read_annotation`` returns the coding
-                   regions as its CDS rows.
+                   transcript and exon, with exon_number, Frame (the GFF3 phase), gene_id, transcript_type,
+                   transcript_tags and the columns has_start_codon and has_stop_codon. The last two say whether the
+                   coding region of the transcript starts with an annotated start codon and ends in an annotated stop
+                   codon. ``scan.read_annotation`` returns the coding regions as its CDS rows.
     :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them.
                 A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is
                 a record with ALT "." or "*" (see ``drop_missing_alleles``).
@@ -46,15 +46,18 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
              ``variant_placement.place_in_transcript``). If the alt transcript is unknown, unknown_reason names why,
              and the alt columns are null. It has zero rows if no variant touches a coding region, or every variant
              is skipped or has a reference mismatch.
-    :raises ValueError: if cds_df has no has_start_codon or has_stop_codon column, i.e. it does not hold the coding
-                        regions, or if the FASTA has no sequence for a chromosome with variants and coding regions.
+    :raises ValueError: if cds_df has no has_start_codon, has_stop_codon, transcript_type or transcript_tags column,
+                        i.e. it is not the coding regions that scan.read_annotation returns, or if the FASTA has no
+                        sequence for a chromosome with variants and coding regions.
     """
 
-    missing = [column for column in ("has_start_codon", "has_stop_codon") if column not in cds_df.columns]
+    required = ("has_start_codon", "has_stop_codon", "transcript_type", "transcript_tags")
+    missing = [column for column in required if column not in cds_df.columns]
     if missing:
         raise ValueError(
             f"cds_df has no {' and no '.join(missing)} column. extract_ptc takes the coding regions: CDS rows that "
-            "include the stop codon, with has_start_codon and has_stop_codon, as scan.read_annotation returns them."
+            "include the stop codon, with has_start_codon, has_stop_codon, transcript_type and transcript_tags, as "
+            "scan.read_annotation returns them."
         )
 
     cds_df_adj = cds_df.copy()
@@ -126,6 +129,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
     results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
     logger.info("Create reference CDS: done.")
+
+    # The type and the tags of each transcript. Each CDS row has those of its transcript row (see scan.read_gff3).
+    transcripts = cds_df_adj.drop_duplicates("transcript_id").set_index("transcript_id")
+    for column in ("transcript_type", "transcript_tags"):
+        results_df[column] = results_df["transcript_id"].map(transcripts[column])
 
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()

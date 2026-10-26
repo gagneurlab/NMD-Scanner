@@ -188,9 +188,10 @@ def read_gff3(gff3_path, fasta):
     :param fasta: Reference genome (pyfaidx.Fasta object)
     :return: DataFrame with the exon and CDS rows in file order and a RangeIndex, the columns
         Chromosome, Source, Feature, Start, End, Score, Strand, Frame, has_start_codon,
-        has_stop_codon, gene_id and transcript_id, and the other attributes of ``GFF3_ATTRIBUTES``
-        that the file has, except ID and Parent. exon_number (nullable integer) is there for an
-        Ensembl GFF3, and for a GENCODE GFF3 that has the attribute.
+        has_stop_codon, gene_id, transcript_id, transcript_type and transcript_tags (see
+        ``_add_transcript_attributes``), and the other attributes of ``GFF3_ATTRIBUTES`` that the
+        file has, except ID and Parent. exon_number (nullable integer) is there for an Ensembl GFF3,
+        and for a GENCODE GFF3 that has the attribute.
     :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, if its
         flavor is neither GENCODE nor Ensembl, or if an exon or CDS row breaks a rule of
         ``_check_strand_and_phase`` or ``_check_cds_in_exons``
@@ -731,6 +732,7 @@ def _normalize_gencode_gff3(df):
     """
     transcript_mask = df["Feature"] == "transcript"
     df = _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=True)
+    df = _add_transcript_attributes(df, transcript_mask, "transcript_type")
 
     child_mask = df["Feature"].isin(["exon", "CDS", "start_codon", "stop_codon"])
     _check_ids_resolved(df, child_mask)
@@ -749,6 +751,7 @@ def _normalize_ensembl_gff3(df):
     """
     transcript_mask = df["ID"].notna() & df["Parent"].astype(str).str.startswith("gene:")
     df = _resolve_ids_via_hierarchy(df, transcript_mask)
+    df = _add_transcript_attributes(df, transcript_mask, "biotype")
 
     child_mask = df["Feature"].isin(["exon", "CDS"])
     _check_ids_resolved(df, child_mask)
@@ -763,6 +766,32 @@ def _normalize_ensembl_gff3(df):
             child_df["exon_number"] = rank.where(child_df["Feature"] == "exon").astype("Int64")
             return _assign_exon_numbers_to_cds(child_df)
     return compute_exon_numbers(child_df)
+
+
+def _add_transcript_attributes(df, transcript_mask, type_attribute):
+    """
+    Returns a copy of ``df`` in which every row has the columns transcript_type and transcript_tags of its transcript.
+    Both come from the transcript row: transcript_type from the attribute ``type_attribute``, and transcript_tags from
+    the attribute tag, as text with the tags comma-separated as in the file, e.g. "basic,Ensembl_canonical". Both are
+    NA if the transcript row lacks the attribute, and on the rows of a transcript without a transcript row.
+
+    :param df: GFF3 rows (DataFrame) with transcript_id, as ``_resolve_ids_via_hierarchy`` gives them
+    :param transcript_mask: Boolean mask selecting the transcript rows
+    :param type_attribute: "transcript_type" for GENCODE, "biotype" for Ensembl. In Ensembl, the gene row has a
+        biotype too, the type of the gene, which is not used.
+    """
+    # The first transcript row of each transcript, in file order
+    transcripts = df[transcript_mask & df["transcript_id"].notna()].drop_duplicates("transcript_id")
+    df = df.copy()
+    for column, attribute in (("transcript_type", type_attribute), ("transcript_tags", "tag")):
+        if attribute not in transcripts.columns:
+            df[column] = pd.Series(pd.NA, index=df.index, dtype=object)
+            continue
+        # GENCODE repeats transcript_type and tag on the exon, CDS and codon rows. If a row differs from its transcript
+        # row, the value of the transcript row is taken.
+        values = pd.Series(transcripts[attribute].to_numpy(), index=transcripts["transcript_id"].to_numpy())
+        df[column] = df["transcript_id"].map(values)
+    return df
 
 
 def _check_ids_resolved(df, mask):

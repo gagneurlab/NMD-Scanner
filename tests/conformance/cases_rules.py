@@ -544,6 +544,7 @@ NF = Layout(
     ),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(10, 16),
         "cds_end": per_strand(221, 227),
         "ref_cds_seq": NF_CDS,

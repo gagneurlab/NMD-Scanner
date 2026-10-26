@@ -318,6 +318,16 @@ RULES = (
 NULL_CASES = [
     # A row does not show the ID of its record, and a null variant_id has no other cause
     ("variant_id", "the ID of the VCF record is `.`", lambda row: True),
+    # transcript_type and transcript_tags come from the transcript row. If one of them is set, the transcript has a
+    # transcript row.
+    ("transcript_type", "the GENCODE transcript has no transcript row", lambda row: row["transcript_tags"] is None),
+    (
+        "transcript_type",
+        "the transcript row has no `transcript_type` (GENCODE) or `biotype` (Ensembl)",
+        lambda row: row["transcript_tags"] is not None,
+    ),
+    ("transcript_tags", "the transcript has no tag", lambda row: row["transcript_type"] is not None),
+    ("transcript_tags", "the GENCODE transcript has no transcript row", lambda row: row["transcript_type"] is None),
     *[
         (column, UNKNOWN, lambda row: not _known(row))
         for column in (

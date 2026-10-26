@@ -106,6 +106,8 @@ def run_pipeline_on_transcript(
                 "Feature": feature,
                 "exon_number": str(number),
                 "transcript_id": "tx1",
+                "transcript_type": "protein_coding",
+                "transcript_tags": "basic",
                 "gene_id": "gene1",
                 # GFF3 phase: the CDS starts with a complete codon
                 "Frame": "0",
@@ -871,6 +873,8 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
                 "Feature": f,
                 "exon_number": str(e),
                 "transcript_id": "tx",
+                "transcript_type": "protein_coding",
+                "transcript_tags": None,
                 "gene_id": "gene",
                 "Frame": "0",
             }
@@ -969,6 +973,24 @@ def test_extract_ptc_needs_the_coding_regions():
         }
     )
     with pytest.raises(ValueError, match="has_stop_codon"):
+        extract_ptc(rows, vcf=None, fasta=None, exons_df=None)
+
+
+def test_extract_ptc_needs_the_transcript_type_and_the_transcript_tags():
+    rows = pd.DataFrame(
+        {
+            "Chromosome": ["chrT"],
+            "Start": [100],
+            "End": [150],
+            "Strand": ["+"],
+            "Feature": ["CDS"],
+            "exon_number": ["1"],
+            "transcript_id": ["tx"],
+            "has_start_codon": [True],
+            "has_stop_codon": [True],
+        }
+    )
+    with pytest.raises(ValueError, match="no transcript_type and no transcript_tags column"):
         extract_ptc(rows, vcf=None, fasta=None, exons_df=None)
 
 

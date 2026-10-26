@@ -1042,6 +1042,8 @@ def test_read_gff3_raises_for_a_cds_row_that_reaches_past_the_transcript_end(
 # changes no stop codon. The GENCODE fixture has no start_codon rows, so the transcript has no annotated start codon.
 _ROW_WITHOUT_EXON_ROWS = {
     "variant_id": "v0",
+    "transcript_type": "protein_coding",
+    "transcript_tags": None,
     "chrom": "chr1",
     "has_start_codon": False,
     "has_stop_codon": True,
@@ -1413,6 +1415,85 @@ chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;ge
     df = nmd_scanner.scan.read_gff3(_write(tmp_path, "some_ids.gff3", content), _fasta(tmp_path))
     assert df["transcript_id"].tolist() == ["ENST000.1_5", "ENST001.1"]
     assert df["gene_id"].tolist() == ["ENSG000.1_5", "ENSG001.1"]
+
+
+# A protein-coding gene with two transcripts, in both flavors: the canonical transcript with 3 tags, and a
+# nonsense_mediated_decay transcript without a tag
+_GENCODE_TYPES_AND_TAGS = """\
+##gff-version 3
+chr1\tHAVANA\tgene\t1000\t2000\t.\t+\t.\tID=ENSG001.1;gene_id=ENSG001.1;gene_type=protein_coding
+chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\tID=ENST001.1;Parent=ENSG001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;tag=basic,Ensembl_canonical,MANE_Select
+chr1\tHAVANA\texon\t1000\t1200\t.\t+\t.\tID=exon:ENST001.1:1;Parent=ENST001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1;tag=basic,Ensembl_canonical,MANE_Select
+chr1\tHAVANA\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENST001.1;Parent=ENST001.1;gene_id=ENSG001.1;transcript_id=ENST001.1;gene_type=protein_coding;transcript_type=protein_coding;exon_number=1;tag=basic,Ensembl_canonical,MANE_Select
+chr1\tHAVANA\ttranscript\t1000\t1500\t.\t+\t.\tID=ENST002.1;Parent=ENSG001.1;gene_id=ENSG001.1;transcript_id=ENST002.1;gene_type=protein_coding;transcript_type=nonsense_mediated_decay
+chr1\tHAVANA\texon\t1000\t1500\t.\t+\t.\tID=exon:ENST002.1:1;Parent=ENST002.1;gene_id=ENSG001.1;transcript_id=ENST002.1;gene_type=protein_coding;transcript_type=nonsense_mediated_decay;exon_number=1
+chr1\tHAVANA\tCDS\t1051\t1100\t.\t+\t0\tID=CDS:ENST002.1;Parent=ENST002.1;gene_id=ENSG001.1;transcript_id=ENST002.1;gene_type=protein_coding;transcript_type=nonsense_mediated_decay;exon_number=1
+"""
+# Ensembl has the type of the gene and of the transcript in biotype, and the tags on the mRNA row only
+_ENSEMBL_TYPES_AND_TAGS = """\
+##gff-version 3
+chr1\tensembl\tgene\t1000\t2000\t.\t+\t.\tID=gene:ENSGE001;biotype=protein_coding
+chr1\tensembl\tmRNA\t1000\t2000\t.\t+\t.\tID=transcript:ENSTE001;Parent=gene:ENSGE001;biotype=protein_coding;tag=basic,Ensembl_canonical,MANE_Select;transcript_id=ENSTE001
+chr1\tensembl\texon\t1000\t1200\t.\t+\t.\tParent=transcript:ENSTE001;rank=1
+chr1\tensembl\tCDS\t1051\t1200\t.\t+\t0\tID=CDS:ENSPE001;Parent=transcript:ENSTE001
+chr1\tensembl\tmRNA\t1000\t1500\t.\t+\t.\tID=transcript:ENSTE002;Parent=gene:ENSGE001;biotype=nonsense_mediated_decay;transcript_id=ENSTE002
+chr1\tensembl\texon\t1000\t1500\t.\t+\t.\tParent=transcript:ENSTE002;rank=1
+chr1\tensembl\tCDS\t1051\t1100\t.\t+\t0\tID=CDS:ENSPE002;Parent=transcript:ENSTE002
+"""
+
+
+def _types_and_tags(annotation):
+    """(transcript_id, Feature, transcript_type, transcript_tags) of each row, with None for a missing value."""
+    columns = ["transcript_id", "Feature", "transcript_type", "transcript_tags"]
+    return {
+        tuple(None if pd.isna(value) else value for value in row) for row in annotation[columns].itertuples(index=False)
+    }
+
+
+@pytest.mark.parametrize(
+    ("gff3", "transcripts"),
+    [
+        (_GENCODE_TYPES_AND_TAGS, ("ENST001.1", "ENST002.1")),
+        (_ENSEMBL_TYPES_AND_TAGS, ("ENSTE001", "ENSTE002")),
+    ],
+    ids=["gencode", "ensembl"],
+)
+def test_read_gff3_gives_each_row_the_type_and_the_tags_of_its_transcript_row(tmp_path, gff3, transcripts):
+    """
+    transcript_type is the transcript_type (GENCODE) or biotype (Ensembl) of the transcript row, not the type of the
+    gene. transcript_tags is the tag attribute of the transcript row as text, and null for a transcript without tags.
+    """
+    annotation = nmd_scanner.scan.read_gff3(_write(tmp_path, "a.gff3", gff3), _fasta(tmp_path))
+
+    canonical, nmd = transcripts
+    assert _types_and_tags(annotation) == {
+        (canonical, "exon", "protein_coding", "basic,Ensembl_canonical,MANE_Select"),
+        (canonical, "CDS", "protein_coding", "basic,Ensembl_canonical,MANE_Select"),
+        (nmd, "exon", "nonsense_mediated_decay", None),
+        (nmd, "CDS", "nonsense_mediated_decay", None),
+    }
+
+
+def test_read_gff3_gencode_takes_the_type_and_the_tags_of_the_transcript_row_if_its_other_rows_differ(tmp_path):
+    """GENCODE repeats transcript_type and tag on the exon and CDS rows. The values of the transcript row win."""
+    lines = [
+        line
+        if "\ttranscript\t" in line
+        else line.replace("tag=basic,Ensembl_canonical,MANE_Select", "tag=basic").replace(
+            "transcript_type=nonsense_mediated_decay", "transcript_type=protein_coding"
+        )
+        for line in _GENCODE_TYPES_AND_TAGS.splitlines(True)
+    ]
+    assert sum(a != b for a, b in zip(lines, _GENCODE_TYPES_AND_TAGS.splitlines(True))) == 4
+
+    annotation = nmd_scanner.scan.read_gff3(_write(tmp_path, "a.gff3", "".join(lines)), _fasta(tmp_path))
+
+    assert _types_and_tags(annotation) == {
+        ("ENST001.1", "exon", "protein_coding", "basic,Ensembl_canonical,MANE_Select"),
+        ("ENST001.1", "CDS", "protein_coding", "basic,Ensembl_canonical,MANE_Select"),
+        ("ENST002.1", "exon", "nonsense_mediated_decay", None),
+        ("ENST002.1", "CDS", "nonsense_mediated_decay", None),
+    }
 
 
 _GTF_ROWS = """\

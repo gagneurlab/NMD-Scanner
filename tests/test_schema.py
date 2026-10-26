@@ -120,9 +120,9 @@ def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_co
     full = output_column_kinds()
     reduced = output_column_kinds(sequences=False)
 
-    assert len(OUTPUT_COLUMN_KINDS) == 80
-    assert len(full) == 81
-    assert len(reduced) == 77
+    assert len(OUTPUT_COLUMN_KINDS) == 82
+    assert len(full) == 83
+    assert len(reduced) == 79
     assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
     assert reduced == {column: kind for column, kind in full.items() if column not in SEQUENCE_COLUMNS}
     assert list(reduced) == [column for column in full if column not in SEQUENCE_COLUMNS]
@@ -130,11 +130,11 @@ def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_co
     assert output_column_kinds(prediction=False) is not OUTPUT_COLUMN_KINDS
 
 
-def test_empty_table_without_sequences_has_the_77_columns_and_their_dtypes():
+def test_empty_table_without_sequences_has_the_79_columns_and_their_dtypes():
     table = empty_table(output_column_kinds(sequences=False))
 
     assert len(table) == 0
-    assert len(table.columns) == 77
+    assert len(table.columns) == 79
     assert_schema(table, output_column_kinds(sequences=False))
 
 
@@ -145,7 +145,7 @@ def test_output_column_kinds_adds_nmd_efficiency_prediction_after_nmd_efficiency
     kinds = output_column_kinds(sequences)
 
     assert list(kinds) == [*output_column_kinds(sequences, prediction=False), "nmd_efficiency_prediction"]
-    assert len(kinds) == (81 if sequences else 77)
+    assert len(kinds) == (83 if sequences else 79)
     assert kinds["nmd_efficiency_prediction"] == "float"
     assert_schema(empty_table(kinds), kinds)
     assert empty_table(kinds)["nmd_efficiency_prediction"].dtype == np.float64

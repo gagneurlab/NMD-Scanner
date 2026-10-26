@@ -48,10 +48,11 @@ def annotate(
     :param fasta_path: path to the reference FASTA file. It also shows whether a CDS ends in a stop codon, and for
                        an Ensembl GFF3 whether it starts with one.
     :param reassign_exons: recompute the exon numbers of the annotation (recommended for hg19; may be slow)
-    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS. With False, they are left out, which saves
+    :param sequences: keep the sequence columns of SEQUENCE_COLUMNS. With False, they are left out, which saves
                       most of the table's memory. The other columns stay the same.
-    :param prediction: add the column nmd_efficiency_prediction after nmd_efficiency_prediction_status (see nmd_scanner.model.add_nmd_efficiency_prediction).
-                  With False, it is left out, and the other columns stay the same.
+    :param prediction: add the column nmd_efficiency_prediction after nmd_efficiency_prediction_status (see
+                  nmd_scanner.model.add_nmd_efficiency_prediction). With False, it is left out, and the other
+                  columns stay the same.
     :return: DataFrame summarizing all annotated variants, with the columns and dtypes of
              output_column_kinds(sequences, prediction) (see nmd_scanner.schema). It has zero rows if no variant gives a
              result.
@@ -106,7 +107,7 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, se
     :param fasta_path: path to the reference FASTA file
     :param output: path to the output file (.csv, .parquet, or .pq)
     :param reassign_exons: recompute the exon numbers of the annotation
-    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS (see annotate())
+    :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
     :param prediction: add the column nmd_efficiency_prediction (see annotate())
     :return: DataFrame summarizing all annotated variants: the table that annotate() returns
     """

@@ -491,6 +491,7 @@ CDS_START_NF = Layout(
     Transcript(("ggg" + CTG_CDS[:100], CTG_CDS[100:] + "ggggg"), start_codon=False, tags=("cds_start_NF",)),
     {
         **CTG_START.ref,
+        "transcript_tags": "cds_start_NF",
         "has_start_codon": False,
         "start_codon_exon": None,
         "likely_misannotated": True,
@@ -502,6 +503,7 @@ CDS_END_NF = Layout(
     Transcript(("gaccATGGCCAAGCTG", "GGCTCC"), stop_codon=False, tags=("cds_end_NF",)),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(14, 10),
         "cds_end": per_strand(52, 48),
         "ref_cds_seq": "ATGGCCAAGCTGGGCTCC",

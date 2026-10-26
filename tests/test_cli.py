@@ -896,7 +896,7 @@ def test_main_without_sequences_writes_the_full_output_without_the_4_sequence_co
 @pytest.mark.parametrize("vcf", ["resources/test_files/test_variants.vcf", "intergenic_vcf"])
 def test_main_cli_writes_nmd_efficiency_prediction_unless_no_prediction(monkeypatch, request, tmp_path, vcf, extension):
     """
-    By default, the output has nmd_efficiency_prediction after nmd_efficiency_prediction_status. With --no-prediction, it has the 80 columns of
+    By default, the output has nmd_efficiency_prediction after nmd_efficiency_prediction_status. With --no-prediction, it has the 82 columns of
     OUTPUT_COLUMN_KINDS, with the values of the default output.
     """
     import pyarrow as pa

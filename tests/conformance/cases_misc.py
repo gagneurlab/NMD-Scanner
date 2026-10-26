@@ -1,8 +1,9 @@
 """
 Conformance cases of what gives a row and what gives none (REF mismatch, intergenic and UTR variants, a
 chromosome without a coding region, a VCF without a record), several transcripts or variants in one run, variant_id,
-the location of the CDS in the transcript, reassign_exons, an Ensembl GFF3, and the values of unknown_reason. A
-variant on a chromosome that the FASTA lacks is an error, and so is a CDS row outside the exon rows of its transcript.
+the location of the CDS in the transcript, reassign_exons, an Ensembl GFF3, the type and the tags of the transcript,
+and the values of unknown_reason. A variant on a chromosome that the FASTA lacks is an error, and so is a CDS row
+outside the exon rows of its transcript.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
@@ -185,6 +186,33 @@ def exon_1_ends_2_nt_before_its_cds_row(rows, strand):
     return [_move_3prime_end(row, strand, 2) if _is_exon(row, 1) else row for row in rows]
 
 
+def nonsense_mediated_decay_transcript(rows, strand):
+    """
+    Give tx1 the type nonsense_mediated_decay: as transcript_type (GENCODE) or biotype (Ensembl), on every row except
+    the gene row. The gene g1 keeps the type protein_coding.
+    """
+
+    def retype(attributes):
+        return attributes.replace("transcript_type=protein_coding", "transcript_type=nonsense_mediated_decay").replace(
+            "biotype=protein_coding", "biotype=nonsense_mediated_decay"
+        )
+
+    return [row if row[2] == "gene" else [*row[:8], retype(row[8])] for row in rows]
+
+
+def without_the_transcript_row(rows, strand):
+    """Drop the GENCODE transcript row. The exon, CDS and codon rows keep transcript_id, transcript_type and tag."""
+    return [row for row in rows if row[2] != "transcript"]
+
+
+def transcript_row_without_transcript_type(rows, strand):
+    """Drop transcript_type from the GENCODE transcript row. The exon, CDS and codon rows keep it."""
+    return [
+        [*row[:8], row[8].replace(";transcript_type=protein_coding", "")] if row[2] == "transcript" else row
+        for row in rows
+    ]
+
+
 # The 5' UTR holds the CDS sequence ATG GCC TAA too
 #   5' [g atggcctaa cc ATG GCC TAA gc] 3'
 #        <-copy--->    <--CDS--->
@@ -246,6 +274,8 @@ ENSEMBL = Layout(
         ],
     },
 )
+# The tags of a transcript that is the Ensembl canonical and the MANE Select transcript of its gene
+CANONICAL_TAGS = ("basic", "Ensembl_canonical", "MANE_Select")
 
 CASES = [
     # A VCF whose only record has a REF that the genome does not have
@@ -649,6 +679,71 @@ CASES = [
                 {"exon_number": 2, "length": 9},
                 {"exon_number": 3, "length": 5},
             ],
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_efficiency_prediction_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
+    ),
+    # transcript_type and transcript_tags come from the transcript row, not from the gene row
+    Case(
+        "gencode_transcript_row_gives_the_transcript_type_and_the_transcript_tags",
+        MISSENSE_DRAWING
+        + "The transcript row of tx1 has transcript_type=nonsense_mediated_decay and\n"
+        + "tag=basic,Ensembl_canonical,MANE_Select. The gene row of g1 has gene_type=protein_coding.\n",
+        Layout(
+            Transcript(THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=nonsense_mediated_decay_transcript),
+            {
+                **THREE_EXONS.ref,
+                "transcript_type": "nonsense_mediated_decay",
+                "transcript_tags": "basic,Ensembl_canonical,MANE_Select",
+            },
+        ),
+        MISSENSE,
+        {
+            **MISSENSE_ROW,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_efficiency_prediction_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
+    ),
+    # "Input Defects.md": a transcript without a transcript row, and a transcript row without its type
+    Case(
+        "gencode_transcript_without_a_transcript_row_has_a_null_transcript_type_and_null_transcript_tags",
+        MISSENSE_DRAWING
+        + "The GFF3 has no transcript row for tx1. Its exon and CDS rows have transcript_type=protein_coding and\n"
+        + "tag=basic,Ensembl_canonical,MANE_Select, but the two columns come from the transcript row only.\n",
+        Layout(
+            Transcript(THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=without_the_transcript_row),
+            {**THREE_EXONS.ref, "transcript_type": None, "transcript_tags": None},
+        ),
+        MISSENSE,
+        {
+            **MISSENSE_ROW,
+            "alt_transcript_exons": SAME_EXONS,
+            "nmd_efficiency_prediction_status": "no_ptc",
+            "ptc_pos_in_alt_transcript": None,
+            "ptc_exon_number": None,
+            "stop_classification": "alt_transcript",
+        },
+    ),
+    Case(
+        "gencode_transcript_row_without_transcript_type_has_a_null_transcript_type",
+        MISSENSE_DRAWING
+        + "The transcript row of tx1 has no transcript_type, and tag=basic,Ensembl_canonical,MANE_Select. Its exon\n"
+        + "and CDS rows have transcript_type=protein_coding.\n",
+        Layout(
+            Transcript(
+                THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=transcript_row_without_transcript_type
+            ),
+            {**THREE_EXONS.ref, "transcript_type": None, "transcript_tags": "basic,Ensembl_canonical,MANE_Select"},
+        ),
+        MISSENSE,
+        {
+            **MISSENSE_ROW,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
