@@ -13,7 +13,7 @@ With `sequences=False`, `annotate` drops the 4 sequence columns between step 3 a
 
 Each row of the result is the variant of one VCF record in one transcript whose coding region the variant touches. Two records with the same CHROM, POS, REF and ALT give a row each, and each row has the ID of its record as `variant_id`. The coding region is the CDS plus the stop codon. A variant touches it if one of its placements changes a base of the coding region, or of a splice dinucleotide at one of its exon edges (see [Variants at exon boundaries](#variants-at-exon-boundaries)). A variant gives no row if it touches no coding region, if its REF does not match the reference genome, or if its ALT is symbolic, a breakend, `.` or `*`.
 
-The tables list the columns in output order, in five parts: the PTC columns, the NMD features, the NMD rules, the prediction status and the NMD efficiency prediction. The tables assume a well-formed GFF3. "Input Defects.md" lists the null cases that a misannotation adds.
+The tables list the columns in output order, in five parts: the PTC columns, the NMD features, the NMD rules, the prediction status and the NMD efficiency prediction. The tables assume a well-formed GFF3.
 
 `--no-sequences` drops the 4 sequence columns, and `--no-prediction` drops the last part. The other columns stay the same.
 
