@@ -54,6 +54,8 @@ Steps:
    paired CI from the same resamples. Each cohort draws from its own generator, seeded with SEED.
 6. Per cohort, compute the mean measured NMD efficiency of the rows with nmd_escape False. For GTEx, also compute it
    over the variant-tissue rows, in total and per tissue with at least MIN_TISSUE_ROWS of them.
+7. For MMRF-TARGET, compute the numbers of step 5 also for the rows on transcripts of the TCGA training rows, and for
+   the other rows.
 
 Outputs in --out-dir: variants.vcf (the input of nmd_scanner.annotate), validation.json, and figures/ with each
 figure as PNG and PDF.
@@ -158,6 +160,11 @@ COHORT_NAMES = {
 # position of the result
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
 GAIN = [("gain", "", BLUE, 0.0)]
+# The keys of the MMRF-TARGET rows by transcript in validation.json, and their names in the log and the figure
+TRANSCRIPT_GROUPS = {
+    "in_tcga_training": "Transcript in the TCGA training rows",
+    "not_in_tcga_training": "Transcript not in the TCGA training rows",
+}
 
 
 class RemoteFile:
@@ -420,6 +427,22 @@ validation["gtex_variant_tissue_rows"] = {
     "min_rows_per_tissue": MIN_TISSUE_ROWS,
     "mean_nmd_triggering_per_tissue": tissue_means,
 }
+mmrf_rows = cohorts["mmrf_target"]
+seen = mmrf_rows["transcript"].isin(set(cohorts["tcga"]["transcript"]))
+validation["mmrf_target_by_transcript"] = {
+    "in_tcga_training": correlations(mmrf_rows[seen]),
+    "not_in_tcga_training": correlations(mmrf_rows[~seen]),
+}
+for group, result in validation["mmrf_target_by_transcript"].items():
+    logger.info(
+        "mmrf_target, %s, %d rows of %d genes: model %s, rules %s, gain %s",
+        TRANSCRIPT_GROUPS[group],
+        result["n"],
+        result["genes"],
+        estimate(result["model"], result["model_ci"]),
+        estimate(result["rules"], result["rules_ci"]),
+        estimate(result["gain"], result["gain_ci"]),
+    )
 (args.out_dir / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
 logger.info(
     "gtex, %d variant-tissue rows: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues with at"
@@ -540,27 +563,11 @@ save_figure(plot, args.out_dir, "gtex_tissues", 6, 9)
 
 # %% [markdown]
 # The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the rows whose
-# transcript is in the TCGA training rows of --train-dir and for the other rows, with 95% bootstrap CIs.
-# validation.json does not hold these numbers.
+# transcript is in the TCGA training rows of --train-dir and for the other rows, with 95% bootstrap CIs. The numbers
+# are `mmrf_target_by_transcript` in validation.json.
 
 # %%
-training_transcripts = set(cohorts["tcga"]["transcript"])
-mmrf_rows = cohorts["mmrf_target"]
-seen = mmrf_rows["transcript"].isin(training_transcripts)
-transcript_split = {
-    "Transcript in the TCGA training rows": correlations(mmrf_rows[seen]),
-    "Transcript not in the TCGA training rows": correlations(mmrf_rows[~seen]),
-}
-for group, result in transcript_split.items():
-    logger.info(
-        "mmrf_target, %s, %d rows of %d genes: model %s, rules %s, gain %s",
-        group,
-        result["n"],
-        result["genes"],
-        estimate(result["model"], result["model_ci"]),
-        estimate(result["rules"], result["rules_ci"]),
-        estimate(result["gain"], result["gain_ci"]),
-    )
+transcript_split = validation["mmrf_target_by_transcript"]
 results = list(transcript_split.values())
 gain_panel = "Gain of the model over the rules"
 transcript_intervals = facet_frame(
@@ -569,7 +576,8 @@ transcript_intervals = facet_frame(
 zero = pd.DataFrame({"panel": [gain_panel], "x": [0.0]}).astype({"panel": transcript_intervals["panel"].dtype})
 plot = (
     interval_plot(
-        transcript_intervals, [f"{group}\n{result['n']:,} rows" for group, result in transcript_split.items()]
+        transcript_intervals,
+        [f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} rows" for group, result in transcript_split.items()],
     )
     + geom_vline(aes(xintercept="x"), data=zero, color=AXIS)
     + facet_wrap("panel", scales="free_x")

@@ -111,7 +111,7 @@ The NMD efficiency model was tested without retraining on three cohorts besides 
 | GTEx v8 (Kim et al. 2024), 54 tissues, mean per variant                                | germline        | 2,287 | 0.48 (0.45 to 0.52) | 0.44 (0.40 to 0.48) |
 | MMRF-TARGET (Kim et al. 2024)                                                          | somatic, tumors |   509 | 0.46 (0.38 to 0.53) | 0.38 (0.30 to 0.46) |
 
-The model ranks the variants better than the rules in every cohort. The gain is 0.04 to 0.08, and its paired 95% CI lies above 0 in all four cohorts.
+The model ranks the variants better than the rules in every cohort. The gain is 0.04 to 0.08, and its paired 95% CI lies above 0 in all four cohorts. 219 of the 509 MMRF-TARGET rows lie on transcripts of the TCGA training rows. The gain is 0.16 (0.10 to 0.23) on these rows and 0.05 (-0.01 to 0.11) on the other 290, whose CI includes 0.
 
 The absolute level of the measured efficiency differs between cohorts and tissues. To compare the predictions with measurements from another tissue, recalibrate them with a linear fit on those measurements.
 
