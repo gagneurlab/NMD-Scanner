@@ -15,7 +15,6 @@ uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fa
 - Data: `tcga_dataset.csv` and `MMRF_TARGET_dataset.csv` of <https://github.com/hjkng/nmdeff>, downloaded at a pinned commit and checked against their sha256.
 - It parses the substitution from HGVSc, which has the alleles on the transcript strand. It takes the strand from the GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses the orientation whose REF matches the FASTA.
 - It fails if a row is not a single-base substitution, or if a REF does not match the FASTA.
-- It does not use nmd-scanner. It pins the NMDEff commit so that the tables, and with them the VCFs, never change.
 - `train_model.py` and `validate_model.py` import these steps from it.
 
 ## train_model.py
@@ -36,7 +35,6 @@ uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh
   - `oof_predictions.parquet`, the out-of-fold predictions, which `validate_model.py` reads.
   - `cv_results.json`, the R2 of each fold and the hyperparameters.
   - `variants.vcf`, the input of `nmd_scanner.annotate`.
-- It pins nmd-scanner 0.4.0 because the model learns the features of that release. A model trained on other features would not fit the package.
 
 ## validate_model.py
 
@@ -56,4 +54,3 @@ uv run scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta G
 - It keeps the rows the model can predict that have a variant allele fraction above 0 in the RNA. For the germline variants, the NMD efficiency is -log2(VAF_RNA / 0.5).
 - The 95% CIs come from 2,000 bootstrap resamples of the rows per cohort.
 - Output: `out/validation.json`, and a short summary in the log. Per cohort, the file has the Spearman correlations of the model and of the rules, the gain of the model over the rules, and the mean measured NMD efficiency of the rows with `nmd_escape` False. For GTEx, it also has that mean over the variant-tissue rows, in total and per tissue. The README table is written by hand from these numbers.
-- It pins nmd-scanner 0.5.0, a release that computes the same features as 0.4.0, on which the model was trained. The pin keeps the numbers reproducible.
