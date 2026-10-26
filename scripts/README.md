@@ -4,7 +4,7 @@ These scripts are not part of the package. They run from the repo root with `uv 
 
 `train_model.py` and `validate_model.py` are also notebooks. They are jupytext percent scripts, and each is paired with a `.ipynb` of the same name that git ignores. As a notebook, a script takes its arguments from an environment variable, `TRAIN_MODEL_ARGS` or `VALIDATE_MODEL_ARGS`, in the syntax of the command line. The kernel runs in `scripts/`, so the paths in the variable must be absolute. The notebook commands below write the `.ipynb` with jupytext, execute it with nbconvert, and render it to HTML with the figures inline. `TQDM_DISABLE=1` keeps progress bars out of the HTML.
 
-Both ways save each figure at 600 dpi as `figures/<name>.png` and `figures/<name>.pdf` in `--out-dir`. `figures.py` sets their style.
+Both ways draw each figure with plotnine and save it at 600 dpi as `figures/<name>.png` and `figures/<name>.pdf` in `--out-dir`. `figures.py` has their theme.
 
 ## make_benchmark_vcfs.py
 

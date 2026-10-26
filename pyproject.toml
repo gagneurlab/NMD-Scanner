@@ -58,6 +58,7 @@ scripts = [
     "nbconvert>=7.17.2",
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",
+    "plotnine>=0.15.8",
 ]
 
 [tool.hatch.build.targets.wheel]

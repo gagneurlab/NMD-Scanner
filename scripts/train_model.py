@@ -60,18 +60,39 @@ import pandas as pd
 from figures import (
     AXIS,
     BLUE,
-    MARKER_STYLE,
     MUTED_INK,
     SECONDARY_INK,
     SURFACE,
+    calibration,
+    calibration_plot,
     in_notebook,
-    new_figure,
-    plot_calibration,
-    plot_measured_vs_predicted,
     save_figure,
 )
 from make_benchmark_vcfs import KEY, add_alleles, add_key, read_nmdeff, read_strands, write_vcf
 from onnx import TensorProto, helper, numpy_helper
+from plotnine import (
+    aes,
+    annotate,
+    coord_flip,
+    element_blank,
+    facet_wrap,
+    geom_abline,
+    geom_col,
+    geom_histogram,
+    geom_line,
+    geom_linerange,
+    geom_point,
+    geom_ribbon,
+    geom_text,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_color_identity,
+    scale_fill_identity,
+    scale_x_continuous,
+    scale_x_discrete,
+    theme,
+)
 from pyfaidx import Fasta
 from scipy.stats import spearmanr
 from skl2onnx.common.tree_ensemble import add_tree_to_attribute_pairs, get_default_tree_regressor_attribute_pairs
@@ -193,13 +214,13 @@ chrom = rows["chrom"].to_numpy(dtype=str)
 # allele fraction in the RNA is half of that in the DNA.
 
 # %%
-fig, (ax,) = new_figure(6, 3.5)
-ax.hist(y, bins=60, color=BLUE, edgecolor=SURFACE, linewidth=0.5)
-ax.grid(axis="x", visible=False)
-ax.set_title(f"NMD_efficiency of {len(y):,} TCGA rows")
-ax.set_xlabel("NMD_efficiency")
-ax.set_ylabel("Rows")
-save_figure(fig, args.out_dir, "target_histogram")
+plot = (
+    ggplot(rows, aes("NMD_efficiency"))
+    + geom_histogram(bins=60, fill=BLUE, color=SURFACE, size=0.25)
+    + labs(title=f"NMD_efficiency of {len(y):,} TCGA rows", x="NMD_efficiency", y="Rows")
+    + theme(panel_grid_major_x=element_blank())
+)
+save_figure(plot, args.out_dir, "target_histogram", 6, 3.5)
 
 # %%
 # The rows of each fold in a block, in fold order, as validate_model.py expects them
@@ -222,16 +243,19 @@ oof.to_parquet(args.out_dir / "oof_predictions.parquet", index=False)
 # over all rows. The gray line marks equal values.
 
 # %%
-fig, (ax,) = new_figure(5, 4.5)
 oof_spearman = spearmanr(oof["prediction"], oof["NMD_efficiency"]).statistic
 oof_r2 = r2_score(oof["NMD_efficiency"], oof["prediction"])
-plot_measured_vs_predicted(
-    ax,
-    oof["prediction"].to_numpy(),
-    oof["NMD_efficiency"].to_numpy(),
-    f"TCGA, out of fold, {len(oof):,} rows\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
+plot = (
+    ggplot(oof, aes("prediction", "NMD_efficiency"))
+    + geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
+    + geom_abline(color=AXIS)
+    + labs(
+        title=f"TCGA, out of fold, {len(oof):,} rows\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
+        x="Predicted NMD efficiency",
+        y="Measured NMD efficiency",
+    )
 )
-save_figure(fig, args.out_dir, "tcga_measured_vs_predicted")
+save_figure(plot, args.out_dir, "tcga_measured_vs_predicted", 5, 4.5)
 
 # %% [markdown]
 # The dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the out-of-fold
@@ -239,12 +263,11 @@ save_figure(fig, args.out_dir, "tcga_measured_vs_predicted")
 # and the gray line marks equal values.
 
 # %%
-fig, (ax,) = new_figure(5, 6)
-plot_calibration(
-    ax, oof["prediction"].to_numpy(), oof["NMD_efficiency"].to_numpy(), f"TCGA, out of fold, {len(oof):,} rows"
+bins, slope, intercept = calibration(oof)
+plot = calibration_plot(bins.assign(slope=slope, intercept=intercept)) + labs(
+    title=f"TCGA, out of fold, {len(oof):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
 )
-fig.legend(*ax.get_legend_handles_labels(), loc="outside lower center")
-save_figure(fig, args.out_dir, "calibration_oof")
+save_figure(plot, args.out_dir, "calibration_oof", 5, 6)
 
 # %%
 final = tune(x, y, chrom)
@@ -266,29 +289,42 @@ logger.info("final model: inner CV R2 %.3f, %s", final.best_score_, final.best_p
 # deviation over the permutations.
 
 # %%
-impurity = pd.Series(final.best_estimator_.feature_importances_, index=MODEL_INPUTS).sort_values()
 permutation = permutation_importance(
     final.best_estimator_, x, y, scoring="r2", n_repeats=N_PERMUTATIONS, random_state=SEED, n_jobs=-1
 )
-permutation_order = np.argsort(permutation.importances_mean)
-fig, (impurity_ax, permutation_ax) = new_figure(9, 5, ncols=2)
-impurity_ax.barh(impurity.index, impurity.to_numpy(), height=0.6, color=BLUE)
-impurity_ax.set_title("Impurity importance")
-impurity_ax.set_xlabel("Mean decrease in impurity")
-permutation_ax.barh(
-    np.array(MODEL_INPUTS)[permutation_order],
-    permutation.importances_mean[permutation_order],
-    xerr=permutation.importances_std[permutation_order],
-    height=0.6,
-    color=BLUE,
-    error_kw={"ecolor": SECONDARY_INK, "elinewidth": 0.75},
+importance = pd.concat(
+    [
+        pd.DataFrame(
+            {
+                "kind": "Impurity importance\nMean decrease in impurity",
+                "input": MODEL_INPUTS,
+                "value": final.best_estimator_.feature_importances_,
+            }
+        ),
+        pd.DataFrame(
+            {
+                "kind": f"Permutation importance\nDecrease in R2 on the training rows,\nmean and SD of {N_PERMUTATIONS} permutations",
+                "input": MODEL_INPUTS,
+                "value": permutation.importances_mean,
+                "sd": permutation.importances_std,
+            }
+        ),
+    ]
+).sort_values("value")
+# Each panel orders its bars by importance, so a bar is one kind and input. The axis shows only the input.
+bars = importance["kind"] + "|" + importance["input"]
+importance["bar"] = pd.Categorical(bars, categories=bars)
+plot = (
+    ggplot(importance, aes("bar", "value"))
+    + geom_col(fill=BLUE, width=0.6)
+    + geom_linerange(aes(ymin="value - sd", ymax="value + sd"), data=lambda rows: rows.dropna(), color=SECONDARY_INK)
+    + scale_x_discrete(labels=lambda bars: [bar.split("|")[1] for bar in bars])
+    + coord_flip()
+    + facet_wrap("kind", scales="free")
+    + labs(x="", y="Importance")
+    + theme(panel_grid_major_y=element_blank())
 )
-permutation_ax.set_title("Permutation importance")
-permutation_ax.set_xlabel(f"Decrease in R2 on the training rows,\nmean of {N_PERMUTATIONS} permutations")
-for ax in (impurity_ax, permutation_ax):
-    ax.grid(axis="y", visible=False)
-    ax.margins(y=0.01)
-save_figure(fig, args.out_dir, "feature_importance")
+save_figure(plot, args.out_dir, "feature_importance", 9, 5)
 
 # %% [markdown]
 # The learning curve shows the R2 of the final hyperparameters on the training rows and on the held-out fold, for
@@ -311,20 +347,39 @@ train_sizes, train_scores, test_scores = learning_curve(
     random_state=SEED,
     n_jobs=-1,
 )
-fig, (ax,) = new_figure(6, 4)
-for scores, label, color in ((train_scores, "Training rows", MUTED_INK), (test_scores, "Held-out fold", BLUE)):
-    mean = scores.mean(axis=1)
-    sd = scores.std(axis=1)
-    ax.fill_between(train_sizes, mean - sd, mean + sd, color=color, alpha=0.1, linewidth=0)
-    ax.plot(train_sizes, mean, marker="o", color=color, **MARKER_STYLE)
-    ax.annotate(
-        label, (train_sizes[-1], mean[-1]), xytext=(8, 0), textcoords="offset points", va="center", color=SECONDARY_INK
+curves = pd.concat(
+    [
+        pd.DataFrame(
+            {
+                "rows": train_sizes,
+                "mean": scores.mean(axis=1),
+                "sd": scores.std(axis=1),
+                "label": label,
+                "color": color,
+            }
+        )
+        for scores, label, color in ((train_scores, "Training rows", MUTED_INK), (test_scores, "Held-out fold", BLUE))
+    ]
+)
+plot = (
+    ggplot(curves, aes("rows", "mean"))
+    + geom_ribbon(aes(ymin="mean - sd", ymax="mean + sd", fill="color"), alpha=0.1)
+    + geom_line(aes(color="color"))
+    + geom_point(aes(color="color"), size=2.5)
+    + geom_text(
+        aes(label="label"),
+        data=lambda curves: curves[curves["rows"] == train_sizes[-1]],
+        ha="left",
+        nudge_x=0.03 * train_sizes[-1],
+        color=SECONDARY_INK,
+        size=9,
     )
-ax.set_xlim(right=train_sizes[-1] * 1.2)
-ax.set_title("Learning curve of the final hyperparameters")
-ax.set_xlabel("Training rows")
-ax.set_ylabel("R2")
-save_figure(fig, args.out_dir, "learning_curve")
+    + scale_color_identity()
+    + scale_fill_identity()
+    + scale_x_continuous(expand=(0.05, 0, 0.2, 0))
+    + labs(title="Learning curve of the final hyperparameters", x="Training rows", y="R2")
+)
+save_figure(plot, args.out_dir, "learning_curve", 6, 4)
 
 # %% [markdown]
 # The curve shows the out-of-bag error of the final hyperparameters, fitted on all rows with a growing number of trees.
@@ -336,20 +391,23 @@ oob_errors = [
     1 - clone(final.best_estimator_).set_params(n_estimators=trees, oob_score=True, n_jobs=-1).fit(x, y).oob_score_
     for trees in OOB_TREES
 ]
-fig, (ax,) = new_figure(6, 4)
-ax.plot(OOB_TREES, oob_errors, marker="o", color=BLUE, **MARKER_STYLE)
 final_trees = final.best_params_["n_estimators"]
-ax.axvline(final_trees, color=AXIS, linewidth=1)
-ax.annotate(
-    f"Final model, {final_trees} trees",
-    (final_trees, 1),
-    xycoords=("data", "axes fraction"),
-    xytext=(4, -2),
-    textcoords="offset points",
-    va="top",
-    color=SECONDARY_INK,
+plot = (
+    ggplot(pd.DataFrame({"trees": OOB_TREES, "error": oob_errors}), aes("trees", "error"))
+    + geom_vline(xintercept=final_trees, color=AXIS)
+    + annotate(
+        "text",
+        x=final_trees,
+        y=np.inf,
+        label=f"Final model, {final_trees} trees",
+        ha="left",
+        va="top",
+        nudge_x=5,
+        color=SECONDARY_INK,
+        size=9,
+    )
+    + geom_line(color=BLUE)
+    + geom_point(color=BLUE, size=2.5)
+    + labs(title="Out-of-bag error of the final hyperparameters", x="Trees", y="1 - out-of-bag R2")
 )
-ax.set_title("Out-of-bag error of the final hyperparameters")
-ax.set_xlabel("Trees")
-ax.set_ylabel("1 - out-of-bag R2")
-save_figure(fig, args.out_dir, "oob_error")
+save_figure(plot, args.out_dir, "oob_error", 6, 4)

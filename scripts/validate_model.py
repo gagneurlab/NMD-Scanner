@@ -72,19 +72,34 @@ import pandas as pd
 from figures import (
     AXIS,
     BLUE,
-    INK,
+    ORANGE,
     SECONDARY_INK,
+    calibration,
+    calibration_plot,
     in_notebook,
-    mean_ci_half_width,
-    new_figure,
-    plot_calibration,
-    plot_intervals,
-    plot_measured_vs_predicted,
-    plot_model_and_rules,
     save_figure,
 )
 from make_benchmark_vcfs import KEY, add_alleles, add_key, check_sha256, download, read_nmdeff, read_strands, write_vcf
-from matplotlib.colors import to_rgba
+from plotnine import (
+    aes,
+    annotate,
+    coord_flip,
+    element_blank,
+    facet_wrap,
+    geom_abline,
+    geom_boxplot,
+    geom_hline,
+    geom_point,
+    geom_segment,
+    geom_text,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_color_identity,
+    scale_y_continuous,
+    stat_summary,
+    theme,
+)
 from pyfaidx import Fasta
 from scipy.stats import rankdata
 
@@ -127,6 +142,10 @@ COHORT_NAMES = {
     "gtex": "GTEx, mean per variant",
     "mmrf_target": "MMRF-TARGET",
 }
+# The scores of interval_plot: the key in a result of correlations, the direct label, the color, and the offset from the
+# position of the result
+MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
+GAIN = [("gain", "", BLUE, 0.0)]
 
 
 class RemoteFile:
@@ -249,6 +268,50 @@ def estimate(value: float, ci: list[float]) -> str:
     return f"{value:.2f} ({ci[0]:.2f} to {ci[1]:.2f})"
 
 
+def facet_frame(panels: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Concatenate the frames of panels for facet_wrap. The column panel has their keys as categories, in order."""
+    frames = [frame.assign(panel=title) for title, frame in panels.items()]
+    return pd.concat(frames).astype({"panel": pd.CategoricalDtype(list(panels))})
+
+
+def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) -> pd.DataFrame:
+    """
+    One row per result and score for interval_plot, with the value of the score and its 95% CI as low and high. Result
+    i has the position -i plus the offset of the score. The rows of the last result, at the bottom, have the direct
+    labels.
+    """
+    return pd.DataFrame(
+        [
+            {
+                "position": -i + offset,
+                "value": result[score],
+                "low": result[f"{score}_ci"][0],
+                "high": result[f"{score}_ci"][1],
+                "color": color,
+                "label": label if i == len(results) - 1 else "",
+            }
+            for i, result in enumerate(results)
+            for score, label, color, offset in scores
+        ]
+    )
+
+
+def interval_plot(rows: pd.DataFrame, labels: list[str]) -> ggplot:
+    """
+    A dot at each value of the intervals in rows, with a line from low to high, and the direct label right of high.
+    The y axis shows labels from the top, one per result.
+    """
+    return (
+        ggplot(rows, aes(y="position", color="color"))
+        + geom_segment(aes(x="low", xend="high", yend="position"), size=1)
+        + geom_point(aes(x="value"), size=2.5)
+        + geom_text(aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
+        + scale_color_identity()
+        + scale_y_continuous(breaks=-np.arange(len(labels)), labels=labels, expand=(0, 0.4))
+        + theme(axis_title_y=element_blank(), panel_grid_major_y=element_blank())
+    )
+
+
 # %%
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--gff3", required=True, type=Path, help="GENCODE GFF3 of GRCh38, optionally gzip-compressed")
@@ -351,15 +414,20 @@ logger.info(
 # line marks equal values.
 
 # %%
-fig, axes = new_figure(8, 7.5, nrows=2, ncols=2)
-for ax, (cohort, rows) in zip(axes, cohorts.items(), strict=True):
-    plot_measured_vs_predicted(
-        ax,
-        rows["prediction"].to_numpy(),
-        rows["NMD_efficiency"].to_numpy(),
-        f"{COHORT_NAMES[cohort]}, {len(rows):,} rows\nSpearman {validation[cohort]['model']:.2f}",
-    )
-save_figure(fig, args.out_dir, "measured_vs_predicted")
+scatter = facet_frame(
+    {
+        f"{COHORT_NAMES[cohort]}, {len(rows):,} rows\nSpearman {validation[cohort]['model']:.2f}": rows
+        for cohort, rows in cohorts.items()
+    }
+)
+plot = (
+    ggplot(scatter, aes("prediction", "NMD_efficiency"))
+    + geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
+    + geom_abline(color=AXIS)
+    + facet_wrap("panel", scales="free")
+    + labs(x="Predicted NMD efficiency", y="Measured NMD efficiency")
+)
+save_figure(plot, args.out_dir, "measured_vs_predicted", 8, 7.5)
 
 # %% [markdown]
 # Per cohort, the dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the
@@ -367,41 +435,37 @@ save_figure(fig, args.out_dir, "measured_vs_predicted")
 # least-squares fit of measured on predicted over all rows, the linear recalibration that the main README suggests.
 
 # %%
-fig, axes = new_figure(8, 9, nrows=2, ncols=2)
-for ax, (cohort, rows) in zip(axes, cohorts.items(), strict=True):
-    plot_calibration(
-        ax,
-        rows["prediction"].to_numpy(),
-        rows["NMD_efficiency"].to_numpy(),
-        f"{COHORT_NAMES[cohort]}, {len(rows):,} rows",
-    )
-fig.legend(*axes[0].get_legend_handles_labels(), loc="outside lower center", ncols=3)
-save_figure(fig, args.out_dir, "calibration")
+calibrations = {}
+for cohort, rows in cohorts.items():
+    bins, slope, intercept = calibration(rows)
+    title = f"{COHORT_NAMES[cohort]}, {len(rows):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
+    calibrations[title] = bins.assign(slope=slope, intercept=intercept)
+plot = calibration_plot(facet_frame(calibrations)) + facet_wrap("panel", scales="free")
+save_figure(plot, args.out_dir, "calibration", 8, 9)
 
 # %% [markdown]
 # The boxes show the measured NMD efficiency of the rows by `nmd_escape`, per cohort. A box spans the quartiles, and
 # its whiskers reach the furthest row within 1.5 times the interquartile range.
 
 # %%
-fig, axes = new_figure(8, 3.5, ncols=4)
-for ax, (cohort, rows) in zip(axes, cohorts.items(), strict=True):
-    groups = [rows.loc[rows["nmd_escape"] == escape, "NMD_efficiency"] for escape in (False, True)]
-    ax.boxplot(
-        groups,
-        tick_labels=[f"{escape}\n{len(group):,} rows" for escape, group in zip((False, True), groups, strict=True)],
-        widths=0.5,
-        patch_artist=True,
-        boxprops={"facecolor": to_rgba(BLUE, 0.1), "edgecolor": BLUE, "linewidth": 0.75},
-        medianprops={"color": BLUE, "linewidth": 1.5},
-        whiskerprops={"color": BLUE, "linewidth": 0.75},
-        capprops={"color": BLUE, "linewidth": 0.75},
-        flierprops={"marker": "o", "markersize": 2, "markerfacecolor": BLUE, "markeredgecolor": "none", "alpha": 0.3},
-    )
-    ax.grid(axis="x", visible=False)
-    ax.set_title(COHORT_NAMES[cohort])
-    ax.set_xlabel("nmd_escape")
-axes[0].set_ylabel("Measured NMD efficiency")
-save_figure(fig, args.out_dir, "efficiency_by_nmd_escape")
+boxes = facet_frame(
+    {
+        COHORT_NAMES[cohort]: rows.assign(
+            nmd_escape=rows["nmd_escape"].map(
+                {escape: f"{escape}\n{count:,} rows" for escape, count in rows["nmd_escape"].value_counts().items()}
+            )
+        )
+        for cohort, rows in cohorts.items()
+    }
+)
+plot = (
+    ggplot(boxes, aes("nmd_escape", "NMD_efficiency"))
+    + geom_boxplot(color=BLUE, fill=BLUE, alpha=0.1, width=0.5, outlier_size=1, outlier_alpha=0.3, outlier_stroke=0)
+    + facet_wrap("panel", nrow=1, scales="free")
+    + labs(x="nmd_escape", y="Measured NMD efficiency")
+    + theme(panel_grid_major_x=element_blank())
+)
+save_figure(plot, args.out_dir, "efficiency_by_nmd_escape", 9.5, 3.5)
 
 # %% [markdown]
 # The dots show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
@@ -409,15 +473,11 @@ save_figure(fig, args.out_dir, "efficiency_by_nmd_escape")
 # README.
 
 # %%
-fig, (ax,) = new_figure(6.5, 3.5)
-plot_model_and_rules(
-    ax,
-    [validation[cohort] for cohort in cohorts],
+plot = interval_plot(
+    intervals([validation[cohort] for cohort in cohorts], MODEL_AND_RULES),
     [f"{COHORT_NAMES[cohort]}\n{validation[cohort]['n']:,} rows" for cohort in cohorts],
-)
-ax.set_title("Spearman correlation with the measured NMD efficiency, 95% CIs")
-ax.set_xlabel("Spearman correlation")
-save_figure(fig, args.out_dir, "spearman_per_cohort")
+) + labs(title="Spearman correlation with the measured NMD efficiency, 95% CIs", x="Spearman correlation")
+save_figure(plot, args.out_dir, "spearman_per_cohort", 6.5, 3.5)
 
 # %% [markdown]
 # The dots show the mean measured NMD efficiency of the GTEx variant-tissue rows with `nmd_escape` False, per tissue
@@ -426,39 +486,34 @@ save_figure(fig, args.out_dir, "spearman_per_cohort")
 
 # %%
 tissue_rows = validation["gtex_variant_tissue_rows"]
-tissue_means = pd.Series(tissue_rows["mean_nmd_triggering_per_tissue"])
-nmd_triggering = gtex[~gtex["nmd_escape"]]
-half_widths = np.array(
-    [
-        mean_ci_half_width(nmd_triggering.loc[nmd_triggering["tissue"] == tissue, "NMD_efficiency"])
-        for tissue in tissue_means.index
-    ]
+# The tissues from the lowest mean to the highest, which coord_flip draws from the bottom to the top
+tissues = list(tissue_rows["mean_nmd_triggering_per_tissue"])
+nmd_triggering = gtex[~gtex["nmd_escape"] & gtex["tissue"].isin(tissues)].astype(
+    {"tissue": pd.CategoricalDtype(tissues)}
 )
-fig, (ax,) = new_figure(6, 9)
-positions = np.arange(len(tissue_means), dtype=float)
-plot_intervals(
-    ax,
-    tissue_means.to_numpy(),
-    tissue_means.to_numpy() - half_widths,
-    tissue_means.to_numpy() + half_widths,
-    positions,
-    BLUE,
+plot = (
+    ggplot(nmd_triggering, aes("tissue", "NMD_efficiency"))
+    + geom_hline(yintercept=tissue_rows["mean_nmd_triggering"], color=AXIS, linetype="dashed")
+    + annotate(
+        "text",
+        x=tissues[-1],
+        y=tissue_rows["mean_nmd_triggering"],
+        label=f"All tissues {tissue_rows['mean_nmd_triggering']:.2f}",
+        ha="left",
+        nudge_y=0.01,
+        color=SECONDARY_INK,
+        size=9,
+    )
+    + stat_summary(fun_data="mean_cl_normal", color=BLUE)
+    + coord_flip()
+    + labs(
+        title=f"GTEx, NMD-triggering variant-tissue rows of {len(tissues)} tissues",
+        x="",
+        y="Mean measured NMD efficiency, 95% CI",
+    )
+    + theme(panel_grid_major_y=element_blank())
 )
-ax.axvline(tissue_rows["mean_nmd_triggering"], color=AXIS, linewidth=1)
-ax.annotate(
-    f"All tissues {tissue_rows['mean_nmd_triggering']:.2f}",
-    (tissue_rows["mean_nmd_triggering"], positions[-1]),
-    xytext=(4, 0),
-    textcoords="offset points",
-    va="center",
-    color=SECONDARY_INK,
-)
-ax.set_yticks(positions, tissue_means.index, fontsize=7)
-ax.set_ylim(-1, len(tissue_means))
-ax.grid(axis="y", visible=False)
-ax.set_title(f"GTEx, NMD-triggering variant-tissue rows of {len(tissue_means)} tissues")
-ax.set_xlabel("Mean measured NMD efficiency, 95% CI")
-save_figure(fig, args.out_dir, "gtex_tissues")
+save_figure(plot, args.out_dir, "gtex_tissues", 6, 9)
 
 # %% [markdown]
 # The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the rows whose
@@ -482,17 +537,18 @@ for group, result in transcript_split.items():
         estimate(result["rules"], result["rules_ci"]),
         estimate(result["gain"], result["gain_ci"]),
     )
-fig, (spearman_ax, gain_ax) = new_figure(9, 3, ncols=2)
-labels = [f"{group}\n{result['n']:,} rows" for group, result in transcript_split.items()]
-plot_model_and_rules(spearman_ax, list(transcript_split.values()), labels)
-spearman_ax.set_title("Spearman correlation")
-gains = np.array([result["gain"] for result in transcript_split.values()])
-gain_cis = np.array([result["gain_ci"] for result in transcript_split.values()])
-plot_intervals(gain_ax, gains, gain_cis[:, 0], gain_cis[:, 1], -np.arange(len(gains), dtype=float), BLUE)
-gain_ax.axvline(0, color=AXIS, linewidth=1)
-gain_ax.set_yticks(-np.arange(len(gains), dtype=float), [])
-gain_ax.set_ylim(spearman_ax.get_ylim())
-gain_ax.grid(axis="y", visible=False)
-gain_ax.set_title("Gain of the model over the rules")
-fig.suptitle("MMRF-TARGET by transcript, 95% CIs", x=0.01, ha="left", color=INK, fontsize=10)
-save_figure(fig, args.out_dir, "mmrf_target_by_transcript")
+results = list(transcript_split.values())
+gain_panel = "Gain of the model over the rules"
+transcript_intervals = facet_frame(
+    {"Spearman correlation": intervals(results, MODEL_AND_RULES), gain_panel: intervals(results, GAIN)}
+)
+zero = pd.DataFrame({"panel": [gain_panel], "x": [0.0]}).astype({"panel": transcript_intervals["panel"].dtype})
+plot = (
+    interval_plot(
+        transcript_intervals, [f"{group}\n{result['n']:,} rows" for group, result in transcript_split.items()]
+    )
+    + geom_vline(aes(xintercept="x"), data=zero, color=AXIS)
+    + facet_wrap("panel", scales="free_x")
+    + labs(title="MMRF-TARGET by transcript, 95% CIs", x="")
+)
+save_figure(plot, args.out_dir, "mmrf_target_by_transcript", 9, 3)
