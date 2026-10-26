@@ -65,7 +65,7 @@ SEED = 42
 N_FOLDS = 5
 # The folds are stratified by this many quantile bins of the target
 N_TARGET_BINS = 5
-# refined_grid5 of scripts/train_new.ipynb, the grid that found the hyperparameters of best_model.pkl: 324 candidates
+# The grid of the random forest search: 324 candidates
 RF_GRID = {
     "n_estimators": [200, 300, 400],
     "max_depth": [5, 7, 9, 11],
