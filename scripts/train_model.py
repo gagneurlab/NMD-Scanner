@@ -28,10 +28,11 @@ TRAIN_MODEL_ARGS.
 
 Steps:
 1. Download tcga_dataset.csv of NMDEff and add the genomic alleles, with the steps of make_benchmark_vcfs.py. Its
-   column NMD_efficiency is the target.
+   column NMD_efficiency is the target. In 29 rows, NMD_efficiency differs from -log2(VAF_DNA_RNA_ratio), by up to
+   0.36.
 2. Run nmd_scanner.annotate on the unique variants. Join each TCGA row to the NMD-Scanner row of its transcript and
-   variant, and keep the rows with nmd_efficiency_prediction_status "ok". The inputs are
-   nmd_scanner.schema.MODEL_INPUTS as float64.
+   variant, and keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why. The
+   inputs are nmd_scanner.schema.MODEL_INPUTS as float64.
 3. Split the rows into 5 folds with StratifiedGroupKFold over the chromosomes, stratified by 5 quantile bins of the
    target. The folds then have similar sizes and target distributions. Genes can overlap (antisense, nested), so a
    grouping by gene could still leak.
@@ -68,7 +69,7 @@ from figures import (
     in_notebook,
     save_figure,
 )
-from make_benchmark_vcfs import KEY, add_alleles, add_key, read_nmdeff, read_strands, write_vcf
+from make_benchmark_vcfs import KEY, add_alleles, add_key, join_features, read_nmdeff, read_strands, write_vcf
 from onnx import TensorProto, helper, numpy_helper
 from plotnine import (
     aes,
@@ -196,14 +197,14 @@ logger.setLevel(logging.INFO)
 args.out_dir.mkdir(parents=True, exist_ok=True)
 
 # %%
-tcga = add_alleles(read_nmdeff("tcga_dataset.csv"), read_strands(args.gff3), Fasta(str(args.fasta)))
+strands = read_strands(args.gff3)
+tcga = add_alleles(read_nmdeff("tcga_dataset.csv"), strands, Fasta(str(args.fasta)))
 vcf = args.out_dir / "variants.vcf"
 write_vcf(tcga.drop_duplicates(["chrom", "pos", "ref", "alt"]), vcf)
 features = add_key(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False, prediction=False))
 # tcga_row is the index of the row in tcga_dataset.csv
 tcga = tcga[[*KEY, "NMD_efficiency"]].assign(tcga_row=np.arange(len(tcga)))
-rows = tcga.merge(features, on=KEY, how="inner", validate="many_to_one")
-rows = rows[rows["nmd_efficiency_prediction_status"] == "ok"].reset_index(drop=True)
+rows = join_features(tcga, features, strands, "tcga", logger).reset_index(drop=True)
 logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga), len(rows))
 x = rows[MODEL_INPUTS].astype("float64")
 y = rows["NMD_efficiency"].to_numpy(dtype="float64")

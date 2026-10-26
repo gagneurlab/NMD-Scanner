@@ -120,6 +120,51 @@ def add_alleles(table: pd.DataFrame, strands: dict[str, str], fasta: Fasta) -> p
     return table.assign(ref=refs, alt=alts)
 
 
+def join_features(
+    measured: pd.DataFrame,
+    features: pd.DataFrame,
+    strands: dict[str, str],
+    cohort: str,
+    logger: logging.Logger,
+) -> pd.DataFrame:
+    """
+    Join each measured row to the NMD-Scanner row of its transcript and variant, and keep the rows with
+    nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why, to logger.
+    strands is the map of read_strands.
+
+    A measured row has no NMD-Scanner row if the GFF3 lacks its transcript, or if its variant touches no coding region
+    of the transcript (see "Technical Notes.md"). A REF that does not match the FASTA would also give no row, but
+    train_model.py and validate_model.py fail on it before.
+    """
+    rows = measured.merge(features, on=KEY, how="inner", validate="many_to_one")
+    joined = measured[KEY].merge(features[KEY], on=KEY, how="left", indicator=True)
+    unmatched = joined.loc[joined["_merge"] == "left_only", "transcript"]
+    in_gff3 = unmatched.isin(strands)
+    if len(unmatched) > 0:
+        logger.info(
+            "%s: %d of %d rows have no NMD-Scanner row of their transcript and variant: %d on transcripts missing from"
+            " the GFF3, %d with a variant that touches no coding region of its transcript (%s)",
+            cohort,
+            len(unmatched),
+            len(measured),
+            (~in_gff3).sum(),
+            in_gff3.sum(),
+            " ".join(sorted(set(unmatched[in_gff3]))) or "none",
+        )
+    status = rows["nmd_efficiency_prediction_status"]
+    dropped = status[status != "ok"].value_counts()
+    dropped = dropped[dropped > 0]
+    if len(dropped) > 0:
+        logger.info(
+            "%s: %d of the %d joined rows have an nmd_efficiency_prediction_status other than ok: %s",
+            cohort,
+            dropped.sum(),
+            len(rows),
+            ", ".join(f"{count} {value}" for value, count in dropped.items()),
+        )
+    return rows[status == "ok"]
+
+
 def write_vcf(variants: pd.DataFrame, path: Path) -> None:
     """Write one VCF row per row of variants, from its columns chrom, pos, ref and alt."""
     with open(path, "w", newline="") as handle:

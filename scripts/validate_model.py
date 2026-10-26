@@ -33,9 +33,11 @@ Cohorts:
 - Geuvadis: germline nonsense variants in lymphoblastoid cell lines (Iha et al. 2025), Zenodo record 16666299. Their
   NMD efficiency is -log2(VAF_mean / 0.5). Only the variants of the study's accurate annotation count: no rescued MNV,
   no nontranslating gene, no mixed NMD isoforms.
-- GTEx: germline variants in the tissues of GTEx v8, Supplementary Data 2 of Kim et al. 2024. Their NMD efficiency is
-  -log2(VAF_RNA / 0.5). The table has one row per variant and tissue (variant-tissue rows). The validation uses the
-  mean of each variant over its tissues.
+- GTEx: germline variants in the tissues of GTEx v8, Supplementary Data 2 of Kim et al. 2024. The table has one row
+  per variant and tissue (variant-tissue rows). The validation uses the mean of its column NMD_efficiency for each
+  variant over its tissues. In 4,102 of the 17,816 variant-tissue rows with ASE_altered above 0,
+  NMD_efficiency differs from -log2(ASE_altered / 0.5). The difference moves the Spearman correlations by only
+  about 0.001.
 - MMRF-TARGET: somatic variants in tumors, MMRF_TARGET_dataset.csv of NMDEff (https://github.com/hjkng/nmdeff).
 
 Steps:
@@ -46,7 +48,8 @@ Steps:
    add_alleles of make_benchmark_vcfs.py. Geuvadis gives genomic alleles. Fail if a REF does not match the FASTA.
 3. Run nmd_scanner.annotate on the unique variants of the 3 cohorts. It adds the prediction of the model as
    nmd_efficiency_prediction. Join each measured row to the NMD-Scanner row of its transcript and variant.
-4. Keep the rows with nmd_efficiency_prediction_status "ok" and a variant allele fraction above 0 in the RNA.
+4. Keep the rows with nmd_efficiency_prediction_status "ok" and a variant allele fraction above 0 in the RNA. Log the
+   rows that this drops, and why.
 5. Per cohort, compute the Spearman correlation of the predictions and of (not nmd_escape) with the measured NMD
    efficiency. The 95% CIs are percentiles of N_RESAMPLES bootstrap resamples of the genes. A resample draws genes
    with replacement and takes all rows of each drawn gene. Rows of one gene share a transcript structure, so they are
@@ -89,6 +92,7 @@ from make_benchmark_vcfs import (
     add_key,
     check_sha256,
     download,
+    join_features,
     read_genes,
     read_nmdeff,
     read_strands,
@@ -233,13 +237,27 @@ def read_geuvadis(geuvadis_dir: Path | None, fasta: Fasta) -> pd.DataFrame:
     return table.merge(flags, on="Variant_ID", how="left", validate="many_to_one")
 
 
-def scored_rows(measured: pd.DataFrame, scored: pd.DataFrame, vaf_rna: str) -> pd.DataFrame:
+def scored_rows(
+    cohort: str, measured: pd.DataFrame, scored: pd.DataFrame, strands: dict[str, str], vaf_rna: str
+) -> pd.DataFrame:
     """
     Join each measured row to the NMD-Scanner row of its transcript and variant. Keep the rows with
     nmd_efficiency_prediction_status "ok" and a variant allele fraction above 0 in the RNA, which is the column vaf_rna.
+    Log the rows that this drops, and why.
     """
-    rows = measured.merge(scored, on=KEY, how="inner", validate="many_to_one")
-    return rows[(rows["nmd_efficiency_prediction_status"] == "ok") & (rows[vaf_rna] > 0)].astype({"nmd_escape": bool})
+    rows = join_features(measured, scored, strands, cohort, logger)
+    expressed = rows[vaf_rna] > 0
+    if not expressed.all():
+        logger.info(
+            "%s: %d of the %d rows with nmd_efficiency_prediction_status ok have no %s above 0: %d lack it, %d have 0",
+            cohort,
+            (~expressed).sum(),
+            len(rows),
+            vaf_rna,
+            rows[vaf_rna].isna().sum(),
+            (rows[vaf_rna] == 0).sum(),
+        )
+    return rows[expressed].astype({"nmd_escape": bool})
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -377,11 +395,17 @@ scored = features[[*KEY, "nmd_efficiency_prediction_status", "nmd_escape", "nmd_
     columns={"nmd_efficiency_prediction": "prediction"}
 )
 
-geuvadis = scored_rows(geuvadis, scored, "VAF_mean")
+geuvadis = scored_rows("geuvadis", geuvadis, scored, strands, "VAF_mean")
 accurate = ~geuvadis[ACCURATE_ANNOTATION_FLAGS].astype("boolean").fillna(False).any(axis=1)
+logger.info(
+    "geuvadis: %d of the %d rows are outside the study's accurate annotation (flags %s)",
+    (~accurate).sum(),
+    len(geuvadis),
+    " ".join(ACCURATE_ANNOTATION_FLAGS),
+)
 geuvadis = geuvadis[accurate].assign(NMD_efficiency=lambda rows: -np.log2(rows["VAF_mean"] / GERMLINE_VAF_DNA))
 # ASE_altered is VAF_RNA. For VAF_RNA 0, the table caps NMD_efficiency at 10.
-gtex = scored_rows(gtex, scored, "ASE_altered")
+gtex = scored_rows("gtex", gtex, scored, strands, "ASE_altered")
 gtex_variants = gtex.groupby(KEY, as_index=False).agg(
     NMD_efficiency=("NMD_efficiency", "mean"),
     prediction=("prediction", "first"),
@@ -392,7 +416,7 @@ cohorts = {
     "tcga": pd.read_parquet(args.train_dir / "oof_predictions.parquet").astype({"nmd_escape": bool}),
     "geuvadis": geuvadis,
     "gtex": gtex_variants,
-    "mmrf_target": scored_rows(mmrf, scored, "VAF_RNA"),
+    "mmrf_target": scored_rows("mmrf_target", mmrf, scored, strands, "VAF_RNA"),
 }
 # correlations resamples the genes
 cohorts = {

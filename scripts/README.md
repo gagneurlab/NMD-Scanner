@@ -20,6 +20,7 @@ uv run --group scripts python scripts/make_benchmark_vcfs.py --gff3 gencode.v42.
 - It parses the substitution from HGVSc, which has the alleles on the transcript strand. It takes the strand from the GFF3 and complements REF and ALT on the minus strand. For transcripts missing from the GFF3, it uses the orientation whose REF matches the FASTA.
 - It fails if a row is not a single-base substitution, or if a REF does not match the FASTA.
 - `train_model.py` and `validate_model.py` import these steps from it.
+- `join_features` joins the rows of a study table to the `nmd_scanner.annotate` output, keeps the rows with `nmd_efficiency_prediction_status` ok, and logs the rows that it drops.
 - `read_genes` returns the gene of each transcript, for the gene bootstrap of `validate_model.py`.
 
 ## train_model.py
@@ -42,6 +43,7 @@ uv run --group scripts jupytext --to ipynb scripts/train_model.py &&
 
 - Inputs: the GFF3 and the FASTA, as above.
 - Data: `tcga_dataset.csv` of NMDEff, at the pinned commit and with the sha256 check of `make_benchmark_vcfs.py`. Its column `NMD_efficiency` is the target. The variants are those of `resources/TCGA_benchmark/tcga_dataset.vcf`.
+- It logs the rows that it drops, and why.
 - It tunes a random forest with a grid search. The folds are grouped by chromosome.
 - In nested cross-validation with the same folds, it predicts each row out of fold.
 - It saves the random forest tuned on all rows as ONNX. It fails if the ONNX model predicts the training rows differently from the random forest.
@@ -85,7 +87,7 @@ uv run --group scripts jupytext --to ipynb scripts/validate_model.py &&
   - Supplementary Data 2 of Kim et al. 2024 (GTEx).
   - 2 tables of Zenodo record 16666299 (Geuvadis). The record is one zip of 3.2 GB, so the script reads only those 2 members with HTTP range requests. `--geuvadis-dir` reads them from a local directory instead, with the same sha256 check.
 - It builds one VCF of the variants and runs `nmd_scanner.annotate`. For GTEx and MMRF-TARGET, it converts HGVSc to genomic alleles with `make_benchmark_vcfs.py`.
-- It keeps the rows the model can predict that have a variant allele fraction above 0 in the RNA. For the germline variants, the NMD efficiency is -log2(VAF_RNA / 0.5).
+- It keeps the rows the model can predict that have a variant allele fraction above 0 in the RNA, and it logs the rows it drops. For Geuvadis, the NMD efficiency is -log2(VAF_RNA / 0.5). GTEx and MMRF-TARGET use the column `NMD_efficiency` of their tables.
 - The 95% CIs come from 2,000 bootstrap resamples of the genes per cohort. A resample draws genes with replacement and takes all rows of each drawn gene, because rows of one gene share a transcript structure.
 - Outputs: `validation.json` in `--out-dir`, a short summary in the log, and the figures. Per cohort, `validation.json` has the numbers of rows and genes, the Spearman correlations of the model and of the rules, the gain of the model over the rules, and the mean measured NMD efficiency of the rows with `nmd_escape` False. For GTEx, it also has that mean over the variant-tissue rows, in total and per tissue. For MMRF-TARGET, `mmrf_target_by_transcript` has the correlations and the gain also for the rows on transcripts of the TCGA training rows, and for the other rows. The README table is written by hand from these numbers.
 - Figures:
