@@ -1,32 +1,13 @@
-# /// script
-# requires-python = "==3.12.*"
-# dependencies = [
-#     "nmd-scanner==0.5.0",
-#     "pandas==3.0.6",
-#     "numpy==2.5.3",
-#     "scipy==1.18.1",
-#     "pyarrow==24.0.0",
-#     "pyfaidx==0.9.0.4",
-#     "onnxruntime==1.30.0",
-#     "openpyxl==3.1.5",
-# ]
-# [tool.uv]
-# exclude-newer = "2026-10-07T16:00:00Z"
-# exclude-newer-package = { nmd-scanner = "2026-10-07T20:00:00Z" }
-# ///
 """
 Compute the numbers of the section "Model validation" of the main README: how well nmd_efficiency_rf.onnx and
 nmd_escape alone rank the measured NMD efficiency in 4 cohorts.
 
 Run it with:
 
-    uv run scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --train-dir train/ \
-        --out-dir out/
+    uv run --group scripts python scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa \
+        --train-dir train/ --out-dir out/
 
 --train-dir is the --out-dir of the run of scripts/train_model.py that trained nmd_efficiency_rf.onnx.
-
-The script pins nmd-scanner 0.5.0. Version 0.5.0 computes the same features as 0.4.0, on which the model was trained.
-PyPI got 0.5.0 after the date of exclude-newer, so exclude-newer-package sets a later date for nmd-scanner alone.
 
 Cohorts:
 - TCGA: the out-of-fold predictions in oof_predictions.parquet of --train-dir.
@@ -44,9 +25,9 @@ Steps:
    members from a local directory instead, with the same check.
 2. GTEx and MMRF-TARGET give the alleles in HGVSc on the transcript strand. Convert them to the forward strand with
    add_alleles of make_benchmark_vcfs.py. Geuvadis gives genomic alleles. Fail if a REF does not match the FASTA.
-3. Run nmd_scanner.annotate on the unique variants of the 3 cohorts, and score its rows with the ONNX model. Join each
-   measured row to the NMD-Scanner row of its transcript and variant.
-4. Keep the rows with nmd_model_status "ok" and a variant allele fraction above 0 in the RNA.
+3. Run nmd_scanner.annotate on the unique variants of the 3 cohorts. It adds the prediction of the model as
+   nmd_efficiency_prediction. Join each measured row to the NMD-Scanner row of its transcript and variant.
+4. Keep the rows with nmd_efficiency_prediction_status "ok" and a variant allele fraction above 0 in the RNA.
 5. Per cohort, compute the Spearman correlation of the predictions and of (not nmd_escape) with the measured NMD
    efficiency. The 95% CIs are percentiles of N_RESAMPLES bootstrap resamples of the rows. The gain, model minus
    rules, has a paired CI from the same resamples. Each cohort draws from its own generator, seeded with SEED.
@@ -65,18 +46,16 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
-import onnxruntime
 import pandas as pd
 from make_benchmark_vcfs import KEY, add_alleles, add_key, check_sha256, download, read_nmdeff, read_strands, write_vcf
 from pyfaidx import Fasta
 from scipy.stats import rankdata
 
 import nmd_scanner
-from nmd_scanner.schema import MODEL_INPUTS
+from nmd_scanner.model import MODEL_PATH
 
 logger = logging.getLogger("validate_model")
 
-ONNX = Path(__file__).resolve().parent.parent / "src" / "nmd_scanner" / "nmd_efficiency_rf.onnx"
 # Supplementary Data 1 to 12 of Kim et al. 2024 (Commun Biol 7:1461), one sheet each
 GTEX_URL = (
     "https://static-content.springer.com/esm/art%3A10.1038%2Fs42003-024-07136-y/MediaObjects/"
@@ -170,27 +149,13 @@ def read_geuvadis(geuvadis_dir: Path | None, fasta: Fasta) -> pd.DataFrame:
     return table.merge(flags, on="Variant_ID", how="left", validate="many_to_one")
 
 
-def score(features: pd.DataFrame) -> pd.DataFrame:
-    """
-    Return KEY, nmd_model_status and nmd_escape of each NMD-Scanner row, and the prediction of the model for the rows
-    with nmd_model_status "ok". Fail if the model does not take MODEL_INPUTS.
-    """
-    session = onnxruntime.InferenceSession(ONNX, providers=["CPUExecutionProvider"])
-    if json.loads(session.get_modelmeta().custom_metadata_map["feature_names"]) != list(MODEL_INPUTS):
-        raise ValueError(f"{ONNX} does not take MODEL_INPUTS")
-    ok = (features["nmd_model_status"] == "ok").to_numpy()
-    prediction = np.full(len(features), np.nan)
-    prediction[ok] = session.run(None, {"input": features[MODEL_INPUTS][ok].astype("float64").to_numpy()})[0].ravel()
-    return features[[*KEY, "nmd_model_status", "nmd_escape"]].assign(prediction=prediction)
-
-
 def scored_rows(measured: pd.DataFrame, scored: pd.DataFrame, vaf_rna: str) -> pd.DataFrame:
     """
-    Join each measured row to the NMD-Scanner row of its transcript and variant. Keep the rows with nmd_model_status
-    "ok" and a variant allele fraction above 0 in the RNA, which is the column vaf_rna.
+    Join each measured row to the NMD-Scanner row of its transcript and variant. Keep the rows with
+    nmd_efficiency_prediction_status "ok" and a variant allele fraction above 0 in the RNA, which is the column vaf_rna.
     """
     rows = measured.merge(scored, on=KEY, how="inner", validate="many_to_one")
-    return rows[(rows["nmd_model_status"] == "ok") & (rows[vaf_rna] > 0)].astype({"nmd_escape": bool})
+    return rows[(rows["nmd_efficiency_prediction_status"] == "ok") & (rows[vaf_rna] > 0)].astype({"nmd_escape": bool})
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -260,8 +225,8 @@ def main() -> None:
     logger.setLevel(logging.INFO)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     trained = args.train_dir / "nmd_efficiency_rf.onnx"
-    if trained.read_bytes() != ONNX.read_bytes():
-        raise ValueError(f"{trained} differs from {ONNX}, so its out-of-fold predictions are of another model")
+    if trained.read_bytes() != MODEL_PATH.read_bytes():
+        raise ValueError(f"{trained} differs from {MODEL_PATH}, so its out-of-fold predictions are of another model")
 
     strands = read_strands(args.gff3)
     fasta = Fasta(str(args.fasta))
@@ -274,7 +239,10 @@ def main() -> None:
     write_vcf(
         pd.concat([table[["chrom", "pos", "ref", "alt"]] for table in (geuvadis, gtex, mmrf)]).drop_duplicates(), vcf
     )
-    scored = score(add_key(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False)))
+    features = add_key(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False))
+    scored = features[[*KEY, "nmd_efficiency_prediction_status", "nmd_escape", "nmd_efficiency_prediction"]].rename(
+        columns={"nmd_efficiency_prediction": "prediction"}
+    )
 
     geuvadis = scored_rows(geuvadis, scored, "VAF_mean")
     accurate = ~geuvadis[ACCURATE_ANNOTATION_FLAGS].astype("boolean").fillna(False).any(axis=1)

@@ -1,13 +1,13 @@
 # Scripts
 
-These scripts are not part of the package. Each one pins its dependencies in a PEP 723 header, so `uv run` needs no setup.
+These scripts are not part of the package. They run from the repo root with `uv run --group scripts python scripts/<name>.py`, and they use the `nmd_scanner` of the checkout.
 
 ## make_benchmark_vcfs.py
 
 Builds the benchmark VCFs `resources/TCGA_benchmark/tcga_dataset.vcf` and `resources/MMRF_benchmark/MMRF_TARGET_dataset.vcf` from the NMDEff study tables. They have REF and ALT on the forward strand of GRCh38, and they equal the committed files byte for byte.
 
 ```bash
-uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
+uv run --group scripts python scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa
 ```
 
 - Inputs: a GENCODE GFF3 of GRCh38 and a GRCh38 FASTA with chr names and a `.fai` index.
@@ -22,7 +22,7 @@ uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fa
 Trains the NMD efficiency model that the package ships as `src/nmd_scanner/nmd_efficiency_rf.onnx`. NMD-Scanner adds its prediction to the output by default (see the main README).
 
 ```bash
-uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir out/
+uv run --group scripts python scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir out/
 ```
 
 - Inputs: the GFF3 and the FASTA, as above.
@@ -41,8 +41,8 @@ uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh
 Computes the numbers of the section "Model validation" in the main README. It tests `src/nmd_scanner/nmd_efficiency_rf.onnx` without retraining on TCGA out of fold, Geuvadis, GTEx and MMRF-TARGET.
 
 ```bash
-uv run scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --train-dir train/ \
-    --out-dir out/
+uv run --group scripts python scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa \
+    --train-dir train/ --out-dir out/
 ```
 
 - Inputs: the GFF3 and the FASTA, as above. `--train-dir` is the `--out-dir` of the `train_model.py` run that trained the model. The TCGA row uses its out-of-fold predictions. The script fails if the model of that run differs from `nmd_efficiency_rf.onnx`.
