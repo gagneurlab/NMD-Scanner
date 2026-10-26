@@ -105,8 +105,8 @@ uv run scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh
 - In nested cross-validation with the same folds, it predicts each row out of fold and writes the predictions to
   `out/oof_predictions.parquet`. `validate_model.py` reads them.
 - It saves the random forest tuned on all rows as ONNX, to `out/nmd_efficiency_rf.onnx`, and checks that the ONNX
-  model predicts the training rows like the random forest. This file is `nmd_efficiency_rf.onnx` at the root of the
-  repository. The main README shows how to load it.
+  model predicts the training rows like the random forest. The package ships this file as
+  `src/nmd_scanner/nmd_efficiency_rf.onnx`. NMD-Scanner adds its prediction to the output by default (see the main README).
 - `out/cv_results.json` has the R2 of each fold and the hyperparameters.
 
 ---
@@ -131,8 +131,8 @@ uv run scripts/make_benchmark_vcfs.py --gff3 gencode.v42.annotation.gff3.gz --fa
 
 ### 8. `validate_model.py`
 
-Computes the numbers of the section "Model validation" in the main README. It tests `nmd_efficiency_rf.onnx`
-without retraining on TCGA out of fold, Geuvadis, GTEx and MMRF-TARGET.
+Computes the numbers of the section "Model validation" in the main README. It tests
+`src/nmd_scanner/nmd_efficiency_rf.onnx` without retraining on TCGA out of fold, Geuvadis, GTEx and MMRF-TARGET.
 
 ```bash
 uv run scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --train-dir train/ \

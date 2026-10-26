@@ -76,7 +76,7 @@ from nmd_scanner.schema import MODEL_INPUTS
 
 logger = logging.getLogger("validate_model")
 
-ONNX = Path(__file__).resolve().parent.parent / "nmd_efficiency_rf.onnx"
+ONNX = Path(__file__).resolve().parent.parent / "src" / "nmd_scanner" / "nmd_efficiency_rf.onnx"
 # Supplementary Data 1 to 12 of Kim et al. 2024 (Commun Biol 7:1461), one sheet each
 GTEX_URL = (
     "https://static-content.springer.com/esm/art%3A10.1038%2Fs42003-024-07136-y/MediaObjects/"

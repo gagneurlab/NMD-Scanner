@@ -118,7 +118,7 @@ NO_RULE = {
 # The NMD rules of a PTC row whose PTC meets no rule
 RULES_FALSE = dict.fromkeys(NO_RULE, False)
 # A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null, and the
-# model cannot score the row
+# model cannot predict the row
 UNKNOWN_ALT = {
     "alt_cds_seq": None,
     "alt_cds_length": None,
@@ -151,7 +151,7 @@ UNKNOWN_ALT = {
     "nmd_start_proximal_rule": None,
     "nmd_single_exon_rule": None,
     "nmd_escape": None,
-    "nmd_model_status": "unknown_effect",
+    "nmd_efficiency_prediction_status": "unknown_effect",
 }
 
 
@@ -555,13 +555,14 @@ def write_inputs(transcript, changes, strand, directory):
 def run(case, change, strand, directory, sequences=True):
     """
     Run annotate() on the case, with the given description of its variant and the further variants of the case.
-    Return the result table and the VCF record of the given description, None without one.
+    Return the result table and the VCF record of the given description, None without one. The cases pin the columns
+    of OUTPUT_COLUMN_KINDS, so annotate() runs with prediction=False. tests/test_model.py tests nmd_efficiency_prediction.
 
     :param sequences: the sequences argument of annotate()
     """
     changes = ([] if change is None else [change]) + list(case.more_changes)
     paths, records = write_inputs(case.layout.transcript, changes, strand, directory)
-    results = annotate(*paths, reassign_exons=case.reassign_exons, sequences=sequences)
+    results = annotate(*paths, reassign_exons=case.reassign_exons, sequences=sequences, prediction=False)
     return results, (records[0] if change is not None else None)
 
 
