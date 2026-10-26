@@ -1563,7 +1563,7 @@ CASES = [
             "nmd_start_proximal_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
-            "nmd_efficiency_prediction_status": "ok",
+            "nmd_efficiency_prediction_status": "start_loss",
             "ptc_pos_in_alt_transcript": 164,
             "ptc_exon_number": 2,
             "stop_classification": "start_loss_scan",

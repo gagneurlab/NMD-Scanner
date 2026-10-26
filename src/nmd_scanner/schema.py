@@ -23,11 +23,8 @@ from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_D
 # - no_annotated_stop: has_stop_codon is False, which makes annotated_stop_distance and utr3_length null.
 # - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
 #   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).
-# - start_loss: start_loss is True and ptc_to_start_codon is null. After a start loss, the scan of alt_transcript_seq
-#   takes the next ATG, and ptc_to_start_codon runs from it to the PTC. A scanned row is a PTC row only if the scan
-#   finds an ATG and a stop codon after it, so it always has a ptc_to_start_codon. Only a start-loss row without
-#   alt_transcript_seq gets this value, e.g. one of a transcript without exon rows. It is not scanned and keeps the
-#   PTC of the alt CDS.
+# - start_loss: start_loss is True. The training data hold no start-loss variant, and translation after a start loss
+#   can begin at several sites, so the model does not predict the row. The row keeps its NMD features and rules.
 # - missing_input: another model input is null.
 # - ok: the variant creates the PTC, and no model input is null.
 # no_annotated_stop and no_annotated_start hold for every variant of the transcript. So they go before the values

@@ -534,7 +534,7 @@ def nmd_efficiency_prediction_status(results):
         is_true("ref_has_ptc"),
         is_false("has_stop_codon"),
         is_false("has_start_codon"),
-        is_true("start_loss") & results["ptc_to_start_codon"].isna().to_numpy(),
+        is_true("start_loss"),
         results[MODEL_INPUTS].isna().any(axis=1).to_numpy(),
     ]
     status = np.select(conditions, list(PREDICTION_STATUSES[:-1]), default=PREDICTION_STATUSES[-1])

@@ -253,6 +253,27 @@ def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_al
     )
 
 
+def test_a_scanned_start_loss_row_with_a_ptc_has_the_status_start_loss_and_no_prediction(tmp_path, strand):
+    """
+    The deletion of the T of the start codon ATG at t5 is a start loss. The scan finds the ATG at t7 and a PTC at t10,
+    and every model input is set. The model has no training data for a start loss, so the row gets no prediction.
+    """
+    tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
+
+    row = tx.run(5, "T", "")
+
+    _assert_values(
+        row,
+        {
+            "start_loss": True,
+            "alt_has_ptc": True,
+            "ptc_to_start_codon": 3,
+            "nmd_efficiency_prediction_status": "start_loss",
+            "nmd_efficiency_prediction": None,
+        },
+    )
+
+
 def test_scan_after_a_deletion_of_5utr_and_start_codon_bases_takes_the_alt_exon_lengths(tmp_path, strand):
     """
     The deletion CAT at t3 to t5 (`x`) takes the last 5' UTR base C and the AT of the start codon: a start loss that

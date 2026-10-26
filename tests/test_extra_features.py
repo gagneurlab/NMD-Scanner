@@ -639,7 +639,7 @@ _UNKNOWN_INPUTS = {
         ({"has_stop_codon": False, "annotated_stop_distance": None, "utr3_length": None}, "no_annotated_stop"),
         ({"has_start_codon": False, "ptc_to_start_codon": None}, "no_annotated_start"),
         ({"start_loss": True, "ptc_to_start_codon": None}, "start_loss"),
-        ({"start_loss": True}, "ok"),
+        ({"start_loss": True}, "start_loss"),
         ({"ptc_to_start_codon": None}, "missing_input"),
         ({"ptc_to_exon_end": None}, "missing_input"),
         ({"ref_has_ptc": None}, "ok"),

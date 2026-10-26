@@ -3346,7 +3346,7 @@ CASES = [
             "nmd_single_exon_rule": False,
             "nmd_escape": True,
             "alt_transcript_exons": [{"exon_number": 1, "length": 10}, {"exon_number": 2, "length": 10}],
-            "nmd_efficiency_prediction_status": "ok",
+            "nmd_efficiency_prediction_status": "start_loss",
             "ptc_pos_in_alt_transcript": 10,
             "ptc_exon_number": 2,
             "stop_classification": "start_loss_scan",

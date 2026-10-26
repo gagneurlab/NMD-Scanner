@@ -176,7 +176,7 @@ These columns apply the NMD escape rules to the PTC. On a row that is not a PTC 
 
 ### Prediction status
 
-This column says whether the [NMD efficiency model](#nmd-efficiency-prediction) can predict the row. The model cannot predict a row in which one of its inputs is null.
+This column says whether the [NMD efficiency model](#nmd-efficiency-prediction) can predict the row. The model cannot predict a row in which one of its inputs is null, and it does not predict a start-loss row: the training data contain no start-loss variant, and translation after a start loss can begin at several sites.
 
 | Column             | Kind             | Meaning                                                                        | Null when |
 | ------------------ | ---------------- | ------------------------------------------------------------------------------ | --------- |
@@ -191,7 +191,7 @@ A row gets the first value whose condition holds, in this order:
 | `ref_ptc`            | `ref_has_ptc` is True: the reference has a PTC already, so the variant does not create it                                                                    |
 | `no_annotated_stop`  | `has_stop_codon` is False, which makes `annotated_stop_distance` and `utr3_length` null                                                                      |
 | `no_annotated_start` | `has_start_codon` is False, which makes `ptc_to_start_codon` null. The true start codon lies upstream of the CDS, at an unknown distance (e.g. cds_start_NF) |
-| `start_loss`         | `start_loss` is True and `ptc_to_start_codon` is null                                                                                                        |
+| `start_loss`         | `start_loss` is True                                                                                                                                         |
 | `missing_input`      | another model input is null                                                                                                                                  |
 | `ok`                 | the variant creates the PTC, and no model input is null                                                                                                      |
 
