@@ -55,7 +55,7 @@ packages = ["src/nmd_scanner"]
 [tool.ruff]
 target-version = "py312"
 line-length = 120
-extend-exclude = ["scripts", "resources", "testdir"]
+extend-exclude = ["resources", "testdir"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
