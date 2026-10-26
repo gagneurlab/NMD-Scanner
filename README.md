@@ -94,7 +94,7 @@ The steps of `annotate` are public too; see [How `annotate` builds the result](T
 
 ## NMD efficiency prediction
 
-NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its prediction by default, as the column `nmd_efficiency_prediction`. `--no-prediction` and `prediction=False` leave it out. `nmd_scanner.add_nmd_efficiency_prediction(results)` adds the prediction to a result of `add_features_and_rules`.
+NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its prediction by default, as the column `nmd_efficiency_prediction`. `--no-prediction` and `prediction=False` leave it out. `nmd_scanner.add_nmd_efficiency_prediction(results)` adds the prediction to a result of `add_features_and_rules`. The repo root has the same random forest as `nmd_efficiency_rf.pkl`, a joblib pickle for scikit-learn. The wheel and the sdist do not contain it.
 
 `nmd_efficiency_prediction` predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. `nmd_efficiency_prediction` is null in every row whose `nmd_efficiency_prediction_status` is not `ok`. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts.
 

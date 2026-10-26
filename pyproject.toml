@@ -63,6 +63,10 @@ scripts = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/nmd_scanner"]
 
+[tool.hatch.build.targets.sdist]
+# The package predicts with the ONNX model, so the sdist leaves out the pickle of the same random forest
+exclude = ["/nmd_efficiency_rf.pkl"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 120

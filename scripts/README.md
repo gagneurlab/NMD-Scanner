@@ -46,6 +46,7 @@ uv run --group scripts jupytext --to ipynb scripts/train_model.py &&
 - It saves the random forest tuned on all rows as ONNX. It fails if the ONNX model predicts the training rows differently from the random forest.
 - Outputs in `--out-dir`:
   - `nmd_efficiency_rf.onnx`, the model.
+  - `nmd_efficiency_rf.pkl`, the same random forest as a joblib pickle. It loads with the scikit-learn version of `uv.lock`. The repo root has a copy. The wheel and the sdist do not contain it.
   - `oof_predictions.parquet`, the out-of-fold predictions, which `validate_model.py` reads.
   - `cv_results.json`, the R2 of each fold and the hyperparameters.
   - `variants.vcf`, the input of `nmd_scanner.annotate`.

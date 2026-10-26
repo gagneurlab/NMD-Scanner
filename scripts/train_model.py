@@ -38,11 +38,11 @@ Steps:
 4. For each fold, tune a random forest on the other folds, and predict the rows of the fold. The grid search of the
    tuning splits its rows the same way. validate_model.py reads these out-of-fold predictions.
 5. Tune the random forest the same way on all rows, and save it as ONNX (see save_onnx). Fail if the ONNX model
-   predicts other values than the random forest, rounded to float32.
+   predicts other values than the random forest, rounded to float32. Save the same random forest as a joblib pickle.
 
 Outputs in --out-dir: variants.vcf (the input of nmd_scanner.annotate), oof_predictions.parquet,
-nmd_efficiency_rf.onnx, cv_results.json (the R2 of each fold and the hyperparameters), and figures/ with each figure
-as PNG and PDF.
+nmd_efficiency_rf.onnx, nmd_efficiency_rf.pkl, cv_results.json (the R2 of each fold and the hyperparameters), and
+figures/ with each figure as PNG and PDF.
 """
 
 import argparse
@@ -52,6 +52,7 @@ import os
 import shlex
 from pathlib import Path
 
+import joblib
 import numpy as np
 import onnx
 import onnxruntime
@@ -256,6 +257,7 @@ if (onnx_prediction != final.predict(x).astype(np.float32)).any():
 
 results = {"rows": len(rows), "folds": folds, "inner_cv_r2": final.best_score_, "params": final.best_params_}
 (args.out_dir / "cv_results.json").write_text(json.dumps(results, indent=2) + "\n")
+joblib.dump(final.best_estimator_, args.out_dir / "nmd_efficiency_rf.pkl")
 logger.info("final model: inner CV R2 %.3f, %s", final.best_score_, final.best_params_)
 
 # %% [markdown]
