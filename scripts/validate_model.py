@@ -1,13 +1,32 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+# %%
 """
 Compute the numbers of the section "Model validation" of the main README: how well nmd_efficiency_rf.onnx and
 nmd_escape alone rank the measured NMD efficiency in 4 cohorts.
 
-Run it with:
+Run it as a script with:
 
     uv run --group scripts python scripts/validate_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa \
-        --train-dir train/ --out-dir out/
+        --train-dir train/ --out-dir validate/
 
 --train-dir is the --out-dir of the run of scripts/train_model.py that trained nmd_efficiency_rf.onnx.
+
+It is also a notebook (see scripts/README.md). In a notebook, the arguments come from the environment variable
+VALIDATE_MODEL_ARGS.
 
 Cohorts:
 - TCGA: the out-of-fold predictions in oof_predictions.parquet of --train-dir.
@@ -34,20 +53,38 @@ Steps:
 6. Per cohort, compute the mean measured NMD efficiency of the rows with nmd_escape False. For GTEx, also compute it
    over the variant-tissue rows, in total and per tissue with at least MIN_TISSUE_ROWS of them.
 
-Outputs in --out-dir: variants.vcf (the input of nmd_scanner.annotate) and validation.json.
+Outputs in --out-dir: variants.vcf (the input of nmd_scanner.annotate), validation.json, and figures/ with each
+figure as PNG and PDF.
 """
 
 import argparse
 import io
 import json
 import logging
+import os
+import shlex
 import urllib.request
 import zipfile
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from figures import (
+    AXIS,
+    BLUE,
+    INK,
+    SECONDARY_INK,
+    in_notebook,
+    mean_ci_half_width,
+    new_figure,
+    plot_calibration,
+    plot_intervals,
+    plot_measured_vs_predicted,
+    plot_model_and_rules,
+    save_figure,
+)
 from make_benchmark_vcfs import KEY, add_alleles, add_key, check_sha256, download, read_nmdeff, read_strands, write_vcf
+from matplotlib.colors import to_rgba
 from pyfaidx import Fasta
 from scipy.stats import rankdata
 
@@ -56,6 +93,7 @@ from nmd_scanner.model import MODEL_PATH
 
 logger = logging.getLogger("validate_model")
 
+# %%
 # Supplementary Data 1 to 12 of Kim et al. 2024 (Commun Biol 7:1461), one sheet each
 GTEX_URL = (
     "https://static-content.springer.com/esm/art%3A10.1038%2Fs42003-024-07136-y/MediaObjects/"
@@ -80,7 +118,15 @@ GERMLINE_VAF_DNA = 0.5
 
 SEED = 0
 N_RESAMPLES = 2000
+# The markdown cell before gtex_tissues and scripts/README.md state this number
 MIN_TISSUE_ROWS = 100
+# The names of the cohorts in the figures
+COHORT_NAMES = {
+    "tcga": "TCGA, out of fold",
+    "geuvadis": "Geuvadis",
+    "gtex": "GTEx, mean per variant",
+    "mmrf_target": "MMRF-TARGET",
+}
 
 
 class RemoteFile:
@@ -203,103 +249,250 @@ def estimate(value: float, ci: list[float]) -> str:
     return f"{value:.2f} ({ci[0]:.2f} to {ci[1]:.2f})"
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--gff3", required=True, type=Path, help="GENCODE GFF3 of GRCh38, optionally gzip-compressed")
-    parser.add_argument("--fasta", required=True, type=Path, help="GRCh38 FASTA with chr names and a .fai index")
-    parser.add_argument(
-        "--train-dir",
-        required=True,
-        type=Path,
-        help="--out-dir of the train_model.py run that trained the model; it has the out-of-fold predictions",
-    )
-    parser.add_argument("--out-dir", required=True, type=Path, help="directory for the outputs")
-    parser.add_argument(
-        "--geuvadis-dir",
-        type=Path,
-        help="local directory with Nonsense_list.txt and IsoformLevel.NMDannotation.txt of NMD-rules.zip; skips the"
-        " range requests to Zenodo. The sha256 of both files is still checked.",
-    )
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    logger.setLevel(logging.INFO)
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    trained = args.train_dir / "nmd_efficiency_rf.onnx"
-    if trained.read_bytes() != MODEL_PATH.read_bytes():
-        raise ValueError(f"{trained} differs from {MODEL_PATH}, so its out-of-fold predictions are of another model")
+# %%
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser.add_argument("--gff3", required=True, type=Path, help="GENCODE GFF3 of GRCh38, optionally gzip-compressed")
+parser.add_argument("--fasta", required=True, type=Path, help="GRCh38 FASTA with chr names and a .fai index")
+parser.add_argument(
+    "--train-dir",
+    required=True,
+    type=Path,
+    help="--out-dir of the train_model.py run that trained the model; it has the out-of-fold predictions",
+)
+parser.add_argument("--out-dir", required=True, type=Path, help="directory for the outputs")
+parser.add_argument(
+    "--geuvadis-dir",
+    type=Path,
+    help="local directory with Nonsense_list.txt and IsoformLevel.NMDannotation.txt of NMD-rules.zip; skips the"
+    " range requests to Zenodo. The sha256 of both files is still checked.",
+)
+# In a notebook, sys.argv holds the arguments of the kernel
+args = parser.parse_args(shlex.split(os.environ.get("VALIDATE_MODEL_ARGS", "")) if in_notebook() else None)
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logger.setLevel(logging.INFO)
+args.out_dir.mkdir(parents=True, exist_ok=True)
+trained = args.train_dir / "nmd_efficiency_rf.onnx"
+if trained.read_bytes() != MODEL_PATH.read_bytes():
+    raise ValueError(f"{trained} differs from {MODEL_PATH}, so its out-of-fold predictions are of another model")
 
-    strands = read_strands(args.gff3)
-    fasta = Fasta(str(args.fasta))
-    geuvadis = read_geuvadis(args.geuvadis_dir, fasta)
-    # The first line of the sheet is its title
-    gtex = pd.read_excel(io.BytesIO(download(GTEX_URL, GTEX_SHA256)), sheet_name=GTEX_SHEET, header=1)
-    gtex = add_alleles(gtex, strands, fasta).rename(columns={"Tissue_type": "tissue"})
-    mmrf = add_alleles(read_nmdeff("MMRF_TARGET_dataset.csv"), strands, fasta)
-    vcf = args.out_dir / "variants.vcf"
-    write_vcf(
-        pd.concat([table[["chrom", "pos", "ref", "alt"]] for table in (geuvadis, gtex, mmrf)]).drop_duplicates(), vcf
-    )
-    features = add_key(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False))
-    scored = features[[*KEY, "nmd_efficiency_prediction_status", "nmd_escape", "nmd_efficiency_prediction"]].rename(
-        columns={"nmd_efficiency_prediction": "prediction"}
-    )
+# %%
+strands = read_strands(args.gff3)
+fasta = Fasta(str(args.fasta))
+geuvadis = read_geuvadis(args.geuvadis_dir, fasta)
+# The first line of the sheet is its title
+gtex = pd.read_excel(io.BytesIO(download(GTEX_URL, GTEX_SHA256)), sheet_name=GTEX_SHEET, header=1)
+gtex = add_alleles(gtex, strands, fasta).rename(columns={"Tissue_type": "tissue"})
+mmrf = add_alleles(read_nmdeff("MMRF_TARGET_dataset.csv"), strands, fasta)
+vcf = args.out_dir / "variants.vcf"
+write_vcf(pd.concat([table[["chrom", "pos", "ref", "alt"]] for table in (geuvadis, gtex, mmrf)]).drop_duplicates(), vcf)
+features = add_key(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False))
+scored = features[[*KEY, "nmd_efficiency_prediction_status", "nmd_escape", "nmd_efficiency_prediction"]].rename(
+    columns={"nmd_efficiency_prediction": "prediction"}
+)
 
-    geuvadis = scored_rows(geuvadis, scored, "VAF_mean")
-    accurate = ~geuvadis[ACCURATE_ANNOTATION_FLAGS].astype("boolean").fillna(False).any(axis=1)
-    geuvadis = geuvadis[accurate].assign(NMD_efficiency=lambda rows: -np.log2(rows["VAF_mean"] / GERMLINE_VAF_DNA))
-    # ASE_altered is VAF_RNA. For VAF_RNA 0, the table caps NMD_efficiency at 10.
-    gtex = scored_rows(gtex, scored, "ASE_altered")
-    gtex_variants = gtex.groupby(KEY).agg(
-        NMD_efficiency=("NMD_efficiency", "mean"),
-        prediction=("prediction", "first"),
-        nmd_escape=("nmd_escape", "first"),
-    )
-    cohorts = {
-        # Every row of tcga_dataset.csv has VAF_RNA above 0
-        "tcga": pd.read_parquet(args.train_dir / "oof_predictions.parquet").astype({"nmd_escape": bool}),
-        "geuvadis": geuvadis,
-        "gtex": gtex_variants,
-        "mmrf_target": scored_rows(mmrf, scored, "VAF_RNA"),
-    }
+geuvadis = scored_rows(geuvadis, scored, "VAF_mean")
+accurate = ~geuvadis[ACCURATE_ANNOTATION_FLAGS].astype("boolean").fillna(False).any(axis=1)
+geuvadis = geuvadis[accurate].assign(NMD_efficiency=lambda rows: -np.log2(rows["VAF_mean"] / GERMLINE_VAF_DNA))
+# ASE_altered is VAF_RNA. For VAF_RNA 0, the table caps NMD_efficiency at 10.
+gtex = scored_rows(gtex, scored, "ASE_altered")
+gtex_variants = gtex.groupby(KEY).agg(
+    NMD_efficiency=("NMD_efficiency", "mean"),
+    prediction=("prediction", "first"),
+    nmd_escape=("nmd_escape", "first"),
+)
+cohorts = {
+    # Every row of tcga_dataset.csv has VAF_RNA above 0
+    "tcga": pd.read_parquet(args.train_dir / "oof_predictions.parquet").astype({"nmd_escape": bool}),
+    "geuvadis": geuvadis,
+    "gtex": gtex_variants,
+    "mmrf_target": scored_rows(mmrf, scored, "VAF_RNA"),
+}
 
-    validation = {}
-    for cohort, rows in cohorts.items():
-        result = {**correlations(rows), "mean_nmd_triggering": mean_nmd_triggering(rows)}
-        logger.info(
-            "%s, %d rows: model %s, rules %s, gain %s, NMD-triggering mean %.2f",
-            cohort,
-            result["n"],
-            estimate(result["model"], result["model_ci"]),
-            estimate(result["rules"], result["rules_ci"]),
-            estimate(result["gain"], result["gain_ci"]),
-            result["mean_nmd_triggering"],
-        )
-        validation[cohort] = result
-    counts = gtex["tissue"].value_counts()
-    tissue_means = {
-        tissue: mean_nmd_triggering(gtex[gtex["tissue"] == tissue])
-        for tissue in counts.index[counts >= MIN_TISSUE_ROWS]
-    }
-    tissue_means = dict(sorted(tissue_means.items(), key=lambda item: item[1]))
-    validation["gtex_variant_tissue_rows"] = {
-        "n": len(gtex),
-        "tissues": gtex["tissue"].nunique(),
-        "mean_nmd_triggering": mean_nmd_triggering(gtex),
-        "min_rows_per_tissue": MIN_TISSUE_ROWS,
-        "mean_nmd_triggering_per_tissue": tissue_means,
-    }
+# %%
+validation = {}
+for cohort, rows in cohorts.items():
+    result = {**correlations(rows), "mean_nmd_triggering": mean_nmd_triggering(rows)}
     logger.info(
-        "gtex, %d variant-tissue rows: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues with at"
-        " least %d rows",
-        len(gtex),
-        mean_nmd_triggering(gtex),
-        min(tissue_means.values()),
-        max(tissue_means.values()),
-        len(tissue_means),
-        MIN_TISSUE_ROWS,
+        "%s, %d rows: model %s, rules %s, gain %s, NMD-triggering mean %.2f",
+        cohort,
+        result["n"],
+        estimate(result["model"], result["model_ci"]),
+        estimate(result["rules"], result["rules_ci"]),
+        estimate(result["gain"], result["gain_ci"]),
+        result["mean_nmd_triggering"],
     )
-    (args.out_dir / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
+    validation[cohort] = result
+counts = gtex["tissue"].value_counts()
+tissue_means = {
+    tissue: mean_nmd_triggering(gtex[gtex["tissue"] == tissue]) for tissue in counts.index[counts >= MIN_TISSUE_ROWS]
+}
+tissue_means = dict(sorted(tissue_means.items(), key=lambda item: item[1]))
+validation["gtex_variant_tissue_rows"] = {
+    "n": len(gtex),
+    "tissues": gtex["tissue"].nunique(),
+    "mean_nmd_triggering": mean_nmd_triggering(gtex),
+    "min_rows_per_tissue": MIN_TISSUE_ROWS,
+    "mean_nmd_triggering_per_tissue": tissue_means,
+}
+(args.out_dir / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
+logger.info(
+    "gtex, %d variant-tissue rows: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues with at"
+    " least %d rows",
+    len(gtex),
+    mean_nmd_triggering(gtex),
+    min(tissue_means.values()),
+    max(tissue_means.values()),
+    len(tissue_means),
+    MIN_TISSUE_ROWS,
+)
 
+# %% [markdown]
+# The scatters show the measured NMD efficiency of each row over the prediction of the model, per cohort. The gray
+# line marks equal values.
 
-if __name__ == "__main__":
-    main()
+# %%
+fig, axes = new_figure(8, 7.5, nrows=2, ncols=2)
+for ax, (cohort, rows) in zip(axes, cohorts.items(), strict=True):
+    plot_measured_vs_predicted(
+        ax,
+        rows["prediction"].to_numpy(),
+        rows["NMD_efficiency"].to_numpy(),
+        f"{COHORT_NAMES[cohort]}, {len(rows):,} rows\nSpearman {validation[cohort]['model']:.2f}",
+    )
+save_figure(fig, args.out_dir, "measured_vs_predicted")
+
+# %% [markdown]
+# Per cohort, the dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the
+# prediction, with the 95% CI of the measured mean. The gray line marks equal values, and the blue line is the
+# least-squares fit of measured on predicted over all rows, the linear recalibration that the main README suggests.
+
+# %%
+fig, axes = new_figure(8, 9, nrows=2, ncols=2)
+for ax, (cohort, rows) in zip(axes, cohorts.items(), strict=True):
+    plot_calibration(
+        ax,
+        rows["prediction"].to_numpy(),
+        rows["NMD_efficiency"].to_numpy(),
+        f"{COHORT_NAMES[cohort]}, {len(rows):,} rows",
+    )
+fig.legend(*axes[0].get_legend_handles_labels(), loc="outside lower center", ncols=3)
+save_figure(fig, args.out_dir, "calibration")
+
+# %% [markdown]
+# The boxes show the measured NMD efficiency of the rows by `nmd_escape`, per cohort. A box spans the quartiles, and
+# its whiskers reach the furthest row within 1.5 times the interquartile range.
+
+# %%
+fig, axes = new_figure(8, 3.5, ncols=4)
+for ax, (cohort, rows) in zip(axes, cohorts.items(), strict=True):
+    groups = [rows.loc[rows["nmd_escape"] == escape, "NMD_efficiency"] for escape in (False, True)]
+    ax.boxplot(
+        groups,
+        tick_labels=[f"{escape}\n{len(group):,} rows" for escape, group in zip((False, True), groups, strict=True)],
+        widths=0.5,
+        patch_artist=True,
+        boxprops={"facecolor": to_rgba(BLUE, 0.1), "edgecolor": BLUE, "linewidth": 0.75},
+        medianprops={"color": BLUE, "linewidth": 1.5},
+        whiskerprops={"color": BLUE, "linewidth": 0.75},
+        capprops={"color": BLUE, "linewidth": 0.75},
+        flierprops={"marker": "o", "markersize": 2, "markerfacecolor": BLUE, "markeredgecolor": "none", "alpha": 0.3},
+    )
+    ax.grid(axis="x", visible=False)
+    ax.set_title(COHORT_NAMES[cohort])
+    ax.set_xlabel("nmd_escape")
+axes[0].set_ylabel("Measured NMD efficiency")
+save_figure(fig, args.out_dir, "efficiency_by_nmd_escape")
+
+# %% [markdown]
+# The dots show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
+# cohort, with the 95% bootstrap CIs. These are the numbers of the table in the section "Model validation" of the main
+# README.
+
+# %%
+fig, (ax,) = new_figure(6.5, 3.5)
+plot_model_and_rules(
+    ax,
+    [validation[cohort] for cohort in cohorts],
+    [f"{COHORT_NAMES[cohort]}\n{validation[cohort]['n']:,} rows" for cohort in cohorts],
+)
+ax.set_title("Spearman correlation with the measured NMD efficiency, 95% CIs")
+ax.set_xlabel("Spearman correlation")
+save_figure(fig, args.out_dir, "spearman_per_cohort")
+
+# %% [markdown]
+# The dots show the mean measured NMD efficiency of the GTEx variant-tissue rows with `nmd_escape` False, per tissue
+# with at least 100 variant-tissue rows, with the 95% CI of the mean. The gray line marks the mean over all
+# variant-tissue rows with `nmd_escape` False.
+
+# %%
+tissue_rows = validation["gtex_variant_tissue_rows"]
+tissue_means = pd.Series(tissue_rows["mean_nmd_triggering_per_tissue"])
+nmd_triggering = gtex[~gtex["nmd_escape"]]
+half_widths = np.array(
+    [
+        mean_ci_half_width(nmd_triggering.loc[nmd_triggering["tissue"] == tissue, "NMD_efficiency"])
+        for tissue in tissue_means.index
+    ]
+)
+fig, (ax,) = new_figure(6, 9)
+positions = np.arange(len(tissue_means), dtype=float)
+plot_intervals(
+    ax,
+    tissue_means.to_numpy(),
+    tissue_means.to_numpy() - half_widths,
+    tissue_means.to_numpy() + half_widths,
+    positions,
+    BLUE,
+)
+ax.axvline(tissue_rows["mean_nmd_triggering"], color=AXIS, linewidth=1)
+ax.annotate(
+    f"All tissues {tissue_rows['mean_nmd_triggering']:.2f}",
+    (tissue_rows["mean_nmd_triggering"], positions[-1]),
+    xytext=(4, 0),
+    textcoords="offset points",
+    va="center",
+    color=SECONDARY_INK,
+)
+ax.set_yticks(positions, tissue_means.index, fontsize=7)
+ax.set_ylim(-1, len(tissue_means))
+ax.grid(axis="y", visible=False)
+ax.set_title(f"GTEx, NMD-triggering variant-tissue rows of {len(tissue_means)} tissues")
+ax.set_xlabel("Mean measured NMD efficiency, 95% CI")
+save_figure(fig, args.out_dir, "gtex_tissues")
+
+# %% [markdown]
+# The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the rows whose
+# transcript is in the TCGA training rows of --train-dir and for the other rows, with 95% bootstrap CIs.
+# validation.json does not hold these numbers.
+
+# %%
+training_transcripts = set(cohorts["tcga"]["transcript"])
+mmrf_rows = cohorts["mmrf_target"]
+seen = mmrf_rows["transcript"].isin(training_transcripts)
+transcript_split = {
+    "Transcript in the TCGA training rows": correlations(mmrf_rows[seen]),
+    "Transcript not in the TCGA training rows": correlations(mmrf_rows[~seen]),
+}
+for group, result in transcript_split.items():
+    logger.info(
+        "mmrf_target, %s, %d rows: model %s, rules %s, gain %s",
+        group,
+        result["n"],
+        estimate(result["model"], result["model_ci"]),
+        estimate(result["rules"], result["rules_ci"]),
+        estimate(result["gain"], result["gain_ci"]),
+    )
+fig, (spearman_ax, gain_ax) = new_figure(9, 3, ncols=2)
+labels = [f"{group}\n{result['n']:,} rows" for group, result in transcript_split.items()]
+plot_model_and_rules(spearman_ax, list(transcript_split.values()), labels)
+spearman_ax.set_title("Spearman correlation")
+gains = np.array([result["gain"] for result in transcript_split.values()])
+gain_cis = np.array([result["gain_ci"] for result in transcript_split.values()])
+plot_intervals(gain_ax, gains, gain_cis[:, 0], gain_cis[:, 1], -np.arange(len(gains), dtype=float), BLUE)
+gain_ax.axvline(0, color=AXIS, linewidth=1)
+gain_ax.set_yticks(-np.arange(len(gains), dtype=float), [])
+gain_ax.set_ylim(spearman_ax.get_ylim())
+gain_ax.grid(axis="y", visible=False)
+gain_ax.set_title("Gain of the model over the rules")
+fig.suptitle("MMRF-TARGET by transcript, 95% CIs", x=0.01, ha="left", color=INK, fontsize=10)
+save_figure(fig, args.out_dir, "mmrf_target_by_transcript")
