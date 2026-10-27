@@ -94,24 +94,24 @@ The steps of `annotate` are public too; see [How `annotate` builds the result](T
 
 ## NMD efficiency prediction
 
-NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its prediction by default, as the column `nmd_efficiency_prediction`. `--no-prediction` and `prediction=False` leave it out. `nmd_scanner.add_nmd_efficiency_prediction(results)` adds the prediction to a result of `add_features_and_rules`.
+NMD-Scanner ships an NMD efficiency model, a random forest that `scripts/train_model.py` trains (see [scripts/README.md](scripts/README.md)). The CLI and `annotate` add its prediction by default, as the column `nmd_efficiency_prediction`. `--no-prediction` and `prediction=False` leave it out. `nmd_scanner.add_nmd_efficiency_prediction(results)` adds the prediction to a result of `add_features_and_rules`. The repo root has the same random forest as `nmd_efficiency_rf.pkl`, a joblib pickle for scikit-learn. The wheel and the sdist do not contain it.
 
-`nmd_efficiency_prediction` predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA). 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. `nmd_efficiency_prediction` is null in every row whose `nmd_efficiency_prediction_status` is not `ok`. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts.
+`nmd_efficiency_prediction` predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 2024), which is -log2(VAF_RNA / VAF_DNA) in all but 29 rows. 0 means no NMD, and 1 means that the variant allele fraction in the RNA is half of that in the DNA. `nmd_efficiency_prediction` is null in every row whose `nmd_efficiency_prediction_status` is not `ok`. The predictions are on the scale of the TCGA tumors the model was trained on. [Model validation](#model-validation) shows how they transfer to other cohorts.
 
 The model learned from the measured transcript of each variant, and most of these transcripts are `protein_coding` and tagged `Ensembl_canonical`. To keep only such transcripts, filter the rows on `transcript_type` and `transcript_tags`.
 
 ## Model validation
 
-The NMD efficiency model was tested without retraining on three cohorts besides its TCGA training data. The table gives the Spearman correlation of the predictions with the measured NMD efficiency, with 95% bootstrap CIs. The column "Canonical rules" ranks the same rows by `nmd_escape` alone. `scripts/validate_model.py` computes the table from pinned public sources (see [scripts/README.md](scripts/README.md)).
+The NMD efficiency model was tested without retraining on three cohorts besides its TCGA training data. The table gives the Spearman correlation of the predictions with the measured NMD efficiency, with 95% CIs from a bootstrap over genes. The column "Canonical rules" ranks the same rows by `nmd_escape` alone. `scripts/validate_model.py` computes the table from pinned public sources (see [scripts/README.md](scripts/README.md)).
 
 | Cohort                                                                                 | Variants        |  Rows | Model               | Canonical rules     |
 | -------------------------------------------------------------------------------------- | --------------- | ----: | ------------------- | ------------------- |
-| TCGA (Kim et al. 2024), out of fold, folds grouped by chromosome                       | somatic, tumors | 4,224 | 0.65 (0.63 to 0.67) | 0.61 (0.59 to 0.63) |
+| TCGA (Kim et al. 2024), out of fold, folds grouped by chromosome                       | somatic, tumors | 4,224 | 0.65 (0.63 to 0.67) | 0.61 (0.59 to 0.64) |
 | Geuvadis (Iha et al. 2025), lymphoblastoid cell lines, the study's accurate annotation | germline        | 1,133 | 0.65 (0.61 to 0.68) | 0.60 (0.55 to 0.63) |
-| GTEx v8 (Kim et al. 2024), 54 tissues, mean per variant                                | germline        | 2,287 | 0.48 (0.45 to 0.52) | 0.44 (0.41 to 0.48) |
-| MMRF-TARGET (Kim et al. 2024)                                                          | somatic, tumors |   509 | 0.46 (0.39 to 0.53) | 0.38 (0.30 to 0.45) |
+| GTEx v8 (Kim et al. 2024), 54 tissues, mean per variant                                | germline        | 2,287 | 0.48 (0.45 to 0.52) | 0.44 (0.40 to 0.48) |
+| MMRF-TARGET (Kim et al. 2024)                                                          | somatic, tumors |   509 | 0.46 (0.38 to 0.53) | 0.38 (0.30 to 0.46) |
 
-The model ranks the variants better than the rules in every cohort. The gain is 0.04 to 0.08, and its paired 95% CI lies above 0 in all four cohorts.
+The model ranks the variants better than the rules in every cohort. The gain is 0.04 to 0.08, and its paired 95% CI lies above 0 in all four cohorts. 219 of the 509 MMRF-TARGET rows lie on transcripts of the TCGA training rows. The gain is 0.16 (0.10 to 0.23) on these rows and 0.05 (-0.01 to 0.11) on the other 290, whose CI includes 0.
 
 The absolute level of the measured efficiency differs between cohorts and tissues. To compare the predictions with measurements from another tissue, recalibrate them with a linear fit on those measurements.
 
