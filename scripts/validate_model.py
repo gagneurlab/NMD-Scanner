@@ -75,7 +75,7 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
+import polars as pl
 from figures import (
     AXIS,
     BLUE,
@@ -93,9 +93,8 @@ from make_benchmark_vcfs import (
     check_sha256,
     download,
     join_features,
-    read_genes,
     read_nmdeff,
-    read_strands,
+    read_transcripts,
     write_vcf,
 )
 from plotnine import (
@@ -216,48 +215,48 @@ def read_member(member: str, geuvadis_dir: Path | None) -> io.BytesIO:
     return io.BytesIO(check_sha256(data, GEUVADIS_SHA256[member], member))
 
 
-def read_geuvadis(geuvadis_dir: Path | None, fasta: Fasta) -> pd.DataFrame:
+def read_geuvadis(geuvadis_dir: Path | None, fasta: Fasta) -> pl.DataFrame:
     """
     Read the nonsense SNVs of Nonsense_list.txt, one row per variant and MANE Select transcript. Add the flags of
     IsoformLevel.NMDannotation.txt, which has the evaluated variants. REF and ALT are genomic. Fail if a REF does not
     match the FASTA.
     """
-    table = pd.read_csv(read_member(NONSENSE_LIST, geuvadis_dir), sep="\t").rename(
-        columns={"CHROM": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt", "TranscriptID": "transcript"}
+    table = pl.read_csv(read_member(NONSENSE_LIST, geuvadis_dir), separator="\t", infer_schema_length=None).rename(
+        {"CHROM": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt", "TranscriptID": "transcript"}
     )
     fasta_ref = [
         fasta[chrom][pos - 1 : pos - 1 + len(ref)].seq.upper()
         for chrom, pos, ref in zip(table["chrom"], table["pos"], table["ref"], strict=True)
     ]
-    if (table["ref"] != fasta_ref).any():
+    if table["ref"].to_list() != fasta_ref:
         raise ValueError(f"rows of {NONSENSE_LIST} have a REF that does not match the FASTA")
-    flags = pd.read_csv(
-        read_member(ISOFORMS, geuvadis_dir), sep="\t", usecols=["Variant_ID", *ACCURATE_ANNOTATION_FLAGS]
+    flags = pl.read_csv(
+        read_member(ISOFORMS, geuvadis_dir), separator="\t", columns=["Variant_ID", *ACCURATE_ANNOTATION_FLAGS]
     )
-    return table.merge(flags, on="Variant_ID", how="left", validate="many_to_one")
+    return table.join(flags, on="Variant_ID", how="left", validate="m:1", maintain_order="left")
 
 
 def scored_rows(
-    cohort: str, measured: pd.DataFrame, scored: pd.DataFrame, strands: dict[str, str], vaf_rna: str
-) -> pd.DataFrame:
+    cohort: str, measured: pl.DataFrame, scored: pl.DataFrame, transcripts: pl.DataFrame, vaf_rna: str
+) -> pl.DataFrame:
     """
     Join each measured row to the NMD-Scanner row of its transcript and variant. Keep the rows with
     nmd_efficiency_prediction_status "ok" and a variant allele fraction above 0 in the RNA, which is the column vaf_rna.
     Log the rows that this drops, and why.
     """
-    rows = join_features(measured, scored, strands, cohort, logger)
-    expressed = rows[vaf_rna] > 0
-    if not expressed.all():
+    rows = join_features(measured, scored, transcripts, cohort, logger)
+    expressed = rows.filter(pl.col(vaf_rna) > 0)
+    if len(expressed) < len(rows):
         logger.info(
             "%s: %d of the %d rows with nmd_efficiency_prediction_status ok have no %s above 0: %d lack it, %d have 0",
             cohort,
-            (~expressed).sum(),
+            len(rows) - len(expressed),
             len(rows),
             vaf_rna,
-            rows[vaf_rna].isna().sum(),
+            rows[vaf_rna].null_count(),
             (rows[vaf_rna] == 0).sum(),
         )
-    return rows[expressed].astype({"nmd_escape": bool})
+    return expressed
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -268,17 +267,18 @@ def percentiles(values: np.ndarray) -> list[float]:
     return [float(v) for v in np.percentile(values, [2.5, 97.5])]
 
 
-def correlations(rows: pd.DataFrame) -> dict:
+def correlations(rows: pl.DataFrame) -> dict:
     """
     Spearman correlation of the prediction and of the rules with NMD_efficiency, and their difference, with bootstrap
     CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first. Each resample draws
     the genes of the column gene with replacement, and it takes all rows of each drawn gene.
     """
-    y = rows["NMD_efficiency"].to_numpy(dtype="float64")
-    model = rows["prediction"].to_numpy(dtype="float64")
-    rules = (~rows["nmd_escape"]).to_numpy(dtype="float64")
-    # The positions of the rows of each gene
-    gene_rows = list(rows.groupby("gene").indices.values())
+    y = rows["NMD_efficiency"].to_numpy()
+    model = rows["prediction"].to_numpy()
+    rules = (~rows["nmd_escape"]).cast(pl.Float64).to_numpy()
+    # The positions of the rows of each gene, in the order of the genes
+    genes = rows.with_row_index().group_by("gene").agg("index").sort("gene")
+    gene_rows = [positions.to_numpy() for positions in genes["index"]]
     rng = np.random.default_rng(SEED)
     model_resampled = np.empty(N_RESAMPLES)
     rules_resampled = np.empty(N_RESAMPLES)
@@ -300,28 +300,32 @@ def correlations(rows: pd.DataFrame) -> dict:
     }
 
 
-def mean_nmd_triggering(rows: pd.DataFrame) -> float:
+def mean_nmd_triggering(rows: pl.DataFrame) -> float:
     """The mean NMD_efficiency of the rows with nmd_escape False."""
-    return float(rows.loc[~rows["nmd_escape"], "NMD_efficiency"].mean())
+    # np.mean, because polars mean sums in another order and can differ in the last digit
+    return float(np.mean(rows.filter(~pl.col("nmd_escape"))["NMD_efficiency"].to_numpy()))
 
 
 def estimate(value: float, ci: list[float]) -> str:
     return f"{value:.2f} ({ci[0]:.2f} to {ci[1]:.2f})"
 
 
-def facet_frame(panels: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Concatenate the frames of panels for facet_wrap. The column panel has their keys as categories, in order."""
-    frames = [frame.assign(panel=title) for title, frame in panels.items()]
-    return pd.concat(frames).astype({"panel": pd.CategoricalDtype(list(panels))})
+def facet_frame(panels: dict[str, pl.DataFrame]) -> pl.DataFrame:
+    """
+    Concatenate the frames of panels for facet_wrap, with the columns of all frames. The column panel has their keys as
+    categories, in order.
+    """
+    frames = [frame.with_columns(panel=pl.lit(title)) for title, frame in panels.items()]
+    return pl.concat(frames, how="diagonal_relaxed").cast({"panel": pl.Enum(list(panels))})
 
 
-def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) -> pd.DataFrame:
+def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) -> pl.DataFrame:
     """
     One row per result and score for interval_plot, with the value of the score and its 95% CI as low and high. Result
     i has the position -i plus the offset of the score. The rows of the last result, at the bottom, have the direct
     labels.
     """
-    return pd.DataFrame(
+    return pl.DataFrame(
         [
             {
                 "position": -i + offset,
@@ -337,7 +341,7 @@ def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) ->
     )
 
 
-def interval_plot(rows: pd.DataFrame, labels: list[str]) -> ggplot:
+def interval_plot(rows: pl.DataFrame, labels: list[str]) -> ggplot:
     """
     A dot at each value of the intervals in rows, with a line from low to high, and the direct label right of high.
     The y axis shows labels from the top, one per result.
@@ -380,49 +384,47 @@ if trained.read_bytes() != MODEL_PATH.read_bytes():
     raise ValueError(f"{trained} differs from {MODEL_PATH}, so its out-of-fold predictions are of another model")
 
 # %%
-strands = read_strands(args.gff3)
-genes = read_genes(args.gff3)
+transcripts = read_transcripts(args.gff3)
 fasta = Fasta(str(args.fasta))
 geuvadis = read_geuvadis(args.geuvadis_dir, fasta)
-# The first line of the sheet is its title
-gtex = pd.read_excel(io.BytesIO(download(GTEX_URL, GTEX_SHA256)), sheet_name=GTEX_SHEET, header=1)
-gtex = add_alleles(gtex, strands, fasta).rename(columns={"Tissue_type": "tissue"})
-mmrf = add_alleles(read_nmdeff("MMRF_TARGET_dataset.csv"), strands, fasta)
+# The first line of the sheet is its title. polars reads the sheet with fastexcel.
+gtex = pl.read_excel(download(GTEX_URL, GTEX_SHA256), sheet_name=GTEX_SHEET, read_options={"header_row": 1})
+gtex = add_alleles(gtex, transcripts, fasta).rename({"Tissue_type": "tissue"})
+mmrf = add_alleles(read_nmdeff("MMRF_TARGET_dataset.csv"), transcripts, fasta)
 vcf = args.out_dir / "variants.vcf"
-write_vcf(pd.concat([table[["chrom", "pos", "ref", "alt"]] for table in (geuvadis, gtex, mmrf)]).drop_duplicates(), vcf)
-features = add_key(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False))
-scored = features[[*KEY, "nmd_efficiency_prediction_status", "nmd_escape", "nmd_efficiency_prediction"]].rename(
-    columns={"nmd_efficiency_prediction": "prediction"}
+variants = pl.concat([table.select("chrom", "pos", "ref", "alt") for table in (geuvadis, gtex, mmrf)])
+write_vcf(variants.unique(keep="first", maintain_order=True), vcf)
+features = add_key(
+    pl.from_arrow(nmd_scanner.to_arrow(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False)))
 )
+scored = features.select(*KEY, "nmd_efficiency_prediction_status", "nmd_escape", prediction="nmd_efficiency_prediction")
 
-geuvadis = scored_rows("geuvadis", geuvadis, scored, strands, "VAF_mean")
-accurate = ~geuvadis[ACCURATE_ANNOTATION_FLAGS].astype("boolean").fillna(False).any(axis=1)
+geuvadis = scored_rows("geuvadis", geuvadis, scored, transcripts, "VAF_mean")
+accurate = geuvadis.select(~pl.any_horizontal(pl.col(ACCURATE_ANNOTATION_FLAGS).fill_null(False))).to_series()
 logger.info(
     "geuvadis: %d of the %d rows are outside the study's accurate annotation (flags %s)",
     (~accurate).sum(),
     len(geuvadis),
     " ".join(ACCURATE_ANNOTATION_FLAGS),
 )
-geuvadis = geuvadis[accurate].assign(NMD_efficiency=lambda rows: -np.log2(rows["VAF_mean"] / GERMLINE_VAF_DNA))
+# np.log2, because polars log(2) can differ from it in the last digit
+geuvadis = geuvadis.filter(accurate).with_columns(NMD_efficiency=-np.log2(pl.col("VAF_mean") / GERMLINE_VAF_DNA))
 # ASE_altered is VAF_RNA. For VAF_RNA 0, the table caps NMD_efficiency at 10.
-gtex = scored_rows("gtex", gtex, scored, strands, "ASE_altered")
-gtex_variants = gtex.groupby(KEY, as_index=False).agg(
-    NMD_efficiency=("NMD_efficiency", "mean"),
-    prediction=("prediction", "first"),
-    nmd_escape=("nmd_escape", "first"),
+gtex = scored_rows("gtex", gtex, scored, transcripts, "ASE_altered")
+# group_by has no fixed order, and the bootstrap of correlations depends on the order of the rows
+gtex_variants = (
+    gtex.group_by(KEY).agg(pl.col("NMD_efficiency").mean(), pl.col("prediction", "nmd_escape").first()).sort(KEY)
 )
 cohorts = {
     # Every row of tcga_dataset.csv has VAF_RNA above 0
-    "tcga": pd.read_parquet(args.train_dir / "oof_predictions.parquet").astype({"nmd_escape": bool}),
+    "tcga": pl.read_parquet(args.train_dir / "oof_predictions.parquet"),
     "geuvadis": geuvadis,
     "gtex": gtex_variants,
-    "mmrf_target": scored_rows("mmrf_target", mmrf, scored, strands, "VAF_RNA"),
+    "mmrf_target": scored_rows("mmrf_target", mmrf, scored, transcripts, "VAF_RNA"),
 }
 # correlations resamples the genes
-cohorts = {
-    cohort: rows.assign(gene=[genes[transcript] for transcript in rows["transcript"]])
-    for cohort, rows in cohorts.items()
-}
+gene = pl.col("transcript").replace_strict(transcripts["transcript"], transcripts["gene"])
+cohorts = {cohort: rows.with_columns(gene=gene) for cohort, rows in cohorts.items()}
 
 # %%
 validation = {}
@@ -439,23 +441,24 @@ for cohort, rows in cohorts.items():
         result["mean_nmd_triggering"],
     )
     validation[cohort] = result
-counts = gtex["tissue"].value_counts()
 tissue_means = {
-    tissue: mean_nmd_triggering(gtex[gtex["tissue"] == tissue]) for tissue in counts.index[counts >= MIN_TISSUE_ROWS]
+    tissue: mean_nmd_triggering(rows)
+    for (tissue,), rows in gtex.group_by("tissue", maintain_order=True)
+    if len(rows) >= MIN_TISSUE_ROWS
 }
 tissue_means = dict(sorted(tissue_means.items(), key=lambda item: item[1]))
 validation["gtex_variant_tissue_rows"] = {
     "n": len(gtex),
-    "tissues": gtex["tissue"].nunique(),
+    "tissues": gtex["tissue"].n_unique(),
     "mean_nmd_triggering": mean_nmd_triggering(gtex),
     "min_rows_per_tissue": MIN_TISSUE_ROWS,
     "mean_nmd_triggering_per_tissue": tissue_means,
 }
 mmrf_rows = cohorts["mmrf_target"]
-seen = mmrf_rows["transcript"].isin(set(cohorts["tcga"]["transcript"]))
+seen = mmrf_rows["transcript"].is_in(cohorts["tcga"]["transcript"].implode())
 validation["mmrf_target_by_transcript"] = {
-    "in_tcga_training": correlations(mmrf_rows[seen]),
-    "not_in_tcga_training": correlations(mmrf_rows[~seen]),
+    "in_tcga_training": correlations(mmrf_rows.filter(seen)),
+    "not_in_tcga_training": correlations(mmrf_rows.filter(~seen)),
 }
 for group, result in validation["mmrf_target_by_transcript"].items():
     logger.info(
@@ -509,7 +512,7 @@ calibrations = {}
 for cohort, rows in cohorts.items():
     bins, slope, intercept = calibration(rows)
     title = f"{COHORT_NAMES[cohort]}, {len(rows):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
-    calibrations[title] = bins.assign(slope=slope, intercept=intercept)
+    calibrations[title] = bins.with_columns(slope=slope, intercept=intercept)
 plot = calibration_plot(facet_frame(calibrations)) + facet_wrap("panel", scales="free")
 save_figure(plot, args.out_dir, "calibration", 8, 9)
 
@@ -520,9 +523,9 @@ save_figure(plot, args.out_dir, "calibration", 8, 9)
 # %%
 boxes = facet_frame(
     {
-        COHORT_NAMES[cohort]: rows.assign(
-            nmd_escape=rows["nmd_escape"].map(
-                {escape: f"{escape}\n{count:,} rows" for escape, count in rows["nmd_escape"].value_counts().items()}
+        COHORT_NAMES[cohort]: rows.with_columns(
+            pl.col("nmd_escape").replace_strict(
+                {escape: f"{escape}\n{count:,} rows" for escape, count in rows["nmd_escape"].value_counts().iter_rows()}
             )
         )
         for cohort, rows in cohorts.items()
@@ -558,9 +561,7 @@ save_figure(plot, args.out_dir, "spearman_per_cohort", 6.5, 3.5)
 tissue_rows = validation["gtex_variant_tissue_rows"]
 # The tissues from the lowest mean to the highest, which coord_flip draws from the bottom to the top
 tissues = list(tissue_rows["mean_nmd_triggering_per_tissue"])
-nmd_triggering = gtex[~gtex["nmd_escape"] & gtex["tissue"].isin(tissues)].astype(
-    {"tissue": pd.CategoricalDtype(tissues)}
-)
+nmd_triggering = gtex.filter(~pl.col("nmd_escape"), pl.col("tissue").is_in(tissues)).cast({"tissue": pl.Enum(tissues)})
 plot = (
     ggplot(nmd_triggering, aes("tissue", "NMD_efficiency"))
     + geom_hline(yintercept=tissue_rows["mean_nmd_triggering"], color=AXIS, linetype="dashed")
@@ -597,7 +598,7 @@ gain_panel = "Gain of the model over the rules"
 transcript_intervals = facet_frame(
     {"Spearman correlation": intervals(results, MODEL_AND_RULES), gain_panel: intervals(results, GAIN)}
 )
-zero = pd.DataFrame({"panel": [gain_panel], "x": [0.0]}).astype({"panel": transcript_intervals["panel"].dtype})
+zero = pl.DataFrame({"panel": [gain_panel], "x": [0.0]}).cast({"panel": transcript_intervals["panel"].dtype})
 plot = (
     interval_plot(
         transcript_intervals,

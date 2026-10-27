@@ -57,7 +57,7 @@ import joblib
 import numpy as np
 import onnx
 import onnxruntime
-import pandas as pd
+import polars as pl
 from figures import (
     AXIS,
     BLUE,
@@ -69,7 +69,7 @@ from figures import (
     in_notebook,
     save_figure,
 )
-from make_benchmark_vcfs import KEY, add_alleles, add_key, join_features, read_nmdeff, read_strands, write_vcf
+from make_benchmark_vcfs import KEY, add_alleles, add_key, join_features, read_nmdeff, read_transcripts, write_vcf
 from onnx import TensorProto, helper, numpy_helper
 from plotnine import (
     aes,
@@ -132,11 +132,12 @@ OOB_TREES = [50, 100, 200, 300, 400, 500]
 
 def chromosome_folds(y: np.ndarray, chrom: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
     """Split the rows into N_FOLDS folds of whole chromosomes, stratified by N_TARGET_BINS quantile bins of y."""
+    target_bins = np.digitize(y, np.quantile(y, np.linspace(0, 1, N_TARGET_BINS + 1)[1:-1]), right=True)
     splitter = StratifiedGroupKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
-    return list(splitter.split(np.zeros(len(y)), pd.qcut(y, N_TARGET_BINS, labels=False), chrom))
+    return list(splitter.split(np.zeros(len(y)), target_bins, chrom))
 
 
-def tune(x: pd.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
+def tune(x: pl.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
     """Run a grid search over RF_GRID on chromosome_folds, and refit the best random forest on all given rows."""
     forest = RandomForestRegressor(random_state=SEED, n_jobs=1)
     search = GridSearchCV(forest, RF_GRID, scoring="r2", cv=chromosome_folds(y, chrom), n_jobs=-1)
@@ -197,18 +198,20 @@ logger.setLevel(logging.INFO)
 args.out_dir.mkdir(parents=True, exist_ok=True)
 
 # %%
-strands = read_strands(args.gff3)
-tcga = add_alleles(read_nmdeff("tcga_dataset.csv"), strands, Fasta(str(args.fasta)))
+transcripts = read_transcripts(args.gff3)
+tcga = add_alleles(read_nmdeff("tcga_dataset.csv"), transcripts, Fasta(str(args.fasta)))
 vcf = args.out_dir / "variants.vcf"
-write_vcf(tcga.drop_duplicates(["chrom", "pos", "ref", "alt"]), vcf)
-features = add_key(nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False, prediction=False))
+write_vcf(tcga.unique(["chrom", "pos", "ref", "alt"], keep="first", maintain_order=True), vcf)
+annotated = nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False, prediction=False)
+features = add_key(pl.from_arrow(nmd_scanner.to_arrow(annotated)))
 # tcga_row is the index of the row in tcga_dataset.csv
-tcga = tcga[[*KEY, "NMD_efficiency"]].assign(tcga_row=np.arange(len(tcga)))
-rows = join_features(tcga, features, strands, "tcga", logger).reset_index(drop=True)
+tcga = tcga.select(*KEY, "NMD_efficiency", tcga_row=pl.int_range(pl.len()))
+rows = join_features(tcga, features, transcripts, "tcga", logger)
 logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga), len(rows))
-x = rows[MODEL_INPUTS].astype("float64")
-y = rows["NMD_efficiency"].to_numpy(dtype="float64")
-chrom = rows["chrom"].to_numpy(dtype=str)
+# A DataFrame, so that the random forest keeps the input names as feature_names_in_
+x = rows.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
+y = rows["NMD_efficiency"].to_numpy()
+chrom = rows["chrom"].to_numpy()
 
 # %% [markdown]
 # The histogram shows the target `NMD_efficiency` of the training rows. 0 means no NMD, and 1 means that the variant
@@ -228,24 +231,27 @@ save_figure(plot, args.out_dir, "target_histogram", 6, 3.5)
 predictions = []
 folds = []
 for fold, (train, test) in enumerate(chromosome_folds(y, chrom)):
-    search = tune(x.iloc[train], y[train], chrom[train])
-    prediction = search.predict(x.iloc[test])
+    search = tune(x[train], y[train], chrom[train])
+    prediction = search.predict(x[test])
     columns = ["tcga_row", *KEY, "nmd_escape", "NMD_efficiency"]
-    predictions.append(rows.iloc[test][columns].assign(fold=fold, prediction=prediction))
+    predictions.append(
+        rows[test].select(columns).with_columns(fold=pl.lit(fold, dtype=pl.Int64), prediction=pl.Series(prediction))
+    )
     chromosomes = sorted(set(chrom[test].tolist()))
     r2 = r2_score(y[test], prediction)
     folds.append({"chromosomes": chromosomes, "rows": len(test), "r2": r2, "params": search.best_params_})
     logger.info("fold %d (%s): R2 %.3f, %s", fold, " ".join(chromosomes), r2, search.best_params_)
-oof = pd.concat(predictions)
-oof.to_parquet(args.out_dir / "oof_predictions.parquet", index=False)
+oof = pl.concat(predictions)
+oof.write_parquet(args.out_dir / "oof_predictions.parquet")
 
 # %% [markdown]
 # The scatter shows the measured NMD efficiency of each TCGA row over its out-of-fold prediction, with Spearman and R2
 # over all rows. The gray line marks equal values.
 
 # %%
-oof_spearman = spearmanr(oof["prediction"], oof["NMD_efficiency"]).statistic
-oof_r2 = r2_score(oof["NMD_efficiency"], oof["prediction"])
+oof_measured = oof["NMD_efficiency"].to_numpy()
+oof_spearman = spearmanr(oof["prediction"].to_numpy(), oof_measured).statistic
+oof_r2 = r2_score(oof_measured, oof["prediction"].to_numpy())
 plot = (
     ggplot(oof, aes("prediction", "NMD_efficiency"))
     + geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
@@ -265,7 +271,7 @@ save_figure(plot, args.out_dir, "tcga_measured_vs_predicted", 5, 4.5)
 
 # %%
 bins, slope, intercept = calibration(oof)
-plot = calibration_plot(bins.assign(slope=slope, intercept=intercept)) + labs(
+plot = calibration_plot(bins.with_columns(slope=slope, intercept=intercept)) + labs(
     title=f"TCGA, out of fold, {len(oof):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
 )
 save_figure(plot, args.out_dir, "calibration_oof", 5, 6)
@@ -275,7 +281,7 @@ final = tune(x, y, chrom)
 onnx_path = args.out_dir / "nmd_efficiency_rf.onnx"
 save_onnx(final.best_estimator_, onnx_path)
 session = onnxruntime.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-onnx_prediction = session.run(None, {"input": x.to_numpy(dtype=np.float64)})[0].ravel()
+onnx_prediction = session.run(None, {"input": x.to_numpy()})[0].ravel()
 if (onnx_prediction != final.predict(x).astype(np.float32)).any():
     raise ValueError(f"{onnx_path} predicts other values than the random forest")
 
@@ -290,19 +296,20 @@ logger.info("final model: inner CV R2 %.3f, %s", final.best_score_, final.best_p
 # deviation over the permutations.
 
 # %%
+# The random forest checks the input names. permutation_importance keeps them only in a pandas DataFrame.
 permutation = permutation_importance(
-    final.best_estimator_, x, y, scoring="r2", n_repeats=N_PERMUTATIONS, random_state=SEED, n_jobs=-1
+    final.best_estimator_, x.to_pandas(), y, scoring="r2", n_repeats=N_PERMUTATIONS, random_state=SEED, n_jobs=-1
 )
-importance = pd.concat(
+importance = pl.concat(
     [
-        pd.DataFrame(
+        pl.DataFrame(
             {
                 "kind": "Impurity importance\nMean decrease in impurity",
                 "input": MODEL_INPUTS,
                 "value": final.best_estimator_.feature_importances_,
             }
         ),
-        pd.DataFrame(
+        pl.DataFrame(
             {
                 "kind": f"Permutation importance\nDecrease in R2 on the training rows,\nmean and SD of {N_PERMUTATIONS} permutations",
                 "input": MODEL_INPUTS,
@@ -310,15 +317,17 @@ importance = pd.concat(
                 "sd": permutation.importances_std,
             }
         ),
-    ]
-).sort_values("value")
-# Each panel orders its bars by importance, so a bar is one kind and input. The axis shows only the input.
+    ],
+    how="diagonal",
+).sort("value", maintain_order=True)
+# Each panel orders its bars by importance, so a bar is one kind and input. Bars of equal importance keep the order
+# of MODEL_INPUTS. The axis shows only the input.
 bars = importance["kind"] + "|" + importance["input"]
-importance["bar"] = pd.Categorical(bars, categories=bars)
+importance = importance.with_columns(bar=bars.cast(pl.Enum(bars)))
 plot = (
     ggplot(importance, aes("bar", "value"))
     + geom_col(fill=BLUE, width=0.6)
-    + geom_linerange(aes(ymin="value - sd", ymax="value + sd"), data=lambda rows: rows.dropna(), color=SECONDARY_INK)
+    + geom_linerange(aes(ymin="value - sd", ymax="value + sd"), data=importance.drop_nulls(), color=SECONDARY_INK)
     + scale_x_discrete(labels=lambda bars: [bar.split("|")[1] for bar in bars])
     + coord_flip()
     + facet_wrap("kind", scales="free")
@@ -348,9 +357,9 @@ train_sizes, train_scores, test_scores = learning_curve(
     random_state=SEED,
     n_jobs=-1,
 )
-curves = pd.concat(
+curves = pl.concat(
     [
-        pd.DataFrame(
+        pl.DataFrame(
             {
                 "rows": train_sizes,
                 "mean": scores.mean(axis=1),
@@ -369,7 +378,7 @@ plot = (
     + geom_point(aes(color="color"), size=2.5)
     + geom_text(
         aes(label="label"),
-        data=lambda curves: curves[curves["rows"] == train_sizes[-1]],
+        data=curves.filter(pl.col("rows") == train_sizes[-1]),
         ha="left",
         nudge_x=0.03 * train_sizes[-1],
         color=SECONDARY_INK,
@@ -394,7 +403,7 @@ oob_errors = [
 ]
 final_trees = final.best_params_["n_estimators"]
 plot = (
-    ggplot(pd.DataFrame({"trees": OOB_TREES, "error": oob_errors}), aes("trees", "error"))
+    ggplot(pl.DataFrame({"trees": OOB_TREES, "error": oob_errors}), aes("trees", "error"))
     + geom_vline(xintercept=final_trees, color=AXIS)
     + annotate(
         "text",

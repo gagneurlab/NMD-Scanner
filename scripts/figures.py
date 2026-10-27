@@ -11,7 +11,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-import pandas as pd
+import polars as pl
 from plotnine import (
     aes,
     element_blank,
@@ -29,7 +29,7 @@ from plotnine import (
     theme_minimal,
     theme_set,
 )
-from scipy.stats import sem, t
+from scipy.stats import t
 
 BLUE = "#2a78d6"
 ORANGE = "#eb6834"
@@ -70,21 +70,31 @@ def in_notebook() -> bool:
     return "ipykernel" in sys.modules
 
 
-def calibration(rows: pd.DataFrame) -> tuple[pd.DataFrame, float, float]:
+def calibration(rows: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
     """
-    Per bin of CALIBRATION_BINS quantile bins of the column prediction of rows, the mean prediction, the mean
-    NMD_efficiency, and the 95% CI of the mean NMD_efficiency from the t distribution as low and high. Also the slope
-    and the intercept of the least-squares line of NMD_efficiency on prediction over all rows.
+    One row per bin of CALIBRATION_BINS quantile bins of the column prediction of rows, from the lowest bin to the
+    highest. A row has the mean prediction, the mean NMD_efficiency, and the 95% CI of the mean NMD_efficiency from the
+    t distribution as low and high. Also the slope and the intercept of the least-squares line of NMD_efficiency on prediction over all rows.
     """
-    bins = rows.groupby(pd.qcut(rows["prediction"], CALIBRATION_BINS, labels=False, duplicates="drop"))
-    means = bins[["prediction", "NMD_efficiency"]].mean()
-    half_width = bins["NMD_efficiency"].agg(lambda values: t.ppf(0.975, len(values) - 1) * sem(values))
-    slope, intercept = np.polyfit(rows["prediction"], rows["NMD_efficiency"], 1)
-    means = means.assign(low=means["NMD_efficiency"] - half_width, high=means["NMD_efficiency"] + half_width)
-    return means, float(slope), float(intercept)
+    # The edges are those of pd.qcut(duplicates="drop"). Bins are right-closed, and the lowest value is in the first bin.
+    edges = np.unique(np.quantile(rows["prediction"].to_numpy(), np.linspace(0, 1, CALIBRATION_BINS + 1)))
+    bins = (
+        rows.group_by(bin=pl.col("prediction").cut(edges[1:-1].tolist()))
+        .agg(
+            pl.col("prediction", "NMD_efficiency").mean(),
+            sem=pl.col("NMD_efficiency").std() / pl.len().sqrt(),
+            n=pl.len(),
+        )
+        .sort("prediction")
+    )
+    half_width = pl.Series(t.ppf(0.975, bins["n"].to_numpy() - 1)) * bins["sem"]
+    measured = pl.col("NMD_efficiency")
+    bins = bins.select("prediction", measured, low=measured - half_width, high=measured + half_width)
+    slope, intercept = np.polyfit(rows["prediction"].to_numpy(), rows["NMD_efficiency"].to_numpy(), 1)
+    return bins, float(slope), float(intercept)
 
 
-def calibration_plot(bins: pd.DataFrame) -> ggplot:
+def calibration_plot(bins: pl.DataFrame) -> ggplot:
     """
     The calibration plot of bins, the bins of calibration with its slope and intercept as columns. With facets, bins
     has the bins and the fit of each panel. Both axes of a panel span the same range, so that the square panel gives
@@ -96,7 +106,7 @@ def calibration_plot(bins: pd.DataFrame) -> ggplot:
         # One line per fit
         + geom_abline(
             aes(slope="slope", intercept="intercept"),
-            data=lambda bins: bins.drop_duplicates(["slope", "intercept"]),
+            data=bins.unique(["slope", "intercept"], maintain_order=True),
             color=BLUE,
         )
         + geom_linerange(aes(ymin="low", ymax="high"), color=BLUE)

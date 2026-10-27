@@ -21,7 +21,7 @@ uv run --group scripts python scripts/make_benchmark_vcfs.py --gff3 gencode.v42.
 - It fails if a row is not a single-base substitution, or if a REF does not match the FASTA.
 - `train_model.py` and `validate_model.py` import these steps from it.
 - `join_features` joins the rows of a study table to the `nmd_scanner.annotate` output, keeps the rows with `nmd_efficiency_prediction_status` ok, and logs the rows that it drops.
-- `read_genes` returns the gene of each transcript, for the gene bootstrap of `validate_model.py`.
+- `read_transcripts` returns the strand and the gene of each transcript, for `add_alleles` and for the gene bootstrap of `validate_model.py`.
 
 ## train_model.py
 
