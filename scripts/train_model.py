@@ -15,21 +15,22 @@
 
 # %%
 """
-Train the NMD efficiency model nmd_efficiency_rf.onnx on NMD-Scanner features of the NMDEff TCGA benchmark, and
-predict each training row out of fold.
+Train the NMD efficiency model nmd_efficiency_rf.onnx on NMD-Scanner features of the TCGA benchmark, and predict each
+training row out of fold.
 
 Run it as a script with:
 
-    uv run --group scripts python scripts/train_model.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa \
-        --out-dir train/
+    uv run --extra scripts python scripts/train_model.py --benchmark-dir benchmarks/ \
+        --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir train/
+
+--benchmark-dir is the --out-dir of scripts/build_benchmarks.py, with the same GFF3 and FASTA.
 
 It is also a notebook (see scripts/README.md). In a notebook, the arguments come from the environment variable
 TRAIN_MODEL_ARGS.
 
 Steps:
-1. Download tcga_dataset.csv of NMDEff and add the genomic alleles, with the steps of make_benchmark_vcfs.py. Its
-   column NMD_efficiency is the target. In 29 rows, NMD_efficiency differs from -log2(VAF_DNA_RNA_ratio), by up to
-   0.36.
+1. Read tcga.parquet of --benchmark-dir (see nmd_scanner.benchmark.datasets.tcga). Its column NMD_efficiency is the
+   target.
 2. Run nmd_scanner.annotate on the unique variants. Join each TCGA row to the NMD-Scanner row of its transcript and
    variant, and keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why. The
    inputs are nmd_scanner.schema.MODEL_INPUTS as float64.
@@ -58,18 +59,6 @@ import numpy as np
 import onnx
 import onnxruntime
 import polars as pl
-from figures import (
-    AXIS,
-    BLUE,
-    MUTED_INK,
-    SECONDARY_INK,
-    SURFACE,
-    calibration,
-    calibration_plot,
-    in_notebook,
-    save_figure,
-)
-from make_benchmark_vcfs import KEY, add_alleles, add_key, join_features, read_nmdeff, read_transcripts, write_vcf
 from onnx import TensorProto, helper, numpy_helper
 from plotnine import (
     aes,
@@ -94,7 +83,6 @@ from plotnine import (
     scale_x_discrete,
     theme,
 )
-from pyfaidx import Fasta
 from scipy.stats import spearmanr
 from skl2onnx.common.tree_ensemble import add_tree_to_attribute_pairs, get_default_tree_regressor_attribute_pairs
 from sklearn.base import clone
@@ -103,7 +91,18 @@ from sklearn.inspection import permutation_importance
 from sklearn.metrics import r2_score
 from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, learning_curve
 
-import nmd_scanner
+from nmd_scanner.benchmark import KEY, join_features, run_nmd_scanner
+from nmd_scanner.benchmark.figures import (
+    AXIS,
+    BLUE,
+    MUTED_INK,
+    SECONDARY_INK,
+    SURFACE,
+    calibration,
+    calibration_plot,
+    in_notebook,
+    save_figure,
+)
 from nmd_scanner.schema import MODEL_INPUTS
 
 logger = logging.getLogger("train_model")
@@ -147,8 +146,9 @@ def tune(x: pl.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
 def save_onnx(estimator: RandomForestRegressor, path: Path) -> None:
     """
     Write the random forest as one ONNX TreeEnsembleRegressor node (ai.onnx.ml opset 3). The input "input" has type
-    double and shape [N, len(MODEL_INPUTS)], with the columns of MODEL_INPUTS in that order. By the ONNX specification, the output
-    "variable" has type float and shape [N, 1]. The metadata key feature_names holds MODEL_INPUTS as a JSON list.
+    double and shape [N, len(MODEL_INPUTS)], with the columns of MODEL_INPUTS in that order. By the ONNX specification,
+    the output "variable" has type float and shape [N, 1]. The metadata key feature_names holds MODEL_INPUTS as a JSON
+    list.
 
     The RandomForestRegressor converter of skl2onnx would store the split thresholds and leaf values as float32. This
     function uses the tree helpers of the converter, but keeps them as float64.
@@ -188,25 +188,23 @@ def save_onnx(estimator: RandomForestRegressor, path: Path) -> None:
 
 # %%
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser.add_argument(
+    "--benchmark-dir", required=True, type=Path, help="--out-dir of build_benchmarks.py, with tcga.parquet"
+)
 parser.add_argument("--gff3", required=True, type=Path, help="GENCODE GFF3 of GRCh38, optionally gzip-compressed")
 parser.add_argument("--fasta", required=True, type=Path, help="GRCh38 FASTA with chr names and a .fai index")
 parser.add_argument("--out-dir", required=True, type=Path, help="directory for the outputs")
 # In a notebook, sys.argv holds the arguments of the kernel
 args = parser.parse_args(shlex.split(os.environ.get("TRAIN_MODEL_ARGS", "")) if in_notebook() else None)
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-logger.setLevel(logging.INFO)
+for name in ("train_model", "nmd_scanner.benchmark"):
+    logging.getLogger(name).setLevel(logging.INFO)
 args.out_dir.mkdir(parents=True, exist_ok=True)
 
 # %%
-transcripts = read_transcripts(args.gff3)
-tcga = add_alleles(read_nmdeff("tcga_dataset.csv"), transcripts, Fasta(str(args.fasta)))
-vcf = args.out_dir / "variants.vcf"
-write_vcf(tcga.unique(["chrom", "pos", "ref", "alt"]).sort("chrom", "pos", "ref", "alt"), vcf)
-annotated = nmd_scanner.annotate(vcf, args.gff3, args.fasta, sequences=False, prediction=False)
-features = add_key(pl.from_arrow(nmd_scanner.to_arrow(annotated)))
-# tcga_row is the index of the row in tcga_dataset.csv
-tcga = tcga.select(*KEY, "NMD_efficiency", tcga_row=pl.int_range(pl.len()))
-rows = join_features(tcga, features, transcripts, "tcga", logger).sort("tcga_row")
+tcga = pl.read_parquet(args.benchmark_dir / "tcga.parquet")
+features = run_nmd_scanner(tcga, args.out_dir / "variants.vcf", args.gff3, args.fasta, prediction=False)
+rows = join_features(tcga, features, "TCGA").sort("source_row")
 logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga), len(rows))
 # A DataFrame, so that the random forest keeps the input names as feature_names_in_
 x = rows.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
@@ -233,7 +231,7 @@ folds = []
 for fold, (train, test) in enumerate(chromosome_folds(y, chrom)):
     search = tune(x[train], y[train], chrom[train])
     prediction = search.predict(x[test])
-    columns = ["tcga_row", *KEY, "nmd_escape", "NMD_efficiency"]
+    columns = ["source_row", *KEY, "gene", "nmd_escape", "NMD_efficiency"]
     predictions.append(
         rows[test].select(columns).with_columns(fold=pl.lit(fold, dtype=pl.Int64), prediction=pl.Series(prediction))
     )
@@ -266,8 +264,8 @@ save_figure(plot, args.out_dir, "tcga_measured_vs_predicted", 5, 4.5)
 
 # %% [markdown]
 # The dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the out-of-fold
-# prediction, with the 95% CI of the measured mean. The blue line is the least-squares fit of measured on predicted over all rows,
-# and the gray line marks equal values.
+# prediction, with the 95% CI of the measured mean. The blue line is the least-squares fit of measured on predicted over
+# all rows, and the gray line marks equal values.
 
 # %%
 bins, slope, intercept = calibration(oof)
@@ -311,7 +309,10 @@ importance = pl.concat(
         ),
         pl.DataFrame(
             {
-                "kind": f"Permutation importance\nDecrease in R2 on the training rows,\nmean and SD of {N_PERMUTATIONS} permutations",
+                "kind": (
+                    "Permutation importance\nDecrease in R2 on the training rows,"
+                    f"\nmean and SD of {N_PERMUTATIONS} permutations"
+                ),
                 "input": MODEL_INPUTS,
                 "value": permutation.importances_mean,
                 "sd": permutation.importances_std,

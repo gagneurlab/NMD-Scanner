@@ -1,9 +1,10 @@
 """
-The plotnine theme, the calibration plot and save_figure of train_model.py and validate_model.py. calibration computes
-the statistics of the calibration plot, and save_figure saves each figure as PNG and PDF.
+The plotnine theme, the calibration plot and save_figure of scripts/train_model.py and scripts/validate_model.py.
+calibration computes the statistics of the calibration plot, and save_figure saves each figure as PNG and PDF. This
+module needs the extra scripts of nmd-scanner.
 
-The colors come from a categorical palette that is checked for color vision deficiency: BLUE marks the model and every
-single series, ORANGE marks the rules, and MUTED_INK marks a series that gives context.
+The colors come from a categorical palette that is checked for color vision deficiency: BLUE marks the model and the
+only series of a figure, ORANGE marks the rules, and MUTED_INK marks a series that gives context.
 """
 
 import sys
@@ -74,7 +75,8 @@ def calibration(rows: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
     """
     One row per bin of CALIBRATION_BINS quantile bins of the column prediction of rows, from the lowest bin to the
     highest. A row has the mean prediction, the mean NMD_efficiency, and the 95% CI of the mean NMD_efficiency from the
-    t distribution as low and high. Also the slope and the intercept of the least-squares line of NMD_efficiency on prediction over all rows.
+    t distribution as low and high. Also the slope and the intercept of the least-squares line of NMD_efficiency on
+    prediction over all rows.
     """
     bins = (
         rows.group_by(bin=pl.col("prediction").qcut(CALIBRATION_BINS, allow_duplicates=True))

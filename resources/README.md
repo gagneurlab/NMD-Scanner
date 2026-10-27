@@ -5,20 +5,6 @@ The files in this directory are not required for normal usage of the NMD-Scanner
 
 ---
 
-## Benchmark datasets
-
-### `MMRF_benchmark/`
-
-- **`MMRF_TARGET_dataset.vcf`** : VCF file built from the MMRF / TARGET dataset by `scripts/make_benchmark_vcfs.py`, with REF and ALT on the forward strand of GRCh38
-  used to benchmark NMD efficiency prediction. The original dataset and processing scripts are provided by the original NMDEff project: <https://github.com/hjkng/nmdeff>
-
-### `TCGA_benchmark/`
-
-- **`tcga_dataset.vcf`** : VCF file built from the TCGA dataset of the original study (<https://github.com/hjkng/nmdeff>) by `scripts/make_benchmark_vcfs.py`, with REF and ALT on the forward strand of GRCh38
-  used for NMD efficiency benchmarking and for model training.
-
----
-
 ## Files for Testing
 
 ### `test_files/`
@@ -59,4 +45,3 @@ These files are provided to allow testing on a small genomic region (chromosome 
 
 - These resources are intended for testing, benchmarking and reproducibility.
 - Users of the NMD-Scanner do not need to download or use these files to run the tool on their own data.
-- Dataset usage of the TCGA and MMRF/TARGET datasets follows the terms of the original source (<https://github.com/hjkng/nmdeff>).

@@ -13,5 +13,6 @@ data/
 scripts/*.ipynb
 .ipynb_checkpoints/
 # The output directories of the commands in scripts/README.md
+/benchmarks/
 /train/
 /validate/

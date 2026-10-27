@@ -1426,6 +1426,21 @@ dependencies = [
     { name = "tqdm" },
 ]
 
+[package.optional-dependencies]
+scripts = [
+    { name = "fastexcel" },
+    { name = "ipykernel" },
+    { name = "joblib" },
+    { name = "jupytext" },
+    { name = "matplotlib" },
+    { name = "nbconvert" },
+    { name = "onnx" },
+    { name = "plotnine" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "skl2onnx" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "tox" },
@@ -1435,18 +1450,6 @@ lint = [
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "ruff" },
-]
-scripts = [
-    { name = "fastexcel" },
-    { name = "ipykernel" },
-    { name = "jupytext" },
-    { name = "matplotlib" },
-    { name = "nbconvert" },
-    { name = "onnx" },
-    { name = "plotnine" },
-    { name = "scikit-learn" },
-    { name = "scipy" },
-    { name = "skl2onnx" },
 ]
 test = [
     { name = "pytest" },
@@ -1459,15 +1462,27 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "biopython" },
+    { name = "fastexcel", marker = "extra == 'scripts'", specifier = ">=0.21.0" },
+    { name = "ipykernel", marker = "extra == 'scripts'", specifier = ">=7.4.0" },
+    { name = "joblib", marker = "extra == 'scripts'", specifier = ">=1.6.0" },
+    { name = "jupytext", marker = "extra == 'scripts'", specifier = ">=1.19.6" },
+    { name = "matplotlib", marker = "extra == 'scripts'", specifier = ">=3.11.2" },
+    { name = "nbconvert", marker = "extra == 'scripts'", specifier = ">=7.17.2" },
     { name = "numpy" },
+    { name = "onnx", marker = "extra == 'scripts'", specifier = ">=1.23.2" },
     { name = "onnxruntime", specifier = ">=1.23.2" },
     { name = "pandas" },
+    { name = "plotnine", marker = "extra == 'scripts'", specifier = ">=0.15.8" },
     { name = "polars", specifier = ">=1.44" },
     { name = "polars-bio", specifier = ">=0.36.1,<0.37" },
     { name = "pyarrow", specifier = ">=23.0.1" },
     { name = "pyfaidx" },
+    { name = "scikit-learn", marker = "extra == 'scripts'", specifier = ">=1.9.1" },
+    { name = "scipy", marker = "extra == 'scripts'", specifier = ">=1.18.1" },
+    { name = "skl2onnx", marker = "extra == 'scripts'", specifier = ">=1.20.0" },
     { name = "tqdm", specifier = ">=4.66.5,<5" },
 ]
+provides-extras = ["scripts"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1478,18 +1493,6 @@ lint = [
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "ruff" },
-]
-scripts = [
-    { name = "fastexcel", specifier = ">=0.21.0" },
-    { name = "ipykernel", specifier = ">=7.4.0" },
-    { name = "jupytext", specifier = ">=1.19.6" },
-    { name = "matplotlib", specifier = ">=3.11.2" },
-    { name = "nbconvert", specifier = ">=7.17.2" },
-    { name = "onnx", specifier = ">=1.23.2" },
-    { name = "plotnine", specifier = ">=0.15.8" },
-    { name = "scikit-learn", specifier = ">=1.9.1" },
-    { name = "scipy", specifier = ">=1.18.1" },
-    { name = "skl2onnx", specifier = ">=1.20.0" },
 ]
 test = [
     { name = "pytest", specifier = ">=8,<9" },

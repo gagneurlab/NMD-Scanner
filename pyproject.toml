@@ -25,6 +25,22 @@ dependencies = [
     "onnxruntime>=1.23.2",
 ]
 
+[project.optional-dependencies]
+# The dependencies of the scripts in scripts/ and of nmd_scanner.benchmark.figures
+scripts = [
+    "scikit-learn>=1.9.1",
+    "joblib>=1.6.0",
+    "skl2onnx>=1.20.0",
+    "onnx>=1.23.2",
+    "scipy>=1.18.1",
+    "fastexcel>=0.21.0",
+    "jupytext>=1.19.6",
+    "nbconvert>=7.17.2",
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "plotnine>=0.15.8",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/gagneurlab/NMD-Scanner"
 
@@ -47,18 +63,6 @@ lint = [
     "ruff",
     "mypy",
     "pandas-stubs",
-]
-scripts = [
-    "scikit-learn>=1.9.1",
-    "skl2onnx>=1.20.0",
-    "onnx>=1.23.2",
-    "scipy>=1.18.1",
-    "fastexcel>=0.21.0",
-    "jupytext>=1.19.6",
-    "nbconvert>=7.17.2",
-    "ipykernel>=7.4.0",
-    "matplotlib>=3.11.2",
-    "plotnine>=0.15.8",
 ]
 
 [tool.hatch.build.targets.wheel]
