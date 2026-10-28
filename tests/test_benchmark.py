@@ -13,7 +13,7 @@ from pyfaidx import Fasta
 
 from nmd_scanner.benchmark import DATASETS, datasets, join_features
 from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
-from nmd_scanner.benchmark.sources import RemoteFile, check_sha256, fetch, hgvsc_alleles, read_transcripts
+from nmd_scanner.benchmark.sources import check_sha256, fetch, hgvsc_alleles, read_transcripts
 
 # ENST3 is missing from the GFF3
 TRANSCRIPTS = pl.DataFrame({"transcript": ["ENST1", "ENST2"], "strand": ["+", "-"], "gene": ["ENSG1", "ENSG2"]})
@@ -205,6 +205,26 @@ def test_fetch_reads_downloads(tmp_path):
         fetch(tmp_path, "https://example.org/files/table.csv", hashlib.sha256(b"other").hexdigest())
 
 
+def test_fetch_downloads_a_file_and_a_zip_member(tmp_path):
+    """fetch downloads with fsspec and saves in downloads. The memory filesystem stands in for HTTP."""
+    fsspec = pytest.importorskip("fsspec")
+    memory = fsspec.filesystem("memory")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("dir/other.txt", b"x" * 1000)
+        archive.writestr("dir/member.txt", b"c\n")
+    memory.pipe("/files/table.csv", b"a,b\n")
+    memory.pipe("/files/archive.zip", buffer.getvalue())
+    sha256 = hashlib.sha256(b"a,b\n").hexdigest()
+    assert fetch(tmp_path / "new", "memory://files/table.csv", sha256) == b"a,b\n"
+    assert (tmp_path / "new" / "table.csv").read_bytes() == b"a,b\n"
+    member = fetch(tmp_path / "new", "memory://files/archive.zip", hashlib.sha256(b"c\n").hexdigest(), "dir/member.txt")
+    assert member == b"c\n"
+    assert (tmp_path / "new" / "member.txt").read_bytes() == b"c\n"
+    with pytest.raises(ValueError, match="memory://files/table.csv has sha256"):
+        fetch(tmp_path / "other", "memory://files/table.csv", hashlib.sha256(b"other").hexdigest())
+
+
 def test_datasets_cover_every_module():
     modules = {module.name for module in pkgutil.iter_modules(datasets.__path__)}
     expected = {name: f"{datasets.__name__}.{name}" for name in modules}
@@ -246,52 +266,3 @@ def test_join_features(caplog):
     assert (
         "Test: 1 of the 2 joined rows have an nmd_efficiency_prediction_status other than ok: 1 ref_ptc" in caplog.text
     )
-
-
-class FakeResponse(io.BytesIO):
-    def __init__(self, data: bytes, status: int) -> None:
-        super().__init__(data)
-        self.status = status
-
-
-def serve(monkeypatch, data: bytes, status: int = 206) -> list[str]:
-    """Make urlopen answer with the byte range of data that a request asks for, and return the ranges asked."""
-    ranges = []
-
-    def urlopen(request, timeout):
-        ranges.append(request.headers["Range"])
-        first, last = map(int, request.headers["Range"].removeprefix("bytes=").split("-"))
-        return FakeResponse(data[first : last + 1], status)
-
-    monkeypatch.setattr("urllib.request.urlopen", urlopen)
-    return ranges
-
-
-def test_fetch_downloads_a_zip_member(tmp_path, monkeypatch):
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        archive.writestr("dir/other.txt", b"x" * 1000)
-        archive.writestr("dir/member.txt", b"c\n")
-    data = buffer.getvalue()
-    ranges = serve(monkeypatch, data)
-    sha256 = hashlib.sha256(b"c\n").hexdigest()
-    url = "https://example.org/files/archive.zip"
-    assert fetch(tmp_path, url, sha256, "dir/member.txt", len(data)) == b"c\n"
-    assert (tmp_path / "member.txt").read_bytes() == b"c\n"
-    assert len(ranges) > 0
-    assert all(int(r.removeprefix("bytes=").split("-")[1]) < len(data) for r in ranges)
-    with pytest.raises(ValueError, match="needs the size of the zip"):
-        fetch(tmp_path / "other", url, sha256, "dir/member.txt")
-
-
-def test_remote_file_fails_if_the_server_ignores_the_range(monkeypatch):
-    serve(monkeypatch, b"abcdef", status=200)
-    with pytest.raises(ValueError, match="answered a range request with HTTP 200"):
-        RemoteFile("https://example.org/files/archive.zip", 6).read(3)
-
-
-def test_fetch_downloads_a_file(tmp_path, monkeypatch):
-    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: io.BytesIO(b"a,b\n"))
-    sha256 = hashlib.sha256(b"a,b\n").hexdigest()
-    assert fetch(tmp_path / "new", "https://example.org/files/table.csv", sha256) == b"a,b\n"
-    assert (tmp_path / "new" / "table.csv").read_bytes() == b"a,b\n"

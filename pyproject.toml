@@ -34,6 +34,7 @@ scripts = [
     "onnx>=1.23.2",
     "scipy>=1.18.1",
     "fastexcel>=0.21.0",
+    "fsspec[http]>=2026.1.0",
     "jupytext>=1.19.6",
     "nbconvert>=7.17.2",
     "ipykernel>=7.4.0",

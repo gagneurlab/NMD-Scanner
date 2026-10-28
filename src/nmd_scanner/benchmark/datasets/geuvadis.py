@@ -18,9 +18,8 @@ from nmd_scanner.benchmark.sources import fetch, finish_table
 logger = logging.getLogger(__name__)
 
 NAME = "Geuvadis"
-# Zenodo record 16666299 has one file, NMD-rules.zip, of ZENODO_SIZE bytes
+# Zenodo record 16666299 has one file, NMD-rules.zip
 ZENODO_URL = "https://zenodo.org/api/records/16666299/files/NMD-rules.zip/content"
-ZENODO_SIZE = 3_189_701_188
 NONSENSE_LIST = "NMD-rules/Datasets/Nonsense_list.txt"
 ISOFORMS = "NMD-rules/Datasets/IsoformLevel.NMDannotation.txt"
 SHA256 = {
@@ -38,9 +37,7 @@ def download(downloads: Path) -> tuple[pl.DataFrame, pl.DataFrame]:
     Read Nonsense_list.txt and IsoformLevel.NMDannotation.txt of NMD-rules.zip with fetch. The record is one zip of
     3.2 GB, so fetch reads just these 2 members.
     """
-    nonsense, isoforms = (
-        fetch(downloads, ZENODO_URL, SHA256[member], member, ZENODO_SIZE) for member in (NONSENSE_LIST, ISOFORMS)
-    )
+    nonsense, isoforms = (fetch(downloads, ZENODO_URL, SHA256[member], member) for member in (NONSENSE_LIST, ISOFORMS))
     return (
         pl.read_csv(nonsense, separator="\t", infer_schema_length=None),
         pl.read_csv(isoforms, separator="\t", columns=["Variant_ID", *ACCURATE_ANNOTATION_FLAGS]),

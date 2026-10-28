@@ -4,11 +4,8 @@ table (see nmd_scanner.benchmark).
 """
 
 import hashlib
-import io
 import logging
 import urllib.parse
-import urllib.request
-import zipfile
 from pathlib import Path
 
 import polars as pl
@@ -34,62 +31,21 @@ def check_sha256(data: bytes, expected: str, name: str) -> bytes:
     return data
 
 
-class RemoteFile:
+def fetch(downloads: Path, url: str, sha256: str, member: str | None = None) -> bytes:
     """
-    A read-only file at a URL that answers HTTP range requests. Each read is one request, so zipfile can read single
-    members of a remote zip.
-    """
+    Return the file at url, or with member, the member of the zip at url. Check its sha256.
 
-    def __init__(self, url: str, size: int) -> None:
-        self.url = url
-        self.size = size
-        self.position = 0
-
-    def seekable(self) -> bool:
-        return True
-
-    def tell(self) -> int:
-        return self.position
-
-    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
-        self.position = offset + {io.SEEK_SET: 0, io.SEEK_CUR: self.position, io.SEEK_END: self.size}[whence]
-        return self.position
-
-    def read(self, n: int = -1) -> bytes:
-        end = self.size if n < 0 else min(self.position + n, self.size)
-        if end <= self.position:
-            return b""
-        request = urllib.request.Request(self.url, headers={"Range": f"bytes={self.position}-{end - 1}"})
-        with urllib.request.urlopen(request, timeout=120) as response:
-            # A server that ignores the range answers 200 and sends the whole file
-            if response.status != 206:
-                raise ValueError(f"{self.url} answered a range request with HTTP {response.status}")
-            data = response.read()
-        self.position += len(data)
-        return data
-
-
-def fetch(downloads: Path, url: str, sha256: str, member: str | None = None, size: int | None = None) -> bytes:
-    """
-    Return the file at url, or with member, the member of the zip of size bytes at url. Check its sha256. Fail if
-    member comes without size.
-
-    The file is read from the directory downloads if it is there, and otherwise downloaded and saved there. Its name in
-    downloads is the last part of url, or of member. A member comes by HTTP range requests, so only its bytes are
-    downloaded.
+    The file is read from the directory downloads if it is there, and otherwise downloaded with fsspec (extra scripts)
+    and saved there. Its name in downloads is the last part of url, or of member. fsspec reads a member through HTTP
+    range requests, so only its bytes are downloaded.
     """
     path = downloads / Path(member or urllib.parse.urlparse(url).path).name
     if path.exists():
         return check_sha256(path.read_bytes(), sha256, str(path))
-    if member is None:
-        with urllib.request.urlopen(url, timeout=120) as response:
-            data = response.read()
-    elif size is None:
-        raise ValueError(f"the member {member} of {url} needs the size of the zip")
-    else:
-        # zipfile checks the CRC32 of the member
-        with zipfile.ZipFile(RemoteFile(url, size)) as archive:
-            data = archive.read(member)
+    import fsspec
+
+    with fsspec.open(f"zip://{member}::{url}" if member else url) as file:
+        data = file.read()
     check_sha256(data, sha256, url)
     downloads.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
