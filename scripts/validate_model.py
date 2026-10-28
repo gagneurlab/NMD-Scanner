@@ -45,7 +45,7 @@ Steps:
    not independent. The gene of a row is the gene of its transcript in the GFF3. The gain, model minus rules, has a
    paired CI from the same resamples. Each cohort draws from its own generator, seeded with SEED.
 6. Per cohort, compute the mean measured NMD efficiency of the rows with nmd_escape False. For GTEx, also compute it
-   over the variant-tissue rows, in total and per tissue with at least MIN_TISSUE_ROWS of them.
+   over the variant-tissue rows, in total and per tissue, without the UNPREDICTED_TISSUES.
 7. For MMRF-TARGET, compute the numbers of step 5 also for the rows on transcripts of the TCGA training rows, and for
    the other rows.
 
@@ -83,8 +83,8 @@ logger = logging.getLogger("validate_model")
 # %%
 SEED = 0
 N_RESAMPLES = 2000
-# The markdown cell before gtex_tissues states this number
-MIN_TISSUE_ROWS = 100
+# The GTEx v8 tissues that AbExp does not predict
+UNPREDICTED_TISSUES = ["BLDDER", "CVSEND", "CVXECT", "FLLPNT", "KDNMDL"]
 # The scores of interval_plot: the key in a result of correlations, the direct label, the color, and the offset from the
 # position of the result
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
@@ -266,7 +266,7 @@ for cohort, rows_df in cohorts.items():
 tissue_means = dict(
     gtex_df.group_by("tissue")
     .agg(pl.len().alias("n"), pl.col("NMD_efficiency").filter(~pl.col("nmd_escape")).mean().alias("mean"))
-    .filter(pl.col("n") >= MIN_TISSUE_ROWS)
+    .filter(~pl.col("tissue").is_in(UNPREDICTED_TISSUES))
     .sort("mean", "tissue")
     .select("tissue", "mean")
     .iter_rows()
@@ -275,7 +275,7 @@ validation["gtex_variant_tissue_rows"] = {
     "n": len(gtex_df),
     "tissues": gtex_df["tissue"].n_unique(),
     "mean_nmd_triggering": mean_nmd_triggering(gtex_df),
-    "min_rows_per_tissue": MIN_TISSUE_ROWS,
+    "excluded_tissues": UNPREDICTED_TISSUES,
     "mean_nmd_triggering_per_tissue": tissue_means,
 }
 mmrf_rows_df = cohorts["mmrf_target"]
@@ -296,14 +296,14 @@ for group, result in validation["mmrf_target_by_transcript"].items():
     )
 (args.out_dir / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
 logger.info(
-    "gtex, %d variant-tissue rows: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues with at"
-    " least %d rows",
+    "gtex, %d variant-tissue rows: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues without"
+    " the %d unpredicted ones",
     len(gtex_df),
     mean_nmd_triggering(gtex_df),
     min(tissue_means.values()),
     max(tissue_means.values()),
     len(tissue_means),
-    MIN_TISSUE_ROWS,
+    len(UNPREDICTED_TISSUES),
 )
 
 # %% [markdown]
@@ -381,7 +381,7 @@ save_figure(plot, args.out_dir, "spearman_per_cohort", 6.5, 3.5)
 
 # %% [markdown]
 # The dots show the mean measured NMD efficiency of the GTEx variant-tissue rows with `nmd_escape` False, per tissue
-# with at least 100 variant-tissue rows, with the 95% CI of the mean. The gray line marks the mean over all
+# without the 5 tissues that AbExp does not predict, with the 95% CI of the mean. The gray line marks the mean over all
 # variant-tissue rows with `nmd_escape` False.
 
 # %%
