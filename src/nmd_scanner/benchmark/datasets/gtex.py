@@ -14,7 +14,7 @@ from pathlib import Path
 import polars as pl
 from pyfaidx import Fasta
 
-from nmd_scanner.benchmark.sources import fetch, hgvsc_alleles, keep_expressed, to_schema
+from nmd_scanner.benchmark.sources import fetch, finish_table, hgvsc_alleles, keep_expressed
 
 NAME = "GTEx"
 # Supplementary Data 1 to 12 of Kim et al. 2024, one sheet each
@@ -40,4 +40,4 @@ def build(raw_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> p
     table_df = keep_expressed(raw_df.with_row_index("source_row"), "ASE_altered", NAME).rename(
         {"Tissue_type": "tissue"}
     )
-    return to_schema(hgvsc_alleles(table_df, transcripts_df, fasta), transcripts_df, fasta)
+    return finish_table(hgvsc_alleles(table_df, transcripts_df, fasta), transcripts_df, fasta)

@@ -175,11 +175,11 @@ def keep_expressed(table_df: pl.DataFrame, vaf_rna: str, dataset: str) -> pl.Dat
     return expressed_df
 
 
-def to_schema(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
+def finish_table(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
-    Return the columns of the benchmark tables of table_df: COLUMNS, tissue if table_df has it, and source_row. gene is the
-    gene of the transcript in transcripts_df, the table of read_transcripts, or null for a transcript missing from the
-    GFF3. Fail if a REF does not match the FASTA.
+    Add the gene of each transcript, check each REF against the FASTA, and keep the benchmark columns: COLUMNS,
+    tissue if table_df has it, and source_row. gene comes from transcripts_df (see read_transcripts), and it is null
+    for a transcript that the GFF3 lacks. Raise a ValueError at the first REF that differs from the FASTA.
     """
     table_df = table_df.with_columns(
         fasta_ref=pl.Series(

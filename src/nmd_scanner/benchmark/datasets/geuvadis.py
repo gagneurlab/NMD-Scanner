@@ -13,7 +13,7 @@ from pathlib import Path
 import polars as pl
 from pyfaidx import Fasta
 
-from nmd_scanner.benchmark.sources import fetch, keep_expressed, to_schema
+from nmd_scanner.benchmark.sources import fetch, finish_table, keep_expressed
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,6 @@ def build(raw: tuple[pl.DataFrame, pl.DataFrame], transcripts_df: pl.DataFrame, 
     table_df = accurate_df.rename(
         {"CHROM": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt", "TranscriptID": "transcript"}
     )
-    return to_schema(
+    return finish_table(
         table_df.with_columns(NMD_efficiency=-(pl.col("VAF_mean") / GERMLINE_VAF_DNA).log(2)), transcripts_df, fasta
     )
