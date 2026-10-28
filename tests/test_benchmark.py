@@ -165,9 +165,21 @@ def test_read_transcripts(tmp_path):
     assert read_transcripts(gff3).rows() == [("ENST2", "-", "ENSG2")]
 
 
+def test_read_transcripts_ensembl(tmp_path):
+    gff3 = tmp_path / "annotation.gff3"
+    gff3.write_text(
+        "##gff-version 3\n"
+        "chr1\tensembl\tgene\t1\t8\t.\t-\t.\tID=gene:ENSG2;biotype=protein_coding\n"
+        "chr1\tensembl\tmRNA\t1\t8\t.\t-\t.\tID=transcript:ENST2;Parent=gene:ENSG2\n"
+        "chr1\tensembl\texon\t1\t8\t.\t-\t.\tID=ENSE2;Parent=transcript:ENST2\n"
+        "chr1\tensembl\tCDS\t1\t8\t.\t-\t0\tID=CDS:ENSP2;Parent=transcript:ENST2\n"
+    )
+    assert read_transcripts(gff3).rows() == [("ENST2", "-", "ENSG2")]
+
+
 def test_read_transcripts_fails_without_enst_ids(tmp_path):
     gff3 = tmp_path / "annotation.gff3"
-    gff3.write_text("chr1\tensembl\ttranscript\t1\t8\t.\t-\t.\tID=transcript:ENST2;Parent=gene:ENSG2\n")
+    gff3.write_text("chr1\tensembl\tgene\t1\t8\t.\t-\t.\tID=gene:ENSG2.1\n")
     with pytest.raises(ValueError, match="has no transcript line with an ID that starts with ENST"):
         read_transcripts(gff3)
 

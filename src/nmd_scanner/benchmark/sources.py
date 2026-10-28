@@ -14,6 +14,8 @@ from pathlib import Path
 import polars as pl
 from pyfaidx import Fasta
 
+from nmd_scanner._polars_bio import pb
+
 logger = logging.getLogger(__name__)
 
 # Both tables of NMDEff (https://github.com/hjkng/nmdeff) were last changed in this commit, which is also its tag v1.0
@@ -21,7 +23,6 @@ NMDEFF_URL = "https://raw.githubusercontent.com/hjkng/nmdeff/08c92768fcb689236a8
 # The columns of every benchmark table, in order. tissue, if a table has it, and source_row follow them.
 COLUMNS = ["chrom", "pos", "ref", "alt", "transcript", "gene", "NMD_efficiency"]
 HGVSC_SUBSTITUTION = r"^(?:[^:]+:)?c\.\d+(?P<ref>[ACGT])>(?P<alt>[ACGT])$"
-GFF3_COLUMNS = ["seqid", "source", "type", "start", "end", "score", "strand", "phase", "attributes"]
 COMPLEMENT = {"A": "T", "C": "G", "G": "C", "T": "A"}
 
 
@@ -97,29 +98,25 @@ def fetch(downloads: Path, url: str, sha256: str, member: str | None = None, siz
 
 def read_transcripts(gff3: Path) -> pl.DataFrame:
     """
-    Read the transcript lines of the GFF3, one row per transcript. The columns are transcript, strand and gene.
-    transcript is the transcript ID without version. gene is the ID without version of the gene in the Parent of the
-    line. A transcript line is any line whose ID attribute starts with ENST (exon, CDS and UTR lines have IDs like
-    exon:ENST...).
+    Read the transcript lines of the GFF3 with polars-bio, one row per transcript. The columns are transcript, strand
+    and gene. transcript is the transcript ID without the prefix transcript: (Ensembl) and without version. gene is the
+    ID without the prefix gene: (Ensembl) and without version of the gene in the Parent of the line. A transcript line
+    is any line whose ID attribute starts with ENST after the prefix (exon, CDS and UTR lines have IDs like
+    exon:ENST... in GENCODE).
     """
     transcripts_df = (
-        pl.scan_csv(
-            gff3,
-            separator="\t",
-            has_header=False,
-            comment_prefix="#",
-            quote_char=None,
-            new_columns=GFF3_COLUMNS,
-            infer_schema=False,
-        )
-        .select(
-            transcript=pl.col("attributes").str.extract(r"^ID=(ENST[^.;]*)"),
-            strand=pl.col("strand"),
-            gene=pl.col("attributes").str.extract(r";Parent=([^;.]+)"),
-        )
-        .filter(pl.col("transcript").is_not_null())
-        .unique()
+        pb.scan_gff(str(gff3), attr_fields=["ID", "Parent"])
+        # polars-bio's GFF frame takes the columns of select as one list
+        .select([pl.col("strand"), pl.col("ID"), pl.col("Parent")])
         .collect()
+        .select(
+            transcript=pl.col("ID").str.strip_prefix("transcript:"),
+            strand=pl.col("strand"),
+            gene=pl.col("Parent").str.strip_prefix("gene:"),
+        )
+        .filter(pl.col("transcript").str.starts_with("ENST"))
+        .with_columns(pl.col("transcript", "gene").str.split(".").list.first())
+        .unique()
     )
     if transcripts_df.is_empty():
         raise ValueError(f"{gff3} has no transcript line with an ID that starts with ENST")
