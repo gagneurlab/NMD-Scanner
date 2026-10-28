@@ -157,24 +157,6 @@ def hgvsc_alleles(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: F
     ).drop("genomic_ref", "strand")
 
 
-def keep_expressed(table_df: pl.DataFrame, vaf_rna: str, dataset: str) -> pl.DataFrame:
-    """
-    Keep the rows of table_df whose variant allele fraction in the RNA, the column vaf_rna, is above 0. Log the rows that
-    this drops, with dataset as the name of the table.
-    """
-    expressed_df = table_df.filter(pl.col(vaf_rna) > 0)
-    logger.info(
-        "%s: %d of %d rows have no %s above 0: %d lack it, %d have 0",
-        dataset,
-        len(table_df) - len(expressed_df),
-        len(table_df),
-        vaf_rna,
-        table_df[vaf_rna].null_count(),
-        (table_df[vaf_rna] == 0).sum(),
-    )
-    return expressed_df
-
-
 def finish_table(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
     Add the gene of each transcript, check each REF against the FASTA, and keep the benchmark columns: COLUMNS,

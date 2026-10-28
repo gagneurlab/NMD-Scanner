@@ -112,7 +112,7 @@ def test_build_gtex(fasta, caplog):
         {"tissue": pl.String},
     )
     assert_frame_equal(gtex.build(raw_df, TRANSCRIPTS, fasta), expected_df)
-    assert "GTEx: 2 of 4 rows have no ASE_altered above 0: 1 lack it, 1 have 0" in caplog.text
+    assert "GTEx: 2 of 4 rows lack ASE_altered or have 0" in caplog.text
 
 
 def test_build_geuvadis(fasta, caplog):
@@ -150,7 +150,7 @@ def test_build_geuvadis(fasta, caplog):
         }
     )
     assert_frame_equal(geuvadis.build((nonsense_df, isoforms_df), TRANSCRIPTS, fasta), expected_df)
-    assert "Geuvadis: 2 of 5 rows have no VAF_mean above 0: 1 lack it, 1 have 0" in caplog.text
+    assert "Geuvadis: 2 of 5 rows lack VAF_mean or have 0" in caplog.text
     assert "Geuvadis: 1 of 3 rows are outside the study's accurate annotation" in caplog.text
 
 

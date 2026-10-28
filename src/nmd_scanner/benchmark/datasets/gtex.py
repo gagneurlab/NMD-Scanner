@@ -9,12 +9,15 @@ ASE_altered above 0. In 4,102 of the 17,816 rows with ASE_altered above 0, NMD_e
 0.001.
 """
 
+import logging
 from pathlib import Path
 
 import polars as pl
 from pyfaidx import Fasta
 
-from nmd_scanner.benchmark.sources import fetch, finish_table, hgvsc_alleles, keep_expressed
+from nmd_scanner.benchmark.sources import fetch, finish_table, hgvsc_alleles
+
+logger = logging.getLogger(__name__)
 
 NAME = "GTEx"
 # Supplementary Data 1 to 12 of Kim et al. 2024, one sheet each
@@ -37,7 +40,7 @@ def build(raw_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> p
     The benchmark table of raw_df, the table of download, with the alleles of hgvsc_alleles and the column tissue. It has
     the rows with ASE_altered above 0.
     """
-    table_df = keep_expressed(raw_df.with_row_index("source_row"), "ASE_altered", NAME).rename(
-        {"Tissue_type": "tissue"}
-    )
+    table_df = raw_df.with_row_index("source_row").filter(pl.col("ASE_altered") > 0)
+    logger.info("%s: %d of %d rows lack ASE_altered or have 0", NAME, len(raw_df) - len(table_df), len(raw_df))
+    table_df = table_df.rename({"Tissue_type": "tissue"})
     return finish_table(hgvsc_alleles(table_df, transcripts_df, fasta), transcripts_df, fasta)

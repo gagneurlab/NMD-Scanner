@@ -13,7 +13,7 @@ from pathlib import Path
 import polars as pl
 from pyfaidx import Fasta
 
-from nmd_scanner.benchmark.sources import fetch, finish_table, keep_expressed
+from nmd_scanner.benchmark.sources import fetch, finish_table
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,8 @@ def build(raw: tuple[pl.DataFrame, pl.DataFrame], transcripts_df: pl.DataFrame, 
     variants, and a variant that it lacks has no flag.
     """
     nonsense_df, isoforms_df = raw
-    table_df = keep_expressed(nonsense_df.with_row_index("source_row"), "VAF_mean", NAME)
+    table_df = nonsense_df.with_row_index("source_row").filter(pl.col("VAF_mean") > 0)
+    logger.info("%s: %d of %d rows lack VAF_mean or have 0", NAME, len(nonsense_df) - len(table_df), len(nonsense_df))
     flagged = isoforms_df.filter(pl.any_horizontal(ACCURATE_ANNOTATION_FLAGS))["Variant_ID"]
     accurate_df = table_df.filter(~pl.col("Variant_ID").is_in(flagged.implode()))
     logger.info(
