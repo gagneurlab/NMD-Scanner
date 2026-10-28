@@ -58,31 +58,9 @@ import joblib
 import numpy as np
 import onnx
 import onnxruntime
+import plotnine as pn
 import polars as pl
 from onnx import TensorProto, helper, numpy_helper
-from plotnine import (
-    aes,
-    annotate,
-    coord_flip,
-    element_blank,
-    facet_wrap,
-    geom_abline,
-    geom_col,
-    geom_histogram,
-    geom_line,
-    geom_linerange,
-    geom_point,
-    geom_ribbon,
-    geom_text,
-    geom_vline,
-    ggplot,
-    labs,
-    scale_color_identity,
-    scale_fill_identity,
-    scale_x_continuous,
-    scale_x_discrete,
-    theme,
-)
 from scipy.stats import spearmanr
 from skl2onnx.common.tree_ensemble import add_tree_to_attribute_pairs, get_default_tree_regressor_attribute_pairs
 from sklearn.base import clone
@@ -217,10 +195,10 @@ chrom = rows["chrom"].to_numpy()
 
 # %%
 plot = (
-    ggplot(rows, aes("NMD_efficiency"))
-    + geom_histogram(bins=60, fill=BLUE, color=SURFACE, size=0.25)
-    + labs(title=f"NMD_efficiency of {len(y):,} TCGA rows", x="NMD_efficiency", y="Rows")
-    + theme(panel_grid_major_x=element_blank())
+    pn.ggplot(rows, pn.aes("NMD_efficiency"))
+    + pn.geom_histogram(bins=60, fill=BLUE, color=SURFACE, size=0.25)
+    + pn.labs(title=f"NMD_efficiency of {len(y):,} TCGA rows", x="NMD_efficiency", y="Rows")
+    + pn.theme(panel_grid_major_x=pn.element_blank())
 )
 save_figure(plot, args.out_dir, "target_histogram", 6, 3.5)
 
@@ -251,10 +229,10 @@ oof_measured = oof["NMD_efficiency"].to_numpy()
 oof_spearman = spearmanr(oof["prediction"].to_numpy(), oof_measured).statistic
 oof_r2 = r2_score(oof_measured, oof["prediction"].to_numpy())
 plot = (
-    ggplot(oof, aes("prediction", "NMD_efficiency"))
-    + geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
-    + geom_abline(color=AXIS)
-    + labs(
+    pn.ggplot(oof, pn.aes("prediction", "NMD_efficiency"))
+    + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
+    + pn.geom_abline(color=AXIS)
+    + pn.labs(
         title=f"TCGA, out of fold, {len(oof):,} rows\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
         x="Predicted NMD efficiency",
         y="Measured NMD efficiency",
@@ -269,7 +247,7 @@ save_figure(plot, args.out_dir, "tcga_measured_vs_predicted", 5, 4.5)
 
 # %%
 bins, slope, intercept = calibration(oof)
-plot = calibration_plot(bins.with_columns(slope=slope, intercept=intercept)) + labs(
+plot = calibration_plot(bins.with_columns(slope=slope, intercept=intercept)) + pn.labs(
     title=f"TCGA, out of fold, {len(oof):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
 )
 save_figure(plot, args.out_dir, "calibration_oof", 5, 6)
@@ -326,14 +304,14 @@ importance = pl.concat(
 bars = importance["kind"] + "|" + importance["input"]
 importance = importance.with_columns(bar=bars.cast(pl.Enum(bars)))
 plot = (
-    ggplot(importance, aes("bar", "value"))
-    + geom_col(fill=BLUE, width=0.6)
-    + geom_linerange(aes(ymin="value - sd", ymax="value + sd"), data=importance.drop_nulls(), color=SECONDARY_INK)
-    + scale_x_discrete(labels=lambda bars: [bar.split("|")[1] for bar in bars])
-    + coord_flip()
-    + facet_wrap("kind", scales="free")
-    + labs(x="", y="Importance")
-    + theme(panel_grid_major_y=element_blank())
+    pn.ggplot(importance, pn.aes("bar", "value"))
+    + pn.geom_col(fill=BLUE, width=0.6)
+    + pn.geom_linerange(pn.aes(ymin="value - sd", ymax="value + sd"), data=importance.drop_nulls(), color=SECONDARY_INK)
+    + pn.scale_x_discrete(labels=lambda bars: [bar.split("|")[1] for bar in bars])
+    + pn.coord_flip()
+    + pn.facet_wrap("kind", scales="free")
+    + pn.labs(x="", y="Importance")
+    + pn.theme(panel_grid_major_y=pn.element_blank())
 )
 save_figure(plot, args.out_dir, "feature_importance", 9, 5)
 
@@ -373,22 +351,22 @@ curves = pl.concat(
     ]
 )
 plot = (
-    ggplot(curves, aes("rows", "mean"))
-    + geom_ribbon(aes(ymin="mean - sd", ymax="mean + sd", fill="color"), alpha=0.1)
-    + geom_line(aes(color="color"))
-    + geom_point(aes(color="color"), size=2.5)
-    + geom_text(
-        aes(label="label"),
+    pn.ggplot(curves, pn.aes("rows", "mean"))
+    + pn.geom_ribbon(pn.aes(ymin="mean - sd", ymax="mean + sd", fill="color"), alpha=0.1)
+    + pn.geom_line(pn.aes(color="color"))
+    + pn.geom_point(pn.aes(color="color"), size=2.5)
+    + pn.geom_text(
+        pn.aes(label="label"),
         data=curves.filter(pl.col("rows") == train_sizes[-1]),
         ha="left",
         nudge_x=0.03 * train_sizes[-1],
         color=SECONDARY_INK,
         size=9,
     )
-    + scale_color_identity()
-    + scale_fill_identity()
-    + scale_x_continuous(expand=(0.05, 0, 0.2, 0))
-    + labs(title="Learning curve of the final hyperparameters", x="Training rows", y="R2")
+    + pn.scale_color_identity()
+    + pn.scale_fill_identity()
+    + pn.scale_x_continuous(expand=(0.05, 0, 0.2, 0))
+    + pn.labs(title="Learning curve of the final hyperparameters", x="Training rows", y="R2")
 )
 save_figure(plot, args.out_dir, "learning_curve", 6, 4)
 
@@ -404,9 +382,9 @@ oob_errors = [
 ]
 final_trees = final.best_params_["n_estimators"]
 plot = (
-    ggplot(pl.DataFrame({"trees": OOB_TREES, "error": oob_errors}), aes("trees", "error"))
-    + geom_vline(xintercept=final_trees, color=AXIS)
-    + annotate(
+    pn.ggplot(pl.DataFrame({"trees": OOB_TREES, "error": oob_errors}), pn.aes("trees", "error"))
+    + pn.geom_vline(xintercept=final_trees, color=AXIS)
+    + pn.annotate(
         "text",
         x=final_trees,
         y=np.inf,
@@ -417,8 +395,8 @@ plot = (
         color=SECONDARY_INK,
         size=9,
     )
-    + geom_line(color=BLUE)
-    + geom_point(color=BLUE, size=2.5)
-    + labs(title="Out-of-bag error of the final hyperparameters", x="Trees", y="1 - out-of-bag R2")
+    + pn.geom_line(color=BLUE)
+    + pn.geom_point(color=BLUE, size=2.5)
+    + pn.labs(title="Out-of-bag error of the final hyperparameters", x="Trees", y="1 - out-of-bag R2")
 )
 save_figure(plot, args.out_dir, "oob_error", 6, 4)

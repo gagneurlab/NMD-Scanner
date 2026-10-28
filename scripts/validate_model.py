@@ -61,27 +61,8 @@ import shlex
 from pathlib import Path
 
 import numpy as np
+import plotnine as pn
 import polars as pl
-from plotnine import (
-    aes,
-    annotate,
-    coord_flip,
-    element_blank,
-    facet_wrap,
-    geom_abline,
-    geom_boxplot,
-    geom_hline,
-    geom_point,
-    geom_segment,
-    geom_text,
-    geom_vline,
-    ggplot,
-    labs,
-    scale_color_identity,
-    scale_y_continuous,
-    stat_summary,
-    theme,
-)
 from scipy.stats import rankdata
 
 from nmd_scanner.benchmark import DATASETS, KEY, join_features, run_nmd_scanner
@@ -196,19 +177,19 @@ def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) ->
     )
 
 
-def interval_plot(rows: pl.DataFrame, labels: list[str]) -> ggplot:
+def interval_plot(rows: pl.DataFrame, labels: list[str]) -> pn.ggplot:
     """
     A dot at each value of the intervals in rows, with a line from low to high, and the direct label right of high.
     The y axis shows labels from the top, one per result.
     """
     return (
-        ggplot(rows, aes(y="position", color="color"))
-        + geom_segment(aes(x="low", xend="high", yend="position"), size=1)
-        + geom_point(aes(x="value"), size=2.5)
-        + geom_text(aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
-        + scale_color_identity()
-        + scale_y_continuous(breaks=-np.arange(len(labels)), labels=labels, expand=(0, 0.4))
-        + theme(axis_title_y=element_blank(), panel_grid_major_y=element_blank())
+        pn.ggplot(rows, pn.aes(y="position", color="color"))
+        + pn.geom_segment(pn.aes(x="low", xend="high", yend="position"), size=1)
+        + pn.geom_point(pn.aes(x="value"), size=2.5)
+        + pn.geom_text(pn.aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
+        + pn.scale_color_identity()
+        + pn.scale_y_continuous(breaks=-np.arange(len(labels)), labels=labels, expand=(0, 0.4))
+        + pn.theme(axis_title_y=pn.element_blank(), panel_grid_major_y=pn.element_blank())
     )
 
 
@@ -336,11 +317,11 @@ scatter = facet_frame(
     }
 )
 plot = (
-    ggplot(scatter, aes("prediction", "NMD_efficiency"))
-    + geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
-    + geom_abline(color=AXIS)
-    + facet_wrap("panel", scales="free")
-    + labs(x="Predicted NMD efficiency", y="Measured NMD efficiency")
+    pn.ggplot(scatter, pn.aes("prediction", "NMD_efficiency"))
+    + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
+    + pn.geom_abline(color=AXIS)
+    + pn.facet_wrap("panel", scales="free")
+    + pn.labs(x="Predicted NMD efficiency", y="Measured NMD efficiency")
 )
 save_figure(plot, args.out_dir, "measured_vs_predicted", 8, 7.5)
 
@@ -355,7 +336,7 @@ for cohort, rows in cohorts.items():
     bins, slope, intercept = calibration(rows)
     title = f"{cohort_names[cohort]}, {len(rows):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
     calibrations[title] = bins.with_columns(slope=slope, intercept=intercept)
-plot = calibration_plot(facet_frame(calibrations)) + facet_wrap("panel", scales="free")
+plot = calibration_plot(facet_frame(calibrations)) + pn.facet_wrap("panel", scales="free")
 save_figure(plot, args.out_dir, "calibration", 8, 9)
 
 # %% [markdown]
@@ -374,11 +355,11 @@ boxes = facet_frame(
     }
 )
 plot = (
-    ggplot(boxes, aes("nmd_escape", "NMD_efficiency"))
-    + geom_boxplot(color=BLUE, fill=BLUE, alpha=0.1, width=0.5, outlier_size=1, outlier_alpha=0.3, outlier_stroke=0)
-    + facet_wrap("panel", nrow=1, scales="free")
-    + labs(x="nmd_escape", y="Measured NMD efficiency")
-    + theme(panel_grid_major_x=element_blank())
+    pn.ggplot(boxes, pn.aes("nmd_escape", "NMD_efficiency"))
+    + pn.geom_boxplot(color=BLUE, fill=BLUE, alpha=0.1, width=0.5, outlier_size=1, outlier_alpha=0.3, outlier_stroke=0)
+    + pn.facet_wrap("panel", nrow=1, scales="free")
+    + pn.labs(x="nmd_escape", y="Measured NMD efficiency")
+    + pn.theme(panel_grid_major_x=pn.element_blank())
 )
 save_figure(plot, args.out_dir, "efficiency_by_nmd_escape", 9.5, 3.5)
 
@@ -391,7 +372,7 @@ save_figure(plot, args.out_dir, "efficiency_by_nmd_escape", 9.5, 3.5)
 plot = interval_plot(
     intervals([validation[cohort] for cohort in cohorts], MODEL_AND_RULES),
     [f"{cohort_names[cohort]}\n{validation[cohort]['n']:,} rows" for cohort in cohorts],
-) + labs(title="Spearman correlation with the measured NMD efficiency, 95% CIs", x="Spearman correlation")
+) + pn.labs(title="Spearman correlation with the measured NMD efficiency, 95% CIs", x="Spearman correlation")
 save_figure(plot, args.out_dir, "spearman_per_cohort", 6.5, 3.5)
 
 # %% [markdown]
@@ -405,9 +386,9 @@ tissue_rows = validation["gtex_variant_tissue_rows"]
 tissues = list(tissue_rows["mean_nmd_triggering_per_tissue"])
 nmd_triggering = gtex.filter(~pl.col("nmd_escape"), pl.col("tissue").is_in(tissues)).cast({"tissue": pl.Enum(tissues)})
 plot = (
-    ggplot(nmd_triggering, aes("tissue", "NMD_efficiency"))
-    + geom_hline(yintercept=tissue_rows["mean_nmd_triggering"], color=AXIS, linetype="dashed")
-    + annotate(
+    pn.ggplot(nmd_triggering, pn.aes("tissue", "NMD_efficiency"))
+    + pn.geom_hline(yintercept=tissue_rows["mean_nmd_triggering"], color=AXIS, linetype="dashed")
+    + pn.annotate(
         "text",
         x=tissues[-1],
         y=tissue_rows["mean_nmd_triggering"],
@@ -417,14 +398,14 @@ plot = (
         color=SECONDARY_INK,
         size=9,
     )
-    + stat_summary(fun_data="mean_cl_normal", color=BLUE)
-    + coord_flip()
-    + labs(
+    + pn.stat_summary(fun_data="mean_cl_normal", color=BLUE)
+    + pn.coord_flip()
+    + pn.labs(
         title=f"GTEx, NMD-triggering variant-tissue rows of {len(tissues)} tissues",
         x="",
         y="Mean measured NMD efficiency, 95% CI",
     )
-    + theme(panel_grid_major_y=element_blank())
+    + pn.theme(panel_grid_major_y=pn.element_blank())
 )
 save_figure(plot, args.out_dir, "gtex_tissues", 6, 9)
 
@@ -446,8 +427,8 @@ plot = (
         transcript_intervals,
         [f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} rows" for group, result in transcript_split.items()],
     )
-    + geom_vline(aes(xintercept="x"), data=zero, color=AXIS)
-    + facet_wrap("panel", scales="free_x")
-    + labs(title="MMRF-TARGET by transcript, 95% CIs", x="")
+    + pn.geom_vline(pn.aes(xintercept="x"), data=zero, color=AXIS)
+    + pn.facet_wrap("panel", scales="free_x")
+    + pn.labs(title="MMRF-TARGET by transcript, 95% CIs", x="")
 )
 save_figure(plot, args.out_dir, "mmrf_target_by_transcript", 9, 3)
