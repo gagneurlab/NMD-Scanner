@@ -102,7 +102,7 @@ def read_transcripts(gff3: Path) -> pl.DataFrame:
     line. A transcript line is any line whose ID attribute starts with ENST (exon, CDS and UTR lines have IDs like
     exon:ENST...).
     """
-    transcripts = (
+    transcripts_df = (
         pl.scan_csv(
             gff3,
             separator="\t",
@@ -121,77 +121,79 @@ def read_transcripts(gff3: Path) -> pl.DataFrame:
         .unique()
         .collect()
     )
-    if transcripts.is_empty():
+    if transcripts_df.is_empty():
         raise ValueError(f"{gff3} has no transcript line with an ID that starts with ENST")
-    return transcripts
+    return transcripts_df
 
 
-def hgvsc_alleles(table: pl.DataFrame, transcripts: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
+def hgvsc_alleles(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
     Rename the columns chromosome, start and Transcript_ID of a table of Kim et al. 2024 to chrom, pos and transcript,
-    and add ref and alt on the forward strand. transcripts is the table of read_transcripts.
+    and add ref and alt on the forward strand. transcripts_df is the table of read_transcripts.
 
     HGVSc (c.123G>T, optionally prefixed by the transcript ID) has the alleles on the transcript strand. On a
     minus-strand transcript of the GFF3, complement them. For a transcript missing from the GFF3, use the orientation
     whose REF matches the FASTA. Fail if HGVSc is not a single-base substitution. The transcript IDs of the table must
     lack the version, like those of read_transcripts.
     """
-    table = table.rename({"chromosome": "chrom", "start": "pos", "Transcript_ID": "transcript"})
-    table = table.with_columns(
+    table_df = table_df.rename({"chromosome": "chrom", "start": "pos", "Transcript_ID": "transcript"})
+    table_df = table_df.with_columns(
         pl.col("HGVSc").str.extract_groups(HGVSC_SUBSTITUTION).struct.unnest(),
         genomic_ref=pl.Series(
-            [fasta[chrom][pos - 1 : pos].seq.upper() for chrom, pos in zip(table["chrom"], table["pos"])],
+            [fasta[chrom][pos - 1 : pos].seq.upper() for chrom, pos in zip(table_df["chrom"], table_df["pos"])],
             dtype=pl.String,
         ),
-        strand=pl.col("transcript").replace_strict(transcripts["transcript"], transcripts["strand"], default=None),
+        strand=pl.col("transcript").replace_strict(
+            transcripts_df["transcript"], transcripts_df["strand"], default=None
+        ),
     )
-    if (invalid := table.filter(pl.col("ref").is_null())).height > 0:
-        row = invalid.row(0, named=True)
+    if (invalid_df := table_df.filter(pl.col("ref").is_null())).height > 0:
+        row = invalid_df.row(0, named=True)
         raise ValueError(f"{row['HGVSc']} ({row['transcript']}) is not a single-base substitution")
     strand = pl.col("strand")
     complement = (strand == "-") | (strand.is_null() & (pl.col("ref") != pl.col("genomic_ref")))
-    return table.with_columns(
+    return table_df.with_columns(
         pl.when(complement).then(pl.col("ref", "alt").replace(COMPLEMENT)).otherwise(pl.col("ref", "alt"))
     ).drop("genomic_ref", "strand")
 
 
-def keep_expressed(table: pl.DataFrame, vaf_rna: str, dataset: str) -> pl.DataFrame:
+def keep_expressed(table_df: pl.DataFrame, vaf_rna: str, dataset: str) -> pl.DataFrame:
     """
-    Keep the rows of table whose variant allele fraction in the RNA, the column vaf_rna, is above 0. Log the rows that
+    Keep the rows of table_df whose variant allele fraction in the RNA, the column vaf_rna, is above 0. Log the rows that
     this drops, with dataset as the name of the table.
     """
-    expressed = table.filter(pl.col(vaf_rna) > 0)
+    expressed_df = table_df.filter(pl.col(vaf_rna) > 0)
     logger.info(
         "%s: %d of %d rows have no %s above 0: %d lack it, %d have 0",
         dataset,
-        len(table) - len(expressed),
-        len(table),
+        len(table_df) - len(expressed_df),
+        len(table_df),
         vaf_rna,
-        table[vaf_rna].null_count(),
-        (table[vaf_rna] == 0).sum(),
+        table_df[vaf_rna].null_count(),
+        (table_df[vaf_rna] == 0).sum(),
     )
-    return expressed
+    return expressed_df
 
 
-def to_schema(table: pl.DataFrame, transcripts: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
+def to_schema(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
-    Return the columns of the benchmark tables of table: COLUMNS, tissue if table has it, and source_row. gene is the
-    gene of the transcript in transcripts, the table of read_transcripts, or null for a transcript missing from the
+    Return the columns of the benchmark tables of table_df: COLUMNS, tissue if table_df has it, and source_row. gene is the
+    gene of the transcript in transcripts_df, the table of read_transcripts, or null for a transcript missing from the
     GFF3. Fail if a REF does not match the FASTA.
     """
-    table = table.with_columns(
+    table_df = table_df.with_columns(
         fasta_ref=pl.Series(
             [
                 fasta[chrom][pos - 1 : pos - 1 + len(ref)].seq.upper()
-                for chrom, pos, ref in table.select("chrom", "pos", "ref").iter_rows()
+                for chrom, pos, ref in table_df.select("chrom", "pos", "ref").iter_rows()
             ],
             dtype=pl.String,
         ),
-        gene=pl.col("transcript").replace_strict(transcripts["transcript"], transcripts["gene"], default=None),
+        gene=pl.col("transcript").replace_strict(transcripts_df["transcript"], transcripts_df["gene"], default=None),
     )
-    if (mismatches := table.filter(pl.col("ref") != pl.col("fasta_ref"))).height > 0:
-        row = mismatches.row(0, named=True)
+    if (mismatches_df := table_df.filter(pl.col("ref") != pl.col("fasta_ref"))).height > 0:
+        row = mismatches_df.row(0, named=True)
         raise ValueError(
             f"{row['chrom']}:{row['pos']} ({row['transcript']}): REF {row['ref']} but the FASTA has {row['fasta_ref']}"
         )
-    return table.select(*COLUMNS, *(["tissue"] if "tissue" in table.columns else []), "source_row")
+    return table_df.select(*COLUMNS, *(["tissue"] if "tissue" in table_df.columns else []), "source_row")

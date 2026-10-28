@@ -21,6 +21,6 @@ def download(downloads: Path) -> pl.DataFrame:
     return pl.read_csv(fetch(downloads, NMDEFF_URL + "MMRF_TARGET_dataset.csv", SHA256), infer_schema_length=None)
 
 
-def build(raw: pl.DataFrame, transcripts: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
-    """The benchmark table of raw, the table of download, with the alleles of hgvsc_alleles."""
-    return to_schema(hgvsc_alleles(raw.with_row_index("source_row"), transcripts, fasta), transcripts, fasta)
+def build(raw_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
+    """The benchmark table of raw_df, the table of download, with the alleles of hgvsc_alleles."""
+    return to_schema(hgvsc_alleles(raw_df.with_row_index("source_row"), transcripts_df, fasta), transcripts_df, fasta)

@@ -114,11 +114,11 @@ def chromosome_folds(y: np.ndarray, chrom: np.ndarray) -> list[tuple[np.ndarray,
     return list(splitter.split(np.zeros(len(y)), target_bins, chrom))
 
 
-def tune(x: pl.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
+def tune(x_df: pl.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
     """Run a grid search over RF_GRID on chromosome_folds, and refit the best random forest on all given rows."""
     forest = RandomForestRegressor(random_state=SEED, n_jobs=1)
     search = GridSearchCV(forest, RF_GRID, scoring="r2", cv=chromosome_folds(y, chrom), n_jobs=-1)
-    return search.fit(x, y)
+    return search.fit(x_df, y)
 
 
 def save_onnx(estimator: RandomForestRegressor, path: Path) -> None:
@@ -180,14 +180,14 @@ for name in ("train_model", "nmd_scanner.benchmark"):
 args.out_dir.mkdir(parents=True, exist_ok=True)
 
 # %%
-tcga = pl.read_parquet(args.benchmark_dir / "tcga.parquet")
-features = run_nmd_scanner(tcga, args.out_dir / "variants.vcf", args.gff3, args.fasta, prediction=False)
-rows = join_features(tcga, features, "TCGA").sort("source_row")
-logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga), len(rows))
+tcga_df = pl.read_parquet(args.benchmark_dir / "tcga.parquet")
+features_df = run_nmd_scanner(tcga_df, args.out_dir / "variants.vcf", args.gff3, args.fasta, prediction=False)
+rows_df = join_features(tcga_df, features_df, "TCGA").sort("source_row")
+logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga_df), len(rows_df))
 # A DataFrame, so that the random forest keeps the input names as feature_names_in_
-x = rows.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
-y = rows["NMD_efficiency"].to_numpy()
-chrom = rows["chrom"].to_numpy()
+x_df = rows_df.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
+y = rows_df["NMD_efficiency"].to_numpy()
+chrom = rows_df["chrom"].to_numpy()
 
 # %% [markdown]
 # The histogram shows the target `NMD_efficiency` of the training rows. 0 means no NMD, and 1 means that the variant
@@ -195,7 +195,7 @@ chrom = rows["chrom"].to_numpy()
 
 # %%
 plot = (
-    pn.ggplot(rows, pn.aes("NMD_efficiency"))
+    pn.ggplot(rows_df, pn.aes("NMD_efficiency"))
     + pn.geom_histogram(bins=60, fill=BLUE, color=SURFACE, size=0.25)
     + pn.labs(title=f"NMD_efficiency of {len(y):,} TCGA rows", x="NMD_efficiency", y="Rows")
     + pn.theme(panel_grid_major_x=pn.element_blank())
@@ -207,33 +207,33 @@ save_figure(plot, args.out_dir, "target_histogram", 6, 3.5)
 predictions = []
 folds = []
 for fold, (train, test) in enumerate(chromosome_folds(y, chrom)):
-    search = tune(x[train], y[train], chrom[train])
-    prediction = search.predict(x[test])
+    search = tune(x_df[train], y[train], chrom[train])
+    prediction = search.predict(x_df[test])
     columns = ["source_row", *KEY, "gene", "nmd_escape", "NMD_efficiency"]
     predictions.append(
-        rows[test].select(columns).with_columns(fold=pl.lit(fold, dtype=pl.Int64), prediction=pl.Series(prediction))
+        rows_df[test].select(columns).with_columns(fold=pl.lit(fold, dtype=pl.Int64), prediction=pl.Series(prediction))
     )
     chromosomes = sorted(set(chrom[test].tolist()))
     r2 = r2_score(y[test], prediction)
     folds.append({"chromosomes": chromosomes, "rows": len(test), "r2": r2, "params": search.best_params_})
     logger.info("fold %d (%s): R2 %.3f, %s", fold, " ".join(chromosomes), r2, search.best_params_)
-oof = pl.concat(predictions)
-oof.write_parquet(args.out_dir / "oof_predictions.parquet")
+oof_df = pl.concat(predictions)
+oof_df.write_parquet(args.out_dir / "oof_predictions.parquet")
 
 # %% [markdown]
 # The scatter shows the measured NMD efficiency of each TCGA row over its out-of-fold prediction, with Spearman and R2
 # over all rows. The gray line marks equal values.
 
 # %%
-oof_measured = oof["NMD_efficiency"].to_numpy()
-oof_spearman = spearmanr(oof["prediction"].to_numpy(), oof_measured).statistic
-oof_r2 = r2_score(oof_measured, oof["prediction"].to_numpy())
+oof_measured = oof_df["NMD_efficiency"].to_numpy()
+oof_spearman = spearmanr(oof_df["prediction"].to_numpy(), oof_measured).statistic
+oof_r2 = r2_score(oof_measured, oof_df["prediction"].to_numpy())
 plot = (
-    pn.ggplot(oof, pn.aes("prediction", "NMD_efficiency"))
+    pn.ggplot(oof_df, pn.aes("prediction", "NMD_efficiency"))
     + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
     + pn.geom_abline(color=AXIS)
     + pn.labs(
-        title=f"TCGA, out of fold, {len(oof):,} rows\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
+        title=f"TCGA, out of fold, {len(oof_df):,} rows\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
         x="Predicted NMD efficiency",
         y="Measured NMD efficiency",
     )
@@ -246,22 +246,22 @@ save_figure(plot, args.out_dir, "tcga_measured_vs_predicted", 5, 4.5)
 # all rows, and the gray line marks equal values.
 
 # %%
-bins, slope, intercept = calibration(oof)
-plot = calibration_plot(bins.with_columns(slope=slope, intercept=intercept)) + pn.labs(
-    title=f"TCGA, out of fold, {len(oof):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
+bins_df, slope, intercept = calibration(oof_df)
+plot = calibration_plot(bins_df.with_columns(slope=slope, intercept=intercept)) + pn.labs(
+    title=f"TCGA, out of fold, {len(oof_df):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
 )
 save_figure(plot, args.out_dir, "calibration_oof", 5, 6)
 
 # %%
-final = tune(x, y, chrom)
+final = tune(x_df, y, chrom)
 onnx_path = args.out_dir / "nmd_efficiency_rf.onnx"
 save_onnx(final.best_estimator_, onnx_path)
 session = onnxruntime.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-onnx_prediction = session.run(None, {"input": x.to_numpy()})[0].ravel()
-if (onnx_prediction != final.predict(x).astype(np.float32)).any():
+onnx_prediction = session.run(None, {"input": x_df.to_numpy()})[0].ravel()
+if (onnx_prediction != final.predict(x_df).astype(np.float32)).any():
     raise ValueError(f"{onnx_path} predicts other values than the random forest")
 
-results = {"rows": len(rows), "folds": folds, "inner_cv_r2": final.best_score_, "params": final.best_params_}
+results = {"rows": len(rows_df), "folds": folds, "inner_cv_r2": final.best_score_, "params": final.best_params_}
 (args.out_dir / "cv_results.json").write_text(json.dumps(results, indent=2) + "\n")
 joblib.dump(final.best_estimator_, args.out_dir / "nmd_efficiency_rf.pkl")
 logger.info("final model: inner CV R2 %.3f, %s", final.best_score_, final.best_params_)
@@ -274,9 +274,9 @@ logger.info("final model: inner CV R2 %.3f, %s", final.best_score_, final.best_p
 # %%
 # The random forest checks the input names. permutation_importance keeps them only in a pandas DataFrame.
 permutation = permutation_importance(
-    final.best_estimator_, x.to_pandas(), y, scoring="r2", n_repeats=N_PERMUTATIONS, random_state=SEED, n_jobs=-1
+    final.best_estimator_, x_df.to_pandas(), y, scoring="r2", n_repeats=N_PERMUTATIONS, random_state=SEED, n_jobs=-1
 )
-importance = pl.concat(
+importance_df = pl.concat(
     [
         pl.DataFrame(
             {
@@ -301,12 +301,14 @@ importance = pl.concat(
 ).sort("value", "input")
 # Each panel orders its bars by importance, so a bar is one kind and input. Bars of equal importance are ordered
 # by input name. The axis shows only the input.
-bars = importance["kind"] + "|" + importance["input"]
-importance = importance.with_columns(bar=bars.cast(pl.Enum(bars)))
+bars = importance_df["kind"] + "|" + importance_df["input"]
+importance_df = importance_df.with_columns(bar=bars.cast(pl.Enum(bars)))
 plot = (
-    pn.ggplot(importance, pn.aes("bar", "value"))
+    pn.ggplot(importance_df, pn.aes("bar", "value"))
     + pn.geom_col(fill=BLUE, width=0.6)
-    + pn.geom_linerange(pn.aes(ymin="value - sd", ymax="value + sd"), data=importance.drop_nulls(), color=SECONDARY_INK)
+    + pn.geom_linerange(
+        pn.aes(ymin="value - sd", ymax="value + sd"), data=importance_df.drop_nulls(), color=SECONDARY_INK
+    )
     + pn.scale_x_discrete(labels=lambda bars: [bar.split("|")[1] for bar in bars])
     + pn.coord_flip()
     + pn.facet_wrap("kind", scales="free")
@@ -327,7 +329,7 @@ learning_sizes = (LEARNING_CURVE_SIZES * min(len(train) for train, _ in learning
 # A copy of the final random forest with its hyperparameters, unfitted. The final model stays as it is.
 train_sizes, train_scores, test_scores = learning_curve(
     clone(final.best_estimator_),
-    x,
+    x_df,
     y,
     cv=learning_folds,
     train_sizes=learning_sizes,
@@ -336,7 +338,7 @@ train_sizes, train_scores, test_scores = learning_curve(
     random_state=SEED,
     n_jobs=-1,
 )
-curves = pl.concat(
+curves_df = pl.concat(
     [
         pl.DataFrame(
             {
@@ -351,13 +353,13 @@ curves = pl.concat(
     ]
 )
 plot = (
-    pn.ggplot(curves, pn.aes("rows", "mean"))
+    pn.ggplot(curves_df, pn.aes("rows", "mean"))
     + pn.geom_ribbon(pn.aes(ymin="mean - sd", ymax="mean + sd", fill="color"), alpha=0.1)
     + pn.geom_line(pn.aes(color="color"))
     + pn.geom_point(pn.aes(color="color"), size=2.5)
     + pn.geom_text(
         pn.aes(label="label"),
-        data=curves.filter(pl.col("rows") == train_sizes[-1]),
+        data=curves_df.filter(pl.col("rows") == train_sizes[-1]),
         ha="left",
         nudge_x=0.03 * train_sizes[-1],
         color=SECONDARY_INK,
@@ -377,7 +379,7 @@ save_figure(plot, args.out_dir, "learning_curve", 6, 4)
 
 # %%
 oob_errors = [
-    1 - clone(final.best_estimator_).set_params(n_estimators=trees, oob_score=True, n_jobs=-1).fit(x, y).oob_score_
+    1 - clone(final.best_estimator_).set_params(n_estimators=trees, oob_score=True, n_jobs=-1).fit(x_df, y).oob_score_
     for trees in OOB_TREES
 ]
 final_trees = final.best_params_["n_estimators"]

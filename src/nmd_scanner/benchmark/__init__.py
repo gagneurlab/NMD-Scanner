@@ -7,8 +7,8 @@ DATASETS maps the name of each benchmark to its module in nmd_scanner.benchmark.
 of the benchmark in logs and figures, and two functions:
 - download(downloads) returns the raw tables of the study. It downloads them with sources.fetch, which keeps the files
   in the directory downloads.
-- build(raw, transcripts, fasta) returns the benchmark table of the raw tables, without network. transcripts is the
-  table of sources.read_transcripts, and fasta is a pyfaidx.Fasta of GRCh38. build applies the study's own filters,
+- build(raw, transcripts_df, fasta) returns the benchmark table of the raw tables, without network. transcripts_df is
+  the table of sources.read_transcripts, and fasta is a pyfaidx.Fasta of GRCh38. build applies the study's own filters,
   and it logs the rows that they drop.
 
 Every benchmark table has these columns, with one row per measurement:
@@ -42,15 +42,15 @@ KEY = ["transcript", "chrom", "pos", "ref", "alt"]
 
 
 def run_nmd_scanner(
-    variants: pl.DataFrame, vcf: Path, gff3: Path, fasta: Path, prediction: bool = True
+    variants_df: pl.DataFrame, vcf: Path, gff3: Path, fasta: Path, prediction: bool = True
 ) -> pl.DataFrame:
     """
-    Write the unique variants of the columns chrom, pos, ref and alt of variants to vcf, and run nmd_scanner.annotate
+    Write the unique variants of the columns chrom, pos, ref and alt of variants_df to vcf, and run nmd_scanner.annotate
     on it without the sequence columns. Return the result as a polars table with the columns of KEY: transcript is
     transcript_id without version, and pos is the 1-based start.
     """
-    unique = variants.select("chrom", "pos", "ref", "alt").unique().sort("chrom", "pos", "ref", "alt")
-    columns = unique.select(
+    unique_df = variants_df.select("chrom", "pos", "ref", "alt").unique().sort("chrom", "pos", "ref", "alt")
+    columns_df = unique_df.select(
         pl.col("chrom").alias("#CHROM"),
         POS="pos",
         ID=pl.lit("."),
@@ -62,7 +62,7 @@ def run_nmd_scanner(
     )
     with open(vcf, "w", newline="") as handle:
         handle.write("##fileformat=VCFv4.2\n")
-        columns.write_csv(handle, separator="\t", quote_style="never")
+        columns_df.write_csv(handle, separator="\t", quote_style="never")
     result = nmd_scanner.annotate(vcf, gff3, fasta, sequences=False, prediction=prediction)
     # NMD-Scanner's start is 0-based
     return pl.DataFrame(nmd_scanner.to_arrow(result)).with_columns(
@@ -70,9 +70,9 @@ def run_nmd_scanner(
     )
 
 
-def join_features(table: pl.DataFrame, features: pl.DataFrame, dataset: str) -> pl.DataFrame:
+def join_features(table_df: pl.DataFrame, features_df: pl.DataFrame, dataset: str) -> pl.DataFrame:
     """
-    Join each row of a benchmark table to the row of features, the result of run_nmd_scanner, of its transcript and
+    Join each row of a benchmark table to the row of features_df, the result of run_nmd_scanner, of its transcript and
     variant.
     Keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why, with dataset as
     the name of the table. The rows have no fixed order.
@@ -80,28 +80,28 @@ def join_features(table: pl.DataFrame, features: pl.DataFrame, dataset: str) -> 
     A row has no NMD-Scanner row if the GFF3 lacks its transcript, or if its variant touches no coding region of the
     transcript (see "Technical Notes.md").
     """
-    rows = table.join(features, on=KEY, validate="m:1")
-    unmatched = table.join(features, on=KEY, how="anti")
-    missing = unmatched["gene"].is_null()
-    if len(unmatched) > 0:
+    rows_df = table_df.join(features_df, on=KEY, validate="m:1")
+    unmatched_df = table_df.join(features_df, on=KEY, how="anti")
+    missing = unmatched_df["gene"].is_null()
+    if len(unmatched_df) > 0:
         logger.info(
             "%s: %d of %d rows have no NMD-Scanner row of their transcript and variant: %d on transcripts missing from"
             " the GFF3, %d with a variant that touches no coding region of its transcript (%s)",
             dataset,
-            len(unmatched),
-            len(table),
+            len(unmatched_df),
+            len(table_df),
             missing.sum(),
             (~missing).sum(),
-            " ".join(unmatched.filter(~missing)["transcript"].unique().sort()) or "none",
+            " ".join(unmatched_df.filter(~missing)["transcript"].unique().sort()) or "none",
         )
-    status = rows["nmd_efficiency_prediction_status"]
-    dropped = status.filter(status != "ok").value_counts(sort=True)
-    if len(dropped) > 0:
+    status = rows_df["nmd_efficiency_prediction_status"]
+    dropped_df = status.filter(status != "ok").value_counts(sort=True)
+    if len(dropped_df) > 0:
         logger.info(
             "%s: %d of the %d joined rows have an nmd_efficiency_prediction_status other than ok: %s",
             dataset,
-            dropped["count"].sum(),
-            len(rows),
-            ", ".join(f"{count} {value}" for value, count in dropped.iter_rows()),
+            dropped_df["count"].sum(),
+            len(rows_df),
+            ", ".join(f"{count} {value}" for value, count in dropped_df.iter_rows()),
         )
-    return rows.filter(status == "ok")
+    return rows_df.filter(status == "ok")

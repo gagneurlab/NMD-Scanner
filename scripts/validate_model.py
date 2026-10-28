@@ -104,18 +104,18 @@ def percentiles(values: np.ndarray) -> list[float]:
     return [float(v) for v in np.percentile(values, [2.5, 97.5])]
 
 
-def correlations(rows: pl.DataFrame) -> dict:
+def correlations(rows_df: pl.DataFrame) -> dict:
     """
     Spearman correlation of the prediction and of the rules with NMD_efficiency, and their difference, with bootstrap
     CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first. Each resample draws
     the genes of the column gene with replacement, and it takes all rows of each drawn gene.
     """
-    y = rows["NMD_efficiency"].to_numpy()
-    model = rows["prediction"].to_numpy()
-    rules = (~rows["nmd_escape"]).cast(pl.Float64).to_numpy()
+    y = rows_df["NMD_efficiency"].to_numpy()
+    model = rows_df["prediction"].to_numpy()
+    rules = (~rows_df["nmd_escape"]).cast(pl.Float64).to_numpy()
     # The positions of the rows of each gene, in the order of the genes
-    genes = rows.with_row_index().group_by("gene").agg("index").sort("gene")
-    gene_rows = [positions.to_numpy() for positions in genes["index"]]
+    genes_df = rows_df.with_row_index().group_by("gene").agg("index").sort("gene")
+    gene_rows = [positions.to_numpy() for positions in genes_df["index"]]
     rng = np.random.default_rng(SEED)
     model_resampled = np.empty(N_RESAMPLES)
     rules_resampled = np.empty(N_RESAMPLES)
@@ -137,9 +137,9 @@ def correlations(rows: pl.DataFrame) -> dict:
     }
 
 
-def mean_nmd_triggering(rows: pl.DataFrame) -> float:
+def mean_nmd_triggering(rows_df: pl.DataFrame) -> float:
     """The mean NMD_efficiency of the rows with nmd_escape False."""
-    return float(rows.filter(~pl.col("nmd_escape"))["NMD_efficiency"].mean())
+    return float(rows_df.filter(~pl.col("nmd_escape"))["NMD_efficiency"].mean())
 
 
 def estimate(value: float, ci: list[float]) -> str:
@@ -151,7 +151,7 @@ def facet_frame(panels: dict[str, pl.DataFrame]) -> pl.DataFrame:
     Concatenate the frames of panels for facet_wrap, with the columns of all frames. The column panel has their keys as
     categories, in order.
     """
-    frames = [frame.with_columns(panel=pl.lit(title)) for title, frame in panels.items()]
+    frames = [frame_df.with_columns(panel=pl.lit(title)) for title, frame_df in panels.items()]
     return pl.concat(frames, how="diagonal_relaxed").cast({"panel": pl.Enum(list(panels))})
 
 
@@ -177,13 +177,13 @@ def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) ->
     )
 
 
-def interval_plot(rows: pl.DataFrame, labels: list[str]) -> pn.ggplot:
+def interval_plot(rows_df: pl.DataFrame, labels: list[str]) -> pn.ggplot:
     """
-    A dot at each value of the intervals in rows, with a line from low to high, and the direct label right of high.
+    A dot at each value of the intervals in rows_df, with a line from low to high, and the direct label right of high.
     The y axis shows labels from the top, one per result.
     """
     return (
-        pn.ggplot(rows, pn.aes(y="position", color="color"))
+        pn.ggplot(rows_df, pn.aes(y="position", color="color"))
         + pn.geom_segment(pn.aes(x="low", xend="high", yend="position"), size=1)
         + pn.geom_point(pn.aes(x="value"), size=2.5)
         + pn.geom_text(pn.aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
@@ -219,22 +219,23 @@ if trained.read_bytes() != MODEL_PATH.read_bytes():
 
 # %%
 benchmarks = {name: pl.read_parquet(args.benchmark_dir / f"{name}.parquet") for name in DATASETS if name != "tcga"}
-variants = pl.concat([table.select("chrom", "pos", "ref", "alt") for table in benchmarks.values()])
-scored = run_nmd_scanner(variants, args.out_dir / "variants.vcf", args.gff3, args.fasta).select(
+variants_df = pl.concat([table_df.select("chrom", "pos", "ref", "alt") for table_df in benchmarks.values()])
+scored_df = run_nmd_scanner(variants_df, args.out_dir / "variants.vcf", args.gff3, args.fasta).select(
     *KEY, "nmd_efficiency_prediction_status", "nmd_escape", prediction="nmd_efficiency_prediction"
 )
 # The bootstrap of correlations and the sums of the means depend on the order of the rows
 joined = {
-    name: join_features(table, scored, DATASETS[name].NAME).sort("source_row") for name, table in benchmarks.items()
+    name: join_features(table_df, scored_df, DATASETS[name].NAME).sort("source_row")
+    for name, table_df in benchmarks.items()
 }
 # The cohorts and their names in the figures
 cohorts = {"tcga": pl.read_parquet(args.train_dir / "oof_predictions.parquet")}
 cohort_names = {"tcga": f"{DATASETS['tcga'].NAME}, out of fold"}
-for name, rows in joined.items():
+for name, rows_df in joined.items():
     cohort_names[name] = DATASETS[name].NAME
-    if "tissue" in rows.columns:
-        rows = (
-            rows.group_by(KEY)
+    if "tissue" in rows_df.columns:
+        rows_df = (
+            rows_df.group_by(KEY)
             .agg(
                 pl.col("NMD_efficiency").mean(),
                 pl.col("gene", "prediction", "nmd_escape").first(),
@@ -243,14 +244,14 @@ for name, rows in joined.items():
             .sort("source_row")
         )
         cohort_names[name] += ", mean per variant"
-    cohorts[name] = rows
+    cohorts[name] = rows_df
 # The variant-tissue rows of GTEx
-gtex = joined["gtex"]
+gtex_df = joined["gtex"]
 
 # %%
 validation = {}
-for cohort, rows in cohorts.items():
-    result = {**correlations(rows), "mean_nmd_triggering": mean_nmd_triggering(rows)}
+for cohort, rows_df in cohorts.items():
+    result = {**correlations(rows_df), "mean_nmd_triggering": mean_nmd_triggering(rows_df)}
     logger.info(
         "%s, %d rows of %d genes: model %s, rules %s, gain %s, NMD-triggering mean %.2f",
         cohort,
@@ -263,7 +264,7 @@ for cohort, rows in cohorts.items():
     )
     validation[cohort] = result
 tissue_means = dict(
-    gtex.group_by("tissue")
+    gtex_df.group_by("tissue")
     .agg(pl.len().alias("n"), pl.col("NMD_efficiency").filter(~pl.col("nmd_escape")).mean().alias("mean"))
     .filter(pl.col("n") >= MIN_TISSUE_ROWS)
     .sort("mean", "tissue")
@@ -271,17 +272,17 @@ tissue_means = dict(
     .iter_rows()
 )
 validation["gtex_variant_tissue_rows"] = {
-    "n": len(gtex),
-    "tissues": gtex["tissue"].n_unique(),
-    "mean_nmd_triggering": mean_nmd_triggering(gtex),
+    "n": len(gtex_df),
+    "tissues": gtex_df["tissue"].n_unique(),
+    "mean_nmd_triggering": mean_nmd_triggering(gtex_df),
     "min_rows_per_tissue": MIN_TISSUE_ROWS,
     "mean_nmd_triggering_per_tissue": tissue_means,
 }
-mmrf_rows = cohorts["mmrf_target"]
-seen = mmrf_rows["transcript"].is_in(cohorts["tcga"]["transcript"].implode())
+mmrf_rows_df = cohorts["mmrf_target"]
+seen = mmrf_rows_df["transcript"].is_in(cohorts["tcga"]["transcript"].implode())
 validation["mmrf_target_by_transcript"] = {
-    "in_tcga_training": correlations(mmrf_rows.filter(seen)),
-    "not_in_tcga_training": correlations(mmrf_rows.filter(~seen)),
+    "in_tcga_training": correlations(mmrf_rows_df.filter(seen)),
+    "not_in_tcga_training": correlations(mmrf_rows_df.filter(~seen)),
 }
 for group, result in validation["mmrf_target_by_transcript"].items():
     logger.info(
@@ -297,8 +298,8 @@ for group, result in validation["mmrf_target_by_transcript"].items():
 logger.info(
     "gtex, %d variant-tissue rows: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues with at"
     " least %d rows",
-    len(gtex),
-    mean_nmd_triggering(gtex),
+    len(gtex_df),
+    mean_nmd_triggering(gtex_df),
     min(tissue_means.values()),
     max(tissue_means.values()),
     len(tissue_means),
@@ -310,14 +311,14 @@ logger.info(
 # line marks equal values.
 
 # %%
-scatter = facet_frame(
+scatter_df = facet_frame(
     {
-        f"{cohort_names[cohort]}, {len(rows):,} rows\nSpearman {validation[cohort]['model']:.2f}": rows
-        for cohort, rows in cohorts.items()
+        f"{cohort_names[cohort]}, {len(rows_df):,} rows\nSpearman {validation[cohort]['model']:.2f}": rows_df
+        for cohort, rows_df in cohorts.items()
     }
 )
 plot = (
-    pn.ggplot(scatter, pn.aes("prediction", "NMD_efficiency"))
+    pn.ggplot(scatter_df, pn.aes("prediction", "NMD_efficiency"))
     + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
     + pn.geom_abline(color=AXIS)
     + pn.facet_wrap("panel", scales="free")
@@ -332,10 +333,10 @@ save_figure(plot, args.out_dir, "measured_vs_predicted", 8, 7.5)
 
 # %%
 calibrations = {}
-for cohort, rows in cohorts.items():
-    bins, slope, intercept = calibration(rows)
-    title = f"{cohort_names[cohort]}, {len(rows):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
-    calibrations[title] = bins.with_columns(slope=slope, intercept=intercept)
+for cohort, rows_df in cohorts.items():
+    bins_df, slope, intercept = calibration(rows_df)
+    title = f"{cohort_names[cohort]}, {len(rows_df):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
+    calibrations[title] = bins_df.with_columns(slope=slope, intercept=intercept)
 plot = calibration_plot(facet_frame(calibrations)) + pn.facet_wrap("panel", scales="free")
 save_figure(plot, args.out_dir, "calibration", 8, 9)
 
@@ -344,18 +345,21 @@ save_figure(plot, args.out_dir, "calibration", 8, 9)
 # its whiskers reach the furthest row within 1.5 times the interquartile range.
 
 # %%
-boxes = facet_frame(
+boxes_df = facet_frame(
     {
-        cohort_names[cohort]: rows.with_columns(
+        cohort_names[cohort]: rows_df.with_columns(
             pl.col("nmd_escape").replace_strict(
-                {escape: f"{escape}\n{count:,} rows" for escape, count in rows["nmd_escape"].value_counts().iter_rows()}
+                {
+                    escape: f"{escape}\n{count:,} rows"
+                    for escape, count in rows_df["nmd_escape"].value_counts().iter_rows()
+                }
             )
         )
-        for cohort, rows in cohorts.items()
+        for cohort, rows_df in cohorts.items()
     }
 )
 plot = (
-    pn.ggplot(boxes, pn.aes("nmd_escape", "NMD_efficiency"))
+    pn.ggplot(boxes_df, pn.aes("nmd_escape", "NMD_efficiency"))
     + pn.geom_boxplot(color=BLUE, fill=BLUE, alpha=0.1, width=0.5, outlier_size=1, outlier_alpha=0.3, outlier_stroke=0)
     + pn.facet_wrap("panel", nrow=1, scales="free")
     + pn.labs(x="nmd_escape", y="Measured NMD efficiency")
@@ -384,9 +388,11 @@ save_figure(plot, args.out_dir, "spearman_per_cohort", 6.5, 3.5)
 tissue_rows = validation["gtex_variant_tissue_rows"]
 # The tissues from the lowest mean to the highest, which coord_flip draws from the bottom to the top
 tissues = list(tissue_rows["mean_nmd_triggering_per_tissue"])
-nmd_triggering = gtex.filter(~pl.col("nmd_escape"), pl.col("tissue").is_in(tissues)).cast({"tissue": pl.Enum(tissues)})
+nmd_triggering_df = gtex_df.filter(~pl.col("nmd_escape"), pl.col("tissue").is_in(tissues)).cast(
+    {"tissue": pl.Enum(tissues)}
+)
 plot = (
-    pn.ggplot(nmd_triggering, pn.aes("tissue", "NMD_efficiency"))
+    pn.ggplot(nmd_triggering_df, pn.aes("tissue", "NMD_efficiency"))
     + pn.geom_hline(yintercept=tissue_rows["mean_nmd_triggering"], color=AXIS, linetype="dashed")
     + pn.annotate(
         "text",
@@ -418,16 +424,16 @@ save_figure(plot, args.out_dir, "gtex_tissues", 6, 9)
 transcript_split = validation["mmrf_target_by_transcript"]
 results = list(transcript_split.values())
 gain_panel = "Gain of the model over the rules"
-transcript_intervals = facet_frame(
+transcript_intervals_df = facet_frame(
     {"Spearman correlation": intervals(results, MODEL_AND_RULES), gain_panel: intervals(results, GAIN)}
 )
-zero = pl.DataFrame({"panel": [gain_panel], "x": [0.0]}).cast({"panel": transcript_intervals["panel"].dtype})
+zero_df = pl.DataFrame({"panel": [gain_panel], "x": [0.0]}).cast({"panel": transcript_intervals_df["panel"].dtype})
 plot = (
     interval_plot(
-        transcript_intervals,
+        transcript_intervals_df,
         [f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} rows" for group, result in transcript_split.items()],
     )
-    + pn.geom_vline(pn.aes(xintercept="x"), data=zero, color=AXIS)
+    + pn.geom_vline(pn.aes(xintercept="x"), data=zero_df, color=AXIS)
     + pn.facet_wrap("panel", scales="free_x")
     + pn.labs(title="MMRF-TARGET by transcript, 95% CIs", x="")
 )

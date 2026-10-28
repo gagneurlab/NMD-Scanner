@@ -32,10 +32,12 @@ def download(downloads: Path) -> pl.DataFrame:
     return pl.read_excel(fetch(downloads, URL, SHA256), sheet_name=SHEET, read_options={"header_row": 1})
 
 
-def build(raw: pl.DataFrame, transcripts: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
+def build(raw_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
-    The benchmark table of raw, the table of download, with the alleles of hgvsc_alleles and the column tissue. It has
+    The benchmark table of raw_df, the table of download, with the alleles of hgvsc_alleles and the column tissue. It has
     the rows with ASE_altered above 0.
     """
-    table = keep_expressed(raw.with_row_index("source_row"), "ASE_altered", NAME).rename({"Tissue_type": "tissue"})
-    return to_schema(hgvsc_alleles(table, transcripts, fasta), transcripts, fasta)
+    table_df = keep_expressed(raw_df.with_row_index("source_row"), "ASE_altered", NAME).rename(
+        {"Tissue_type": "tissue"}
+    )
+    return to_schema(hgvsc_alleles(table_df, transcripts_df, fasta), transcripts_df, fasta)

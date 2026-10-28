@@ -47,24 +47,26 @@ def download(downloads: Path) -> tuple[pl.DataFrame, pl.DataFrame]:
     )
 
 
-def build(raw: tuple[pl.DataFrame, pl.DataFrame], transcripts: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
+def build(raw: tuple[pl.DataFrame, pl.DataFrame], transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
     The benchmark table of raw, the tables Nonsense_list.txt and IsoformLevel.NMDannotation.txt of download. It has
     the rows with VAF_mean above 0 in the accurate annotation. IsoformLevel.NMDannotation.txt has the evaluated
     variants, and a variant that it lacks has no flag.
     """
-    nonsense, isoforms = raw
-    table = keep_expressed(nonsense.with_row_index("source_row"), "VAF_mean", NAME)
-    flagged = isoforms.filter(pl.any_horizontal(ACCURATE_ANNOTATION_FLAGS))["Variant_ID"]
-    accurate = table.filter(~pl.col("Variant_ID").is_in(flagged.implode()))
+    nonsense_df, isoforms_df = raw
+    table_df = keep_expressed(nonsense_df.with_row_index("source_row"), "VAF_mean", NAME)
+    flagged = isoforms_df.filter(pl.any_horizontal(ACCURATE_ANNOTATION_FLAGS))["Variant_ID"]
+    accurate_df = table_df.filter(~pl.col("Variant_ID").is_in(flagged.implode()))
     logger.info(
         "%s: %d of %d rows are outside the study's accurate annotation (flags %s)",
         NAME,
-        len(table) - len(accurate),
-        len(table),
+        len(table_df) - len(accurate_df),
+        len(table_df),
         " ".join(ACCURATE_ANNOTATION_FLAGS),
     )
-    table = accurate.rename({"CHROM": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt", "TranscriptID": "transcript"})
+    table_df = accurate_df.rename(
+        {"CHROM": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt", "TranscriptID": "transcript"}
+    )
     return to_schema(
-        table.with_columns(NMD_efficiency=-(pl.col("VAF_mean") / GERMLINE_VAF_DNA).log(2)), transcripts, fasta
+        table_df.with_columns(NMD_efficiency=-(pl.col("VAF_mean") / GERMLINE_VAF_DNA).log(2)), transcripts_df, fasta
     )

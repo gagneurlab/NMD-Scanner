@@ -58,8 +58,8 @@ def benchmark(rows: dict, extra_schema: dict | None = None) -> pl.DataFrame:
 
 
 def test_hgvsc_alleles_on_both_strands(fasta):
-    table = hgvsc_alleles(kim_table(), TRANSCRIPTS, fasta)
-    assert table.select("chrom", "pos", "transcript", "ref", "alt").rows() == [
+    table_df = hgvsc_alleles(kim_table(), TRANSCRIPTS, fasta)
+    assert table_df.select("chrom", "pos", "transcript", "ref", "alt").rows() == [
         ("chr1", 2, "ENST1", "C", "T"),
         ("chr1", 3, "ENST2", "G", "T"),
         ("chr1", 4, "ENST3", "T", "C"),
@@ -79,7 +79,7 @@ def test_build_fails_on_ref_mismatch(fasta):
 
 @pytest.mark.parametrize("dataset", [tcga, mmrf_target])
 def test_build_nmdeff_tables(dataset, fasta):
-    expected = benchmark(
+    expected_df = benchmark(
         {
             "chrom": ["chr1"] * 4,
             "pos": [2, 3, 4, 5],
@@ -91,13 +91,13 @@ def test_build_nmdeff_tables(dataset, fasta):
             "source_row": [0, 1, 2, 3],
         }
     )
-    assert_frame_equal(dataset.build(kim_table(), TRANSCRIPTS, fasta), expected)
+    assert_frame_equal(dataset.build(kim_table(), TRANSCRIPTS, fasta), expected_df)
 
 
 def test_build_gtex(fasta, caplog):
     caplog.set_level(logging.INFO)
-    raw = kim_table(Tissue_type=["LIVER", "LUNG", "LIVER", "LUNG"], ASE_altered=[0.25, 0.0, None, 0.5])
-    expected = benchmark(
+    raw_df = kim_table(Tissue_type=["LIVER", "LUNG", "LIVER", "LUNG"], ASE_altered=[0.25, 0.0, None, 0.5])
+    expected_df = benchmark(
         {
             "chrom": ["chr1"] * 2,
             "pos": [2, 5],
@@ -111,13 +111,13 @@ def test_build_gtex(fasta, caplog):
         },
         {"tissue": pl.String},
     )
-    assert_frame_equal(gtex.build(raw, TRANSCRIPTS, fasta), expected)
+    assert_frame_equal(gtex.build(raw_df, TRANSCRIPTS, fasta), expected_df)
     assert "GTEx: 2 of 4 rows have no ASE_altered above 0: 1 lack it, 1 have 0" in caplog.text
 
 
 def test_build_geuvadis(fasta, caplog):
     caplog.set_level(logging.INFO)
-    nonsense = pl.DataFrame(
+    nonsense_df = pl.DataFrame(
         {
             "Variant_ID": [f"v{i}" for i in range(5)],
             "CHROM": ["chr1"] * 5,
@@ -129,7 +129,7 @@ def test_build_geuvadis(fasta, caplog):
         }
     )
     # v0 lacks flags, as a variant that the study did not evaluate
-    isoforms = pl.DataFrame(
+    isoforms_df = pl.DataFrame(
         {
             "Variant_ID": ["v2", "v3", "v4"],
             "resMNV": [False, True, False],
@@ -137,7 +137,7 @@ def test_build_geuvadis(fasta, caplog):
             "Multiisoforms": [False, None, False],
         }
     )
-    expected = benchmark(
+    expected_df = benchmark(
         {
             "chrom": ["chr1"] * 2,
             "pos": [1, 3],
@@ -149,7 +149,7 @@ def test_build_geuvadis(fasta, caplog):
             "source_row": [0, 2],
         }
     )
-    assert_frame_equal(geuvadis.build((nonsense, isoforms), TRANSCRIPTS, fasta), expected)
+    assert_frame_equal(geuvadis.build((nonsense_df, isoforms_df), TRANSCRIPTS, fasta), expected_df)
     assert "Geuvadis: 2 of 5 rows have no VAF_mean above 0: 1 lack it, 1 have 0" in caplog.text
     assert "Geuvadis: 1 of 3 rows are outside the study's accurate annotation" in caplog.text
 
@@ -205,7 +205,7 @@ def test_datasets_cover_every_module():
 
 def test_join_features(caplog):
     caplog.set_level(logging.INFO)
-    table = pl.DataFrame(
+    table_df = pl.DataFrame(
         {
             "transcript": ["ENST1", "ENST1", "ENST2", "ENST3"],
             "chrom": ["chr1"] * 4,
@@ -215,7 +215,7 @@ def test_join_features(caplog):
             "gene": ["ENSG1", "ENSG1", "ENSG2", None],
         }
     )
-    features = pl.DataFrame(
+    features_df = pl.DataFrame(
         {
             "transcript": ["ENST1", "ENST1"],
             "chrom": ["chr1"] * 2,
@@ -225,8 +225,8 @@ def test_join_features(caplog):
             "nmd_efficiency_prediction_status": ["ok", "ref_ptc"],
         }
     )
-    kept = join_features(table, features, "Test")
-    assert kept.select("transcript", "pos", "nmd_efficiency_prediction_status").rows() == [("ENST1", 1, "ok")]
+    kept_df = join_features(table_df, features_df, "Test")
+    assert kept_df.select("transcript", "pos", "nmd_efficiency_prediction_status").rows() == [("ENST1", 1, "ok")]
     assert (
         "Test: 2 of 4 rows have no NMD-Scanner row of their transcript and variant: 1 on transcripts missing from the"
         " GFF3, 1 with a variant that touches no coding region of its transcript (ENST2)"

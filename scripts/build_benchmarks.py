@@ -38,11 +38,11 @@ args = parser.parse_args()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 args.out_dir.mkdir(parents=True, exist_ok=True)
 downloads = args.downloads or args.out_dir / "downloads"
-transcripts = read_transcripts(args.gff3)
+transcripts_df = read_transcripts(args.gff3)
 fasta = Fasta(str(args.fasta))
 for name in args.dataset or DATASETS:
     dataset = DATASETS[name]
-    table = dataset.build(dataset.download(downloads), transcripts, fasta)
+    table_df = dataset.build(dataset.download(downloads), transcripts_df, fasta)
     path = args.out_dir / f"{name}.parquet"
-    table.write_parquet(path)
-    logger.info("Wrote %d rows to %s", len(table), path)
+    table_df.write_parquet(path)
+    logger.info("Wrote %d rows to %s", len(table_df), path)
