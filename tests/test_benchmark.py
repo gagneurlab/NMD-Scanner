@@ -6,6 +6,7 @@ import logging
 import pkgutil
 import zipfile
 
+import fsspec
 import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
@@ -207,7 +208,6 @@ def test_fetch_reads_downloads(tmp_path):
 
 def test_fetch_downloads_a_file_and_a_zip_member(tmp_path):
     """fetch downloads with fsspec and saves in downloads. The memory filesystem stands in for HTTP."""
-    fsspec = pytest.importorskip("fsspec")
     memory = fsspec.filesystem("memory")
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:

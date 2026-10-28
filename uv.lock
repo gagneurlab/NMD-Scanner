@@ -1867,6 +1867,7 @@ lint = [
     { name = "ruff" },
 ]
 test = [
+    { name = "fsspec" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
@@ -1911,6 +1912,7 @@ lint = [
     { name = "ruff" },
 ]
 test = [
+    { name = "fsspec", specifier = ">=2026.1.0" },
     { name = "pytest", specifier = ">=8,<9" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },

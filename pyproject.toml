@@ -59,6 +59,7 @@ test = [
     "pytest-mock",
     "pytest-cov",
     "pytest-sugar",
+    "fsspec>=2026.1.0",
 ]
 lint = [
     "ruff",
