@@ -12,14 +12,13 @@ Run it with:
 """
 
 import logging
-import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import click
 from pyfaidx import Fasta
 
 from nmd_scanner.benchmark import DATASETS
+from nmd_scanner.benchmark.figures import parse_options
 from nmd_scanner.benchmark.sources import read_transcripts
 
 logger = logging.getLogger("build_benchmarks")
@@ -57,13 +56,7 @@ def command(**params: object) -> None:
     pass
 
 
-try:
-    args = SimpleNamespace(**command.make_context("build_benchmarks.py", sys.argv[1:]).params)
-except click.exceptions.Exit as exit_:
-    sys.exit(exit_.exit_code)
-except click.ClickException as error:
-    error.show()
-    sys.exit(error.exit_code)
+args = parse_options(command)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 args.out_dir.mkdir(parents=True, exist_ok=True)
 downloads = args.downloads or args.out_dir / "downloads"

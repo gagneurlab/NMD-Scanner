@@ -51,11 +51,7 @@ R2 of each fold and the hyperparameters), and figures/ with each figure as PNG a
 
 import json
 import logging
-import os
-import shlex
-import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import click
 import joblib
@@ -84,7 +80,7 @@ from nmd_scanner.benchmark.figures import (
     SURFACE,
     calibration,
     calibration_plot,
-    in_notebook,
+    parse_options,
     save_figure,
 )
 from nmd_scanner.schema import MODEL_INPUTS
@@ -197,15 +193,7 @@ def command(**params: object) -> None:
     pass
 
 
-# In a notebook, sys.argv holds the arguments of the kernel
-argv = shlex.split(os.environ.get("TRAIN_MODEL_ARGS", "")) if in_notebook() else sys.argv[1:]
-try:
-    args = SimpleNamespace(**command.make_context("train_model.py", argv).params)
-except click.exceptions.Exit as exit_:
-    sys.exit(exit_.exit_code)
-except click.ClickException as error:
-    error.show()
-    sys.exit(error.exit_code)
+args = parse_options(command, "TRAIN_MODEL_ARGS")
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 for name in ("train_model", "nmd_scanner.benchmark"):
     logging.getLogger(name).setLevel(logging.INFO)
