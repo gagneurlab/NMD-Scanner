@@ -163,12 +163,12 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
     tcga_df = pl.read_parquet(benchmark_dir / "tcga.parquet")
     genome = Fasta(str(fasta))
     features_df = run_nmd_scanner(tcga_df, read_annotation(gff3, genome), genome, prediction=False)
-    rows_df = join_features(tcga_df, features_df, "TCGA").sort("source_row")
-    logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga_df), len(rows_df))
+    training_df = join_features(tcga_df, features_df, "TCGA").sort("source_row")
+    logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga_df), len(training_df))
     # A DataFrame, so that the random forest keeps the input names as feature_names_in_
-    x_df = rows_df.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
-    y = rows_df["NMD_efficiency"].to_numpy()
-    chrom = rows_df["chrom"].to_numpy()
+    x_df = training_df.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
+    y = training_df["NMD_efficiency"].to_numpy()
+    chrom = training_df["chrom"].to_numpy()
 
     # The rows of each fold in a block, in fold order, as validate_model.py.py expects them
     predictions = []
@@ -178,7 +178,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         prediction = search.predict(x_df[test])
         columns = ["source_row", *KEY, "gene", "nmd_escape", "NMD_efficiency"]
         predictions.append(
-            rows_df[test]
+            training_df[test]
             .select(columns)
             .with_columns(fold=pl.lit(fold, dtype=pl.Int64), prediction=pl.Series(prediction))
         )
@@ -196,7 +196,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
     if (onnx_prediction != final.predict(x_df).astype(np.float32)).any():
         raise ValueError(f"{onnx_path} predicts other values than the random forest")
 
-    results = {"rows": len(rows_df), "folds": folds, "inner_cv_r2": final.best_score_, "params": final.best_params_}
+    results = {"rows": len(training_df), "folds": folds, "inner_cv_r2": final.best_score_, "params": final.best_params_}
     (out_dir / "cv_results.json").write_text(json.dumps(results, indent=2) + "\n")
     joblib.dump(final.best_estimator_, out_dir / "nmd_efficiency_rf.pkl")
     logger.info("final model: inner CV R2 %.3f, %s", final.best_score_, final.best_params_)

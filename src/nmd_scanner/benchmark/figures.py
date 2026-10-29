@@ -55,15 +55,15 @@ def in_notebook() -> bool:
     return "ipykernel" in sys.modules
 
 
-def calibration(rows_df: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
+def calibration(cohort_df: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
     """
-    One row per bin of CALIBRATION_BINS quantile bins of the column prediction of rows_df, from the lowest bin to the
+    One row per bin of CALIBRATION_BINS quantile bins of the column prediction of cohort_df, from the lowest bin to the
     highest. A row has the mean prediction, the mean NMD_efficiency, and the 95% CI of the mean NMD_efficiency from the
     t distribution as low and high. Also the slope and the intercept of the least-squares line of NMD_efficiency on
     prediction over all rows.
     """
     bins_df = (
-        rows_df.group_by(bin=pl.col("prediction").qcut(CALIBRATION_BINS, allow_duplicates=True))
+        cohort_df.group_by(bin=pl.col("prediction").qcut(CALIBRATION_BINS, allow_duplicates=True))
         .agg(
             pl.col("prediction", "NMD_efficiency").mean(),
             sem=pl.col("NMD_efficiency").std() / pl.len().sqrt(),
@@ -74,7 +74,7 @@ def calibration(rows_df: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
     half_width = pl.Series(t.ppf(0.975, bins_df["n"].to_numpy() - 1)) * bins_df["sem"]
     measured = pl.col("NMD_efficiency")
     bins_df = bins_df.select("prediction", measured, low=measured - half_width, high=measured + half_width)
-    slope, intercept = np.polyfit(rows_df["prediction"].to_numpy(), rows_df["NMD_efficiency"].to_numpy(), 1)
+    slope, intercept = np.polyfit(cohort_df["prediction"].to_numpy(), cohort_df["NMD_efficiency"].to_numpy(), 1)
     return bins_df, float(slope), float(intercept)
 
 

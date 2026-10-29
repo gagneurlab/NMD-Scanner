@@ -108,17 +108,17 @@ def percentiles(values: np.ndarray) -> list[float]:
     return [float(v) for v in np.percentile(values, [2.5, 97.5])]
 
 
-def correlations(rows_df: pl.DataFrame) -> dict:
+def correlations(cohort_df: pl.DataFrame) -> dict:
     """
     Spearman correlation of the prediction and of the rules with NMD_efficiency, and their difference, with bootstrap
     CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first. Each resample draws
     the genes of the column gene with replacement, and it takes all rows of each drawn gene.
     """
-    y = rows_df["NMD_efficiency"].to_numpy()
-    model = rows_df["prediction"].to_numpy()
-    rules = (~rows_df["nmd_escape"]).cast(pl.Float64).to_numpy()
+    y = cohort_df["NMD_efficiency"].to_numpy()
+    model = cohort_df["prediction"].to_numpy()
+    rules = (~cohort_df["nmd_escape"]).cast(pl.Float64).to_numpy()
     # The positions of the rows of each gene, in the order of the genes
-    genes_df = rows_df.with_row_index().group_by("gene").agg("index").sort("gene")
+    genes_df = cohort_df.with_row_index().group_by("gene").agg("index").sort("gene")
     gene_rows = [positions.to_numpy() for positions in genes_df["index"]]
     rng = np.random.default_rng(SEED)
     model_resampled = np.empty(N_RESAMPLES)
@@ -141,9 +141,9 @@ def correlations(rows_df: pl.DataFrame) -> dict:
     }
 
 
-def mean_nmd_triggering(rows_df: pl.DataFrame) -> float:
+def mean_nmd_triggering(cohort_df: pl.DataFrame) -> float:
     """The mean NMD_efficiency of the rows with nmd_escape False."""
-    return float(rows_df.filter(~pl.col("nmd_escape"))["NMD_efficiency"].mean())
+    return float(cohort_df.filter(~pl.col("nmd_escape"))["NMD_efficiency"].mean())
 
 
 def estimate(value: float, ci: list[float]) -> str:
@@ -181,13 +181,13 @@ def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) ->
     )
 
 
-def interval_plot(rows_df: pl.DataFrame, labels: list[str]) -> pn.ggplot:
+def interval_plot(intervals_df: pl.DataFrame, labels: list[str]) -> pn.ggplot:
     """
-    A dot at each value of the intervals in rows_df, with a line from low to high, and the direct label right of high.
-    The y axis shows labels from the top, one per result.
+    A dot at each value of the intervals in intervals_df, with a line from low to high, and the direct label right of
+    high. The y axis shows labels from the top, one per result.
     """
     return (
-        pn.ggplot(rows_df, pn.aes(y="position", color="color"))
+        pn.ggplot(intervals_df, pn.aes(y="position", color="color"))
         + pn.geom_segment(pn.aes(x="low", xend="high", yend="position"), size=1)
         + pn.geom_point(pn.aes(x="value"), size=2.5)
         + pn.geom_text(pn.aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
@@ -372,11 +372,11 @@ joined = {
 # The cohorts and their names in the figures
 cohorts = {"tcga": oof_df}
 cohort_names = {"tcga": f"{DATASETS['tcga'].NAME}, out of fold"}
-for name, rows_df in joined.items():
+for name, cohort_df in joined.items():
     cohort_names[name] = DATASETS[name].NAME
-    if "tissue" in rows_df.columns:
-        rows_df = (
-            rows_df.group_by(KEY)
+    if "tissue" in cohort_df.columns:
+        cohort_df = (
+            cohort_df.group_by(KEY)
             .agg(
                 pl.col("NMD_efficiency").mean(),
                 pl.col("gene", "prediction", "nmd_escape").first(),
@@ -385,14 +385,14 @@ for name, rows_df in joined.items():
             .sort("source_row")
         )
         cohort_names[name] += ", mean per variant"
-    cohorts[name] = rows_df
+    cohorts[name] = cohort_df
 # The variant-tissue rows of GTEx
 gtex_df = joined["gtex"]
 
 # %%
 validation = {}
-for cohort, rows_df in cohorts.items():
-    result = {**correlations(rows_df), "mean_nmd_triggering": mean_nmd_triggering(rows_df)}
+for cohort, cohort_df in cohorts.items():
+    result = {**correlations(cohort_df), "mean_nmd_triggering": mean_nmd_triggering(cohort_df)}
     logger.info(
         "%s, %d rows of %d genes: model %s, rules %s, gain %s, NMD-triggering mean %.2f",
         cohort,
@@ -419,11 +419,11 @@ validation["gtex_variant_tissue_rows"] = {
     "excluded_tissues": UNPREDICTED_TISSUES,
     "mean_nmd_triggering_per_tissue": tissue_means,
 }
-mmrf_rows_df = cohorts["mmrf_target"]
-seen = mmrf_rows_df["transcript"].is_in(cohorts["tcga"]["transcript"].implode())
+mmrf_df = cohorts["mmrf_target"]
+seen = mmrf_df["transcript"].is_in(cohorts["tcga"]["transcript"].implode())
 validation["mmrf_target_by_transcript"] = {
-    "in_tcga_training": correlations(mmrf_rows_df.filter(seen)),
-    "not_in_tcga_training": correlations(mmrf_rows_df.filter(~seen)),
+    "in_tcga_training": correlations(mmrf_df.filter(seen)),
+    "not_in_tcga_training": correlations(mmrf_df.filter(~seen)),
 }
 for group, result in validation["mmrf_target_by_transcript"].items():
     logger.info(
@@ -454,8 +454,8 @@ logger.info(
 # %%
 scatter_df = facet_frame(
     {
-        f"{cohort_names[cohort]}, {len(rows_df):,} rows\nSpearman {validation[cohort]['model']:.2f}": rows_df
-        for cohort, rows_df in cohorts.items()
+        f"{cohort_names[cohort]}, {len(cohort_df):,} rows\nSpearman {validation[cohort]['model']:.2f}": cohort_df
+        for cohort, cohort_df in cohorts.items()
     }
 )
 plot = (
@@ -474,9 +474,9 @@ save_figure(plot, OUT_DIR, "measured_vs_predicted", 8, 7.5)
 
 # %%
 calibrations = {}
-for cohort, rows_df in cohorts.items():
-    bins_df, slope, intercept = calibration(rows_df)
-    title = f"{cohort_names[cohort]}, {len(rows_df):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
+for cohort, cohort_df in cohorts.items():
+    bins_df, slope, intercept = calibration(cohort_df)
+    title = f"{cohort_names[cohort]}, {len(cohort_df):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
     calibrations[title] = bins_df.with_columns(slope=slope, intercept=intercept)
 plot = calibration_plot(facet_frame(calibrations)) + pn.facet_wrap("panel", scales="free")
 save_figure(plot, OUT_DIR, "calibration", 8, 9)
@@ -488,15 +488,15 @@ save_figure(plot, OUT_DIR, "calibration", 8, 9)
 # %%
 boxes_df = facet_frame(
     {
-        cohort_names[cohort]: rows_df.with_columns(
+        cohort_names[cohort]: cohort_df.with_columns(
             pl.col("nmd_escape").replace_strict(
                 {
                     escape: f"{escape}\n{count:,} rows"
-                    for escape, count in rows_df["nmd_escape"].value_counts().iter_rows()
+                    for escape, count in cohort_df["nmd_escape"].value_counts().iter_rows()
                 }
             )
         )
-        for cohort, rows_df in cohorts.items()
+        for cohort, cohort_df in cohorts.items()
     }
 )
 plot = (

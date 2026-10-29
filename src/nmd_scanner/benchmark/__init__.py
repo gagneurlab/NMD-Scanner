@@ -85,7 +85,7 @@ def join_features(table_df: pl.DataFrame, features_df: pl.DataFrame, dataset: st
     A row has no NMD-Scanner row if the GFF3 lacks its transcript, or if its variant touches no coding region of the
     transcript (see "Technical Notes.md").
     """
-    rows_df = table_df.join(features_df, on=KEY, validate="m:1")
+    joined_df = table_df.join(features_df, on=KEY, validate="m:1")
     unmatched_df = table_df.join(features_df, on=KEY, how="anti")
     missing = unmatched_df["gene"].is_null()
     if len(unmatched_df) > 0:
@@ -99,14 +99,14 @@ def join_features(table_df: pl.DataFrame, features_df: pl.DataFrame, dataset: st
             (~missing).sum(),
             " ".join(unmatched_df.filter(~missing)["transcript"].unique().sort()) or "none",
         )
-    status = rows_df["nmd_efficiency_prediction_status"]
+    status = joined_df["nmd_efficiency_prediction_status"]
     dropped_df = status.filter(status != "ok").value_counts(sort=True)
     if len(dropped_df) > 0:
         logger.info(
             "%s: %d of the %d joined rows have an nmd_efficiency_prediction_status other than ok: %s",
             dataset,
             dropped_df["count"].sum(),
-            len(rows_df),
+            len(joined_df),
             ", ".join(f"{count} {value}" for value, count in dropped_df.iter_rows()),
         )
-    return rows_df.filter(status == "ok")
+    return joined_df.filter(status == "ok")
