@@ -7,7 +7,6 @@ The colors come from a categorical palette that is checked for color vision defi
 only series of a figure, ORANGE marks the rules, and MUTED_INK marks a series that gives context.
 """
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -48,11 +47,6 @@ pn.theme_set(
 )
 # Embed TrueType fonts, so that the text in the PDF stays text
 matplotlib.rcParams["pdf.fonttype"] = 42
-
-
-def in_notebook() -> bool:
-    """Whether the code runs in a Jupyter kernel."""
-    return "ipykernel" in sys.modules
 
 
 def calibration(cohort_df: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
@@ -108,12 +102,15 @@ def calibration_plot(bins_df: pl.DataFrame) -> pn.ggplot:
     )
 
 
-def save_figure(plot: pn.ggplot, out_dir: Path, name: str, width: float, height: float) -> None:
-    """Save plot as out_dir/figures/name.png and name.pdf, width x height inches at DPI. In a notebook, show it."""
+def save_figure(plot: pn.ggplot, out_dir: Path, name: str, width: float, height: float) -> pn.ggplot:
+    """
+    Save plot as out_dir/figures/name.png and name.pdf, width x height inches at DPI, and return it with this size. As
+    the last expression of a notebook cell, the plot is the cell result, and Jupyter shows it. A plain python run
+    ignores it.
+    """
     plot = plot + pn.theme(figure_size=(width, height))
     figures = out_dir / "figures"
     figures.mkdir(parents=True, exist_ok=True)
     for suffix in ("png", "pdf"):
         pn.ggsave(plot, figures / f"{name}.{suffix}", dpi=DPI, verbose=False)
-    if in_notebook():
-        plot.show()
+    return plot
