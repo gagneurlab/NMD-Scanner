@@ -2,11 +2,10 @@
 Build the NMD efficiency benchmarks of nmd_scanner.benchmark from their pinned public sources, and write each one to
 <out-dir>/<name>.parquet.
 
-Run it with:
+Run it from the repo root with:
 
 \b
-    uv run --extra scripts python scripts/build_benchmarks.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa \
-        --out-dir benchmarks/
+    uv run --extra scripts python scripts/build_benchmarks.py
 
 --dataset builds only the named benchmarks, e.g. --dataset gtex --dataset geuvadis. By default, it builds all.
 """
@@ -18,7 +17,6 @@ import click
 from pyfaidx import Fasta
 
 from nmd_scanner.benchmark import DATASETS
-from nmd_scanner.benchmark.figures import parse_options
 from nmd_scanner.benchmark.sources import read_transcripts
 
 logger = logging.getLogger("build_benchmarks")
@@ -27,19 +25,22 @@ logger = logging.getLogger("build_benchmarks")
 @click.command(help=__doc__)
 @click.option(
     "--gff3",
-    required=True,
+    default="data/gencode.v42.annotation.gff3.gz",
+    show_default=True,
     type=click.Path(path_type=Path, exists=True, dir_okay=False),
     help="GENCODE GFF3 of GRCh38, optionally gzip-compressed",
 )
 @click.option(
     "--fasta",
-    required=True,
+    default="data/GRCh38.fa",
+    show_default=True,
     type=click.Path(path_type=Path, exists=True, dir_okay=False),
     help="GRCh38 FASTA with chr names and a .fai index",
 )
 @click.option(
     "--out-dir",
-    required=True,
+    default="data/benchmarks",
+    show_default=True,
     type=click.Path(path_type=Path, file_okay=False),
     help="directory for the benchmark tables",
 )
@@ -50,21 +51,25 @@ logger = logging.getLogger("build_benchmarks")
     " already is read from there, with the same sha256 check.",
 )
 @click.option(
-    "--dataset", multiple=True, type=click.Choice(list(DATASETS)), help="a benchmark to build; repeat it for more"
+    "--dataset",
+    "datasets",
+    multiple=True,
+    type=click.Choice(list(DATASETS)),
+    help="a benchmark to build; repeat it for more",
 )
-def command(**params: object) -> None:
-    pass
+def main(gff3: Path, fasta: Path, out_dir: Path, downloads: Path | None, datasets: tuple[str, ...]) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    downloads = downloads or out_dir / "downloads"
+    transcripts_df = read_transcripts(gff3)
+    genome = Fasta(str(fasta))
+    for name in datasets or DATASETS:
+        dataset = DATASETS[name]
+        table_df = dataset.build(dataset.download(downloads), transcripts_df, genome)
+        path = out_dir / f"{name}.parquet"
+        table_df.write_parquet(path)
+        logger.info("Wrote %d rows to %s", len(table_df), path)
 
 
-args = parse_options(command)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-args.out_dir.mkdir(parents=True, exist_ok=True)
-downloads = args.downloads or args.out_dir / "downloads"
-transcripts_df = read_transcripts(args.gff3)
-fasta = Fasta(str(args.fasta))
-for name in args.dataset or DATASETS:
-    dataset = DATASETS[name]
-    table_df = dataset.build(dataset.download(downloads), transcripts_df, fasta)
-    path = args.out_dir / f"{name}.parquet"
-    table_df.write_parquet(path)
-    logger.info("Wrote %d rows to %s", len(table_df), path)
+if __name__ == "__main__":
+    main()

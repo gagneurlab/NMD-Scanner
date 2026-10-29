@@ -1,7 +1,7 @@
 """
 The NMD efficiency benchmarks: tables of the NMD efficiency that public studies measured for nonsense variants.
 scripts/build_benchmarks.py builds them. scripts/train_model.py trains the NMD efficiency model on TCGA, and
-scripts/validate_model.py tests it on all of them.
+scripts/validate_model.py.py tests it on all of them.
 
 DATASETS maps the name of each benchmark to its module in nmd_scanner.benchmark.datasets. A module has NAME, the name
 of the benchmark in logs and figures, and two functions:

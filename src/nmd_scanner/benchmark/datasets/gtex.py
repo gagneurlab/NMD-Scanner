@@ -5,7 +5,7 @@ GTEx: germline nonsense variants in the tissues of GTEx v8, Supplementary Data 2
 The table has one row per variant and tissue. NMD_efficiency is its column NMD_efficiency, and ASE_altered is the
 variant allele fraction in the RNA. For ASE_altered 0, the table caps NMD_efficiency at 10, so build keeps the rows with
 ASE_altered above 0. In 4,102 of the 17,816 rows with ASE_altered above 0, NMD_efficiency differs from
--log2(ASE_altered / 0.5). The difference moves the Spearman correlations of scripts/validate_model.py by only about
+-log2(ASE_altered / 0.5). The difference moves the Spearman correlations of scripts/validate_model.py.py by only about
 0.001.
 """
 

@@ -1,5 +1,5 @@
 """
-The plotnine theme, the calibration plot, save_figure and parse_options of scripts/train_model.py and scripts/validate_model.py.
+The plotnine theme, the calibration plot and save_figure of scripts/validate_model.py.py.
 calibration computes the statistics of the calibration plot, and save_figure saves each figure as PNG and PDF. This
 module needs the extra scripts of nmd-scanner.
 
@@ -7,13 +7,9 @@ The colors come from a categorical palette that is checked for color vision defi
 only series of a figure, ORANGE marks the rules, and MUTED_INK marks a series that gives context.
 """
 
-import os
-import shlex
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
-import click
 import matplotlib
 import numpy as np
 import plotnine as pn
@@ -57,22 +53,6 @@ matplotlib.rcParams["pdf.fonttype"] = 42
 def in_notebook() -> bool:
     """Whether the code runs in a Jupyter kernel."""
     return "ipykernel" in sys.modules
-
-
-def parse_options(command: click.Command, env_var: str | None = None) -> SimpleNamespace:
-    """
-    The options of command as a namespace. In a notebook, they come from the environment variable env_var (split like
-    a shell line), because sys.argv then holds the arguments of the kernel. Otherwise, they come from sys.argv.
-    --help prints the help and exits with 0. A usage error prints click's message and exits with 2.
-    """
-    argv = shlex.split(os.environ.get(env_var or "", "")) if in_notebook() else sys.argv[1:]
-    try:
-        return SimpleNamespace(**command.make_context(Path(sys.argv[0]).name, argv).params)
-    except click.exceptions.Exit as exit_:
-        sys.exit(exit_.exit_code)
-    except click.ClickException as error:
-        error.show()
-        sys.exit(error.exit_code)
 
 
 def calibration(rows_df: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:

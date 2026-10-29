@@ -92,6 +92,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "SIM", "PLR", "F811", "F841"]
 "__init__.py" = ["F401"]
+# The notebook sets its paths in its first cell, before the imports
+"scripts/validate_model.py.py" = ["E402"]
 
 [tool.tox]
 requires = ["tox>=4", "tox-uv"]

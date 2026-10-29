@@ -9,10 +9,6 @@
 coverage.xml
 .*.swp
 data/
-# The notebooks paired with scripts/*.py
+# The notebook paired with scripts/validate_model.py.py
 scripts/*.ipynb
 .ipynb_checkpoints/
-# The output directories of the commands in scripts/README.md
-/benchmarks/
-/train/
-/validate/
