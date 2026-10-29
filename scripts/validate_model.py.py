@@ -67,8 +67,8 @@ from pyfaidx import Fasta
 from scipy.stats import rankdata, spearmanr
 from sklearn.metrics import r2_score
 
-from nmd_scanner import read_annotation
-from nmd_scanner.benchmark import DATASETS, KEY, join_features, run_nmd_scanner
+from nmd_scanner import annotate_variants, read_annotation
+from nmd_scanner.benchmark import DATASETS, KEY, VARIANT_COLUMNS, join_features
 from nmd_scanner.benchmark.figures import (
     AXIS,
     BLUE,
@@ -359,14 +359,14 @@ save_figure(plot, OUT_DIR, "oob_error", 6, 4)
 
 # %%
 benchmarks = {name: pl.read_parquet(BENCHMARK_DIR / f"{name}.parquet") for name in DATASETS if name != "tcga"}
-variants_df = pl.concat([table_df.select("chrom", "pos", "ref", "alt") for table_df in benchmarks.values()])
+variants_df = pl.concat([table_df.select(VARIANT_COLUMNS) for table_df in benchmarks.values()]).unique()
 fasta = Fasta(str(FASTA))
-scored_df = run_nmd_scanner(variants_df, read_annotation(GFF3, fasta), fasta).select(
-    *KEY, "nmd_efficiency_prediction_status", "nmd_escape", prediction="nmd_efficiency_prediction"
-)
+results_df = annotate_variants(variants_df.to_pandas(), read_annotation(GFF3, fasta), fasta, sequences=False)
 # The bootstrap of correlations and the sums of the means depend on the order of the rows
 joined = {
-    name: join_features(table_df, scored_df, DATASETS[name].NAME).sort("source_row")
+    name: join_features(table_df, results_df, DATASETS[name].NAME)
+    .select(*table_df.columns, "nmd_escape", prediction="nmd_efficiency_prediction")
+    .sort("source_row")
     for name, table_df in benchmarks.items()
 }
 # The cohorts and their names in the figures

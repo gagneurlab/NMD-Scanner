@@ -123,7 +123,7 @@ def run_pipeline_on_transcript(
     if strand == "-":
         ref = str(Seq(ref).reverse_complement())
         alt = str(Seq(alt).reverse_complement())
-    vcf = pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
+    vcf = pd.DataFrame([{"chrom": chrom, "start": start, "end": end, "variant_id": "var1", "ref": ref, "alt": alt}])
 
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=start_codon, has_stop_codon=stop_codon)
     exons_df = annotation[annotation["Feature"] == "exon"]
@@ -882,7 +882,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
         ]
     )
     vcf = pd.DataFrame(
-        [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
+        [{"chrom": "chrT", "start": g, "end": g + 1, "variant_id": v, "ref": r, "alt": a} for v, g, r, a in snvs]
     )
     fasta = Fasta(str(tmp_path / "genome.fa"))
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=has_stop_codon)

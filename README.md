@@ -90,7 +90,7 @@ results = nmd_scanner.annotate("input.vcf", "annotation.gff3.gz", "reference.fa"
 nmd_scanner.write_results(results, "results.parquet")  # or "results.csv"
 ```
 
-`annotate_variants` takes the tables of `read_vcf` and `read_annotation`, so one annotation serves many VCFs.
+`annotate_variants` takes the tables of `read_vcf` and `read_annotation`, so one annotation serves many VCFs. The table of `read_vcf` has the output columns `chrom`, `start`, `end`, `variant_id`, `ref` and `alt` (see [Output columns](Technical%20Notes.md#output-columns)). A variants table from another source needs no `variant_id`.
 
 The steps of `annotate` are public too; see [How `annotate` builds the result](Technical%20Notes.md#how-annotate-builds-the-result).
 

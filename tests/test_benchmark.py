@@ -7,6 +7,7 @@ import pkgutil
 import zipfile
 
 import fsspec
+import pandas as pd
 import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
@@ -20,7 +21,8 @@ from nmd_scanner.benchmark.sources import check_sha256, fetch, hgvsc_alleles
 TRANSCRIPTS = pl.DataFrame({"transcript": ["ENST1", "ENST2"], "strand": ["+", "-"], "gene": ["ENSG1", "ENSG2"]})
 SCHEMA = {
     "chrom": pl.String,
-    "pos": pl.Int64,
+    "start": pl.Int64,
+    "end": pl.Int64,
     "ref": pl.String,
     "alt": pl.String,
     "transcript": pl.String,
@@ -83,7 +85,8 @@ def test_build_nmdeff_tables(dataset, fasta):
     expected_df = benchmark(
         {
             "chrom": ["chr1"] * 4,
-            "pos": [2, 3, 4, 5],
+            "start": [1, 2, 3, 4],
+            "end": [2, 3, 4, 5],
             "ref": ["C", "G", "T", "A"],
             "alt": ["T", "T", "C", "G"],
             "transcript": ["ENST1", "ENST2", "ENST3", "ENST3"],
@@ -101,7 +104,8 @@ def test_build_gtex(fasta, caplog):
     expected_df = benchmark(
         {
             "chrom": ["chr1"] * 2,
-            "pos": [2, 5],
+            "start": [1, 4],
+            "end": [2, 5],
             "ref": ["C", "A"],
             "alt": ["T", "G"],
             "transcript": ["ENST1", "ENST3"],
@@ -141,7 +145,8 @@ def test_build_geuvadis(fasta, caplog):
     expected_df = benchmark(
         {
             "chrom": ["chr1"] * 2,
-            "pos": [1, 3],
+            "start": [0, 2],
+            "end": [1, 3],
             "ref": ["A", "G"],
             "alt": ["T", "T"],
             "transcript": ["ENST1", "ENST2"],
@@ -211,24 +216,27 @@ def test_join_features(caplog):
         {
             "transcript": ["ENST1", "ENST1", "ENST2", "ENST3"],
             "chrom": ["chr1"] * 4,
-            "pos": [1, 2, 3, 4],
+            "start": [0, 1, 2, 3],
+            "end": [1, 2, 3, 4],
             "ref": ["A"] * 4,
             "alt": ["T"] * 4,
             "gene": ["ENSG1", "ENSG1", "ENSG2", None],
         }
     )
-    features_df = pl.DataFrame(
+    # The result of annotate_variants has transcript_id with version
+    results_df = pd.DataFrame(
         {
-            "transcript": ["ENST1", "ENST1"],
+            "transcript_id": ["ENST1.1", "ENST1.1"],
             "chrom": ["chr1"] * 2,
-            "pos": [1, 2],
+            "start": [0, 1],
+            "end": [1, 2],
             "ref": ["A"] * 2,
             "alt": ["T"] * 2,
             "nmd_efficiency_prediction_status": ["ok", "ref_ptc"],
         }
     )
-    kept_df = join_features(table_df, features_df, "Test")
-    assert kept_df.select("transcript", "pos", "nmd_efficiency_prediction_status").rows() == [("ENST1", 1, "ok")]
+    kept_df = join_features(table_df, results_df, "Test")
+    assert kept_df.select("transcript", "start", "nmd_efficiency_prediction_status").rows() == [("ENST1", 0, "ok")]
     assert (
         "Test: 2 of 4 rows have no NMD-Scanner row of their transcript and variant: 1 on transcripts missing from the"
         " GFF3, 1 with a variant that touches no coding region of its transcript (ENST2)"

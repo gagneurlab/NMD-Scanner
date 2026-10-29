@@ -37,8 +37,8 @@ from sklearn.inspection import permutation_importance
 from sklearn.metrics import r2_score
 from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, learning_curve
 
-from nmd_scanner import read_annotation
-from nmd_scanner.benchmark import KEY, join_features, run_nmd_scanner
+from nmd_scanner import annotate_variants, read_annotation
+from nmd_scanner.benchmark import KEY, VARIANT_COLUMNS, join_features
 from nmd_scanner.schema import MODEL_INPUTS
 
 logger = logging.getLogger("train_model")
@@ -162,8 +162,14 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
 
     tcga_df = pl.read_parquet(benchmark_dir / "tcga.parquet")
     genome = Fasta(str(fasta))
-    features_df = run_nmd_scanner(tcga_df, read_annotation(gff3, genome), genome, prediction=False)
-    training_df = join_features(tcga_df, features_df, "TCGA").sort("source_row")
+    results_df = annotate_variants(
+        tcga_df.select(VARIANT_COLUMNS).unique().to_pandas(),
+        read_annotation(gff3, genome),
+        genome,
+        sequences=False,
+        prediction=False,
+    )
+    training_df = join_features(tcga_df, results_df, "TCGA").sort("source_row")
     logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga_df), len(training_df))
     # A DataFrame, so that the random forest keeps the input names as feature_names_in_
     x_df = training_df.select(pl.col(MODEL_INPUTS).cast(pl.Float64))

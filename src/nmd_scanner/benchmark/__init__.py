@@ -13,7 +13,8 @@ of the benchmark in logs and figures, and two functions:
   scripts/build_benchmarks.py builds it. build applies the study's own filters, and it logs the rows that they drop.
 
 Every benchmark table has these columns, with one row per measurement:
-- chrom, pos, ref and alt: the variant on GRCh38. pos is 1-based, and ref and alt are on the forward strand.
+- chrom, start, end, ref and alt: the variant on GRCh38, with the names and the coordinates of the NMD-Scanner
+  output. start and end are 0-based half-open, and ref and alt are on the forward strand.
 - transcript: the Ensembl ID of the measured transcript, as the study gives it.
 - gene: the Ensembl ID without version of the gene of the transcript in the GFF3. It is null for a transcript missing
   from the GFF3.
@@ -22,8 +23,9 @@ Every benchmark table has these columns, with one row per measurement:
 - tissue: the tissue of the measurement, only in a table with one row per variant and tissue.
 - source_row: the index of the row in the study table, from 0. Sorting on it gives the rows a fixed order.
 
-run_nmd_scanner runs NMD-Scanner on the variants of benchmark tables, and join_features keeps the rows that the NMD
-efficiency model can predict. Read the annotation_df of run_nmd_scanner from the GFF3 of the benchmark tables, so
+nmd_scanner.annotate_variants takes the unique VARIANT_COLUMNS of a benchmark table as its vcf_df, in pandas.
+join_features joins the result of annotate_variants to the benchmark table, and it keeps the rows that the NMD
+efficiency model can predict. Read the annotation_df of annotate_variants from the GFF3 of the benchmark tables, so
 that a null gene marks a transcript missing from it.
 """
 
@@ -31,7 +33,6 @@ import logging
 
 import pandas as pd
 import polars as pl
-from pyfaidx import Fasta
 
 import nmd_scanner
 from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
@@ -39,52 +40,26 @@ from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
 logger = logging.getLogger(__name__)
 
 DATASETS = {"tcga": tcga, "geuvadis": geuvadis, "gtex": gtex, "mmrf_target": mmrf_target}
+# The columns of the variant of a row
+VARIANT_COLUMNS = ["chrom", "start", "end", "ref", "alt"]
 # The columns that join a row of a benchmark table to the NMD-Scanner row of its transcript and variant
-KEY = ["transcript", "chrom", "pos", "ref", "alt"]
+KEY = ["transcript", *VARIANT_COLUMNS]
 
 
-def run_nmd_scanner(
-    variants_df: pl.DataFrame, annotation_df: pd.DataFrame, fasta: Fasta, prediction: bool = True
-) -> pl.DataFrame:
+def join_features(table_df: pl.DataFrame, results_df: pd.DataFrame, dataset: str) -> pl.DataFrame:
     """
-    Run nmd_scanner.annotate_variants on the unique variants of the columns chrom, pos, ref and alt of variants_df,
-    without the sequence columns. annotation_df is the table of nmd_scanner.read_annotation, and fasta is the
-    pyfaidx.Fasta that it took. Return the result as a polars table with the columns of KEY: transcript is
-    transcript_id without version, and pos is the 1-based start.
-    """
-    # vcf_df is the table of nmd_scanner.read_vcf, whose Start and End are 0-based half-open
-    start = pl.col("pos").cast(pl.Int64) - 1
-    vcf_df = (
-        variants_df.select("chrom", "pos", "ref", "alt")
-        .unique()
-        .sort("chrom", "pos", "ref", "alt")
-        .select(
-            Chromosome="chrom",
-            Start=start,
-            End=start + pl.col("ref").str.len_chars().cast(pl.Int64),
-            ID=pl.lit("."),
-            Ref="ref",
-            Alt="alt",
-        )
-        .to_pandas()
-    )
-    result = nmd_scanner.annotate_variants(vcf_df, annotation_df, fasta, sequences=False, prediction=prediction)
-    # NMD-Scanner's start is 0-based
-    return pl.DataFrame(nmd_scanner.to_arrow(result)).with_columns(
-        transcript=pl.col("transcript_id").str.split(".").list.first(), pos=pl.col("start") + 1
-    )
-
-
-def join_features(table_df: pl.DataFrame, features_df: pl.DataFrame, dataset: str) -> pl.DataFrame:
-    """
-    Join each row of a benchmark table to the row of features_df, the result of run_nmd_scanner, of its transcript and
-    variant.
+    Join each row of a benchmark table to the row of results_df, the result of nmd_scanner.annotate_variants, of its
+    transcript and variant.
     Keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why, with dataset as
     the name of the table. The rows have no fixed order.
 
     A row has no NMD-Scanner row if the GFF3 lacks its transcript, or if its variant touches no coding region of the
     transcript (see "Technical Notes.md").
     """
+    # transcript is transcript_id without version
+    features_df = pl.DataFrame(nmd_scanner.to_arrow(results_df)).with_columns(
+        transcript=pl.col("transcript_id").str.split(".").list.first()
+    )
     joined_df = table_df.join(features_df, on=KEY, validate="m:1")
     unmatched_df = table_df.join(features_df, on=KEY, how="anti")
     missing = unmatched_df["gene"].is_null()

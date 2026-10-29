@@ -42,7 +42,7 @@ def test_read_vcf_file(vcf_path):
     df = nmd_scanner.scan.read_vcf(vcf_path)
     assert isinstance(df, pd.DataFrame)
     assert df.shape[0] > 0
-    assert list(df.columns) == ["Chromosome", "Start", "End", "ID", "Ref", "Alt"]
+    assert list(df.columns) == ["chrom", "start", "end", "variant_id", "ref", "alt"]
     pd.testing.assert_index_equal(df.index, pd.RangeIndex(len(df)))
 
 
@@ -72,7 +72,7 @@ def test_read_vcf_accepts_a_symbolic_allele_or_breakend_with_a_pipe(tmp_path, al
     vcf = tmp_path / "pipe.vcf"
     vcf.write_text(VCF_HEADER + f"chr1\t100\tv1\tG\t{alt}\t.\t.\t.\n")
     df = nmd_scanner.scan.read_vcf(str(vcf))
-    assert df["Alt"].tolist() == [alt]
+    assert df["alt"].tolist() == [alt]
 
 
 def test_read_vcf_accepts_single_allelic(tmp_path):
@@ -93,11 +93,11 @@ def test_read_vcf_keeps_text_fields_as_written(tmp_path, ids):
     vcf = tmp_path / "text_fields.vcf"
     vcf.write_text(VCF_HEADER + f"01\t100\t{ids[0]}\tA\tNA\t.\tPASS\tNA\n01\t200\t{ids[1]}\tC\tG\t50\t.\t.\n")
     df = nmd_scanner.scan.read_vcf(str(vcf))
-    assert (df["Chromosome"] == "01").all()
-    assert df["ID"].tolist() == list(ids)
-    assert df["Alt"].tolist() == ["NA", "G"]
-    assert df["Start"].tolist() == [99, 199]
-    assert df["End"].tolist() == [100, 200]
+    assert (df["chrom"] == "01").all()
+    assert df["variant_id"].tolist() == list(ids)
+    assert df["alt"].tolist() == ["NA", "G"]
+    assert df["start"].tolist() == [99, 199]
+    assert df["end"].tolist() == [100, 200]
 
 
 def test_read_vcf_keeps_a_dot_in_id_and_alt(tmp_path):
@@ -105,8 +105,8 @@ def test_read_vcf_keeps_a_dot_in_id_and_alt(tmp_path):
     vcf = tmp_path / "dots.vcf"
     vcf.write_text(VCF_HEADER + "chr1\t100\t.\tA\t.\t.\t.\t.\nchr1\t200\tv2\tC\tG\t.\t.\t.\n")
     df = nmd_scanner.scan.read_vcf(str(vcf))
-    assert df["ID"].tolist() == [".", "v2"]
-    assert df["Alt"].tolist() == [".", "G"]
+    assert df["variant_id"].tolist() == [".", "v2"]
+    assert df["alt"].tolist() == [".", "G"]
 
 
 def test_read_vcf_drops_qual_filter_and_info(tmp_path):
@@ -118,11 +118,11 @@ def test_read_vcf_drops_qual_filter_and_info(tmp_path):
         "chr1\t100\tv1\tA\tT\t50\tPASS\tDP=12\n"
     )
     df = nmd_scanner.scan.read_vcf(str(vcf))
-    assert list(df.columns) == ["Chromosome", "Start", "End", "ID", "Ref", "Alt"]
+    assert list(df.columns) == ["chrom", "start", "end", "variant_id", "ref", "alt"]
 
 
 def test_read_vcf_end_comes_from_ref_not_from_info_end(tmp_path):
-    """polars-bio takes the end of a symbolic allele from INFO END; read_vcf keeps Start plus the REF length."""
+    """polars-bio takes the end of a symbolic allele from INFO END; read_vcf keeps start plus the REF length."""
     vcf = tmp_path / "symbolic.vcf"
     vcf.write_text(
         "##fileformat=VCFv4.2\n"
@@ -132,8 +132,8 @@ def test_read_vcf_end_comes_from_ref_not_from_info_end(tmp_path):
         "chr1\t300\tindel\tACG\tA\t.\t.\t.\n"
     )
     df = nmd_scanner.scan.read_vcf(str(vcf))
-    assert df["Start"].tolist() == [99, 299]
-    assert df["End"].tolist() == [100, 302]
+    assert df["start"].tolist() == [99, 299]
+    assert df["end"].tolist() == [100, 302]
 
 
 @pytest.mark.parametrize(

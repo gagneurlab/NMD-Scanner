@@ -94,7 +94,8 @@ def annotate_variants(
     3. Add the NMD features and the NMD escape rules (e.g. 3' & 5'UTR length, downstream & upstream exon counts)
     4. Add the NMD efficiency prediction
 
-    :param vcf_df: variants, as ``scan.read_vcf`` returns them
+    :param vcf_df: variants with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf`` returns
+        them (see rules.extract_ptc)
     :param annotation_df: gene annotation, as ``scan.read_annotation`` returns it
     :param fasta: reference genome (pyfaidx.Fasta), the one that ``read_annotation`` took
     :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Both tables of NMDEff (https://github.com/hjkng/nmdeff) were last changed in this commit, which is also its tag v1.0
 NMDEFF_URL = "https://raw.githubusercontent.com/hjkng/nmdeff/08c92768fcb689236a833db6a2f2d9bcbe919f12/"
 # The columns of every benchmark table, in order. tissue, if a table has it, and source_row follow them.
-COLUMNS = ["chrom", "pos", "ref", "alt", "transcript", "gene", "NMD_efficiency"]
+COLUMNS = ["chrom", "start", "end", "ref", "alt", "transcript", "gene", "NMD_efficiency"]
 HGVSC_SUBSTITUTION = r"^(?:[^:]+:)?c\.\d+(?P<ref>[ACGT])>(?P<alt>[ACGT])$"
 COMPLEMENT = {"A": "T", "C": "G", "G": "C", "T": "A"}
 
@@ -84,15 +84,19 @@ def hgvsc_alleles(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: F
 
 def finish_table(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
-    Add the gene of each transcript, check each REF against the FASTA, and keep the benchmark columns: COLUMNS,
-    tissue if table_df has it, and source_row. gene comes from transcripts_df (see nmd_scanner.benchmark), and it is
-    null for a transcript that the GFF3 lacks. Raise a ValueError at the first REF that differs from the FASTA.
+    Add the 0-based half-open start and end of the 1-based pos of table_df, and the gene of each transcript. Check each
+    REF against the FASTA, and keep the benchmark columns: COLUMNS, tissue if table_df has it, and source_row. gene
+    comes from transcripts_df (see nmd_scanner.benchmark), and it is null for a transcript that the GFF3 lacks. Raise a
+    ValueError at the first REF that differs from the FASTA.
     """
+    table_df = table_df.with_columns(start=pl.col("pos").cast(pl.Int64) - 1).with_columns(
+        end=pl.col("start") + pl.col("ref").str.len_chars().cast(pl.Int64)
+    )
     table_df = table_df.with_columns(
         fasta_ref=pl.Series(
             [
-                fasta[chrom][pos - 1 : pos - 1 + len(ref)].seq.upper()
-                for chrom, pos, ref in table_df.select("chrom", "pos", "ref").iter_rows()
+                fasta[chrom][start:end].seq.upper()
+                for chrom, start, end in table_df.select("chrom", "start", "end").iter_rows()
             ],
             dtype=pl.String,
         ),

@@ -34,13 +34,14 @@ def read_vcf(vcf_path):
 
     """
     Reads a VCF file, plain or gzip-compressed, with polars-bio into a pandas DataFrame with the
-    columns Chromosome, Start, End, ID, Ref and Alt, one row per record in file order, and a
-    RangeIndex. QUAL, FILTER and INFO are not read.
+    columns chrom, start, end, variant_id, ref and alt, one row per record in file order, and a
+    RangeIndex. These are the names of the output columns (see schema.PTC_COLUMN_KINDS). QUAL,
+    FILTER and INFO are not read.
 
-    Start and End are 0-based half-open: Start is POS - 1, and End is Start plus the length of REF,
-    also for a symbolic allele with an INFO END. Every other field stays text as written, e.g.
-    ``01``, ``007`` and ``NA``. polars-bio returns ``.`` in ID and ALT as an empty string, which
-    becomes ``.`` again: a VCF field is never empty.
+    start and end are 0-based half-open: start is POS - 1, and end is start plus the length of REF,
+    also for a symbolic allele with an INFO END. variant_id is the ID of the record. Every other
+    field stays text as written, e.g. ``01``, ``007`` and ``NA``. polars-bio returns ``.`` in ID and
+    ALT as an empty string, which becomes ``.`` again: a VCF field is never empty.
 
     The VCF needs its header, at least the ``##fileformat`` and ``#CHROM`` lines. It must be
     left-normalized and single-allelic (one ALT allele per record), e.g. produced by
@@ -65,13 +66,13 @@ def read_vcf(vcf_path):
         df = (
             pb.scan_vcf(os.fspath(vcf_path), info_fields=[], use_zero_based=True)
             .select(
-                pl.col("chrom").alias("Chromosome"),
-                pl.col("start").cast(pl.Int64).alias("Start"),
+                pl.col("chrom"),
+                pl.col("start").cast(pl.Int64),
                 # not the end polars-bio gives, which follows INFO END for a symbolic allele
-                (pl.col("start").cast(pl.Int64) + pl.col("ref").str.len_chars().cast(pl.Int64)).alias("End"),
-                pl.col("id").replace("", ".").alias("ID"),
-                pl.col("ref").alias("Ref"),
-                pl.col("alt").replace("", ".").alias("Alt"),
+                (pl.col("start").cast(pl.Int64) + pl.col("ref").str.len_chars().cast(pl.Int64)).alias("end"),
+                pl.col("id").replace("", ".").alias("variant_id"),
+                pl.col("ref"),
+                pl.col("alt").replace("", "."),
             )
             .collect()
             .to_pandas()
@@ -89,7 +90,7 @@ def read_vcf(vcf_path):
     # rest of the pipeline assumes one. polars-bio joins the ALT alleles of a record with "|", which
     # its documentation does not say. A symbolic allele (<...>) and the mate of a breakend ([...[ or
     # ]...]) may contain "|" themselves, so their text is removed first.
-    alleles = df["Alt"].str.replace(r"<[^>]*>", "<>", regex=True).str.replace(r"[\[\]][^\[\]]*[\[\]]", "[]", regex=True)
+    alleles = df["alt"].str.replace(r"<[^>]*>", "<>", regex=True).str.replace(r"[\[\]][^\[\]]*[\[\]]", "[]", regex=True)
     multiallelic = alleles.str.contains("|", regex=False)
     if multiallelic.any():
         n_multiallelic = int(multiallelic.sum())
@@ -249,7 +250,7 @@ def read_gff3(gff3_path, fasta):
 
     # ID/Parent are GFF3 structural columns; _resolve_ids_via_hierarchy has used them by this
     # point. Drop them so a stray "ID" column doesn't collide with the unrelated "ID" column
-    # read_vcf uses for the VCF record ID once CDS rows are joined to it.
+    # extract_ptc uses for the VCF record ID once CDS rows are joined to it.
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
     return df.reset_index(drop=True)

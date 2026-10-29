@@ -21,6 +21,8 @@ SYMBOLIC_ALT_PATTERN = r"^<[^>]*>$|[\[\]]|^\.[A-Za-z]+$|^[A-Za-z]+\.$"
 # An ALT allele that changes no base: "." says that the record has no alternate allele, and "*" stands for the bases
 # that an overlapping deletion removes. That deletion has its own record.
 MISSING_ALT_PATTERN = r"^[.*]$"
+# The names that the steps of extract_ptc give the variant columns of scan.read_vcf
+VCF_COLUMNS = {"chrom": "Chromosome", "start": "Start", "end": "End", "variant_id": "ID", "ref": "Ref", "alt": "Alt"}
 
 
 # Main extract PTC script:
@@ -34,9 +36,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    transcript_tags and the columns has_start_codon and has_stop_codon. The last two say whether the
                    coding region of the transcript starts with an annotated start codon and ends in an annotated stop
                    codon. ``scan.read_annotation`` returns the coding regions as its CDS rows.
-    :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them.
-                A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is
-                a record with ALT "." or "*" (see ``drop_missing_alleles``).
+    :param vcf: Variants (DataFrame) with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
+                returns them. A record without variant_id has the ID ".". A record with a symbolic ALT allele or a
+                breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with ALT "." or "*" (see
+                ``drop_missing_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
@@ -59,6 +62,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
             "include the stop codon, with has_start_codon, has_stop_codon, transcript_type and transcript_tags, as "
             "scan.read_annotation returns them."
         )
+
+    # The steps below take the variant columns by the names of VCF_COLUMNS
+    vcf = vcf.rename(columns=VCF_COLUMNS)
+    if "ID" not in vcf.columns:
+        vcf = vcf.assign(ID=".")
 
     cds_df_adj = cds_df.copy()
     # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_exons)
@@ -351,7 +359,7 @@ def place_variants(vcf, chromosomes, reference):
     Finds the equivalent placements of each variant on the given chromosomes, and checks its whole REF against the
     reference genome.
 
-    :param vcf: Variants (DataFrame) with Chromosome, Start, End, Ref and Alt, as ``scan.read_vcf`` returns them
+    :param vcf: Variants (DataFrame) with Chromosome, Start, End, Ref and Alt, the names of VCF_COLUMNS
     :param chromosomes: Chromosomes to keep, e.g. those with a coding region
     :param reference: Function that returns the ReferenceSequence of a chromosome
     :return: Tuple (variants, placements). variants holds the kept rows plus variant_row (a key into placements),
