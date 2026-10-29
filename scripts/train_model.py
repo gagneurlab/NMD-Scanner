@@ -31,9 +31,9 @@ TRAIN_MODEL_ARGS.
 Steps:
 1. Read tcga.parquet of --benchmark-dir (see nmd_scanner.benchmark.datasets.tcga). Its column NMD_efficiency is the
    target.
-2. Run nmd_scanner.annotate on the unique variants. Join each TCGA row to the NMD-Scanner row of its transcript and
-   variant, and keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why. The
-   inputs are nmd_scanner.schema.MODEL_INPUTS as float64.
+2. Run nmd_scanner.annotate_variants on the unique variants. Join each TCGA row to the NMD-Scanner row of its
+   transcript and variant, and keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops,
+   and why. The inputs are nmd_scanner.schema.MODEL_INPUTS as float64.
 3. Split the rows into 5 folds with StratifiedGroupKFold over the chromosomes, stratified by 5 quantile bins of the
    target. The folds then have similar sizes and target distributions. Genes can overlap (antisense, nested), so a
    grouping by gene could still leak.
@@ -42,9 +42,8 @@ Steps:
 5. Tune the random forest the same way on all rows, and save it as ONNX (see save_onnx). Fail if the ONNX model
    predicts other values than the random forest, rounded to float32. Save the same random forest as a joblib pickle.
 
-Outputs in --out-dir: variants.vcf (the input of nmd_scanner.annotate), oof_predictions.parquet,
-nmd_efficiency_rf.onnx, nmd_efficiency_rf.pkl, cv_results.json (the R2 of each fold and the hyperparameters), and
-figures/ with each figure as PNG and PDF.
+Outputs in --out-dir: oof_predictions.parquet, nmd_efficiency_rf.onnx, nmd_efficiency_rf.pkl, cv_results.json (the
+R2 of each fold and the hyperparameters), and figures/ with each figure as PNG and PDF.
 """
 
 import argparse
@@ -61,6 +60,7 @@ import onnxruntime
 import plotnine as pn
 import polars as pl
 from onnx import TensorProto, helper, numpy_helper
+from pyfaidx import Fasta
 from scipy.stats import spearmanr
 from skl2onnx.common.tree_ensemble import add_tree_to_attribute_pairs, get_default_tree_regressor_attribute_pairs
 from sklearn.base import clone
@@ -69,6 +69,7 @@ from sklearn.inspection import permutation_importance
 from sklearn.metrics import r2_score
 from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, learning_curve
 
+from nmd_scanner import read_annotation
 from nmd_scanner.benchmark import KEY, join_features, run_nmd_scanner
 from nmd_scanner.benchmark.figures import (
     AXIS,
@@ -181,7 +182,8 @@ args.out_dir.mkdir(parents=True, exist_ok=True)
 
 # %%
 tcga_df = pl.read_parquet(args.benchmark_dir / "tcga.parquet")
-features_df = run_nmd_scanner(tcga_df, args.out_dir / "variants.vcf", args.gff3, args.fasta, prediction=False)
+fasta = Fasta(str(args.fasta))
+features_df = run_nmd_scanner(tcga_df, read_annotation(args.gff3, fasta), fasta, prediction=False)
 rows_df = join_features(tcga_df, features_df, "TCGA").sort("source_row")
 logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga_df), len(rows_df))
 # A DataFrame, so that the random forest keeps the input names as feature_names_in_

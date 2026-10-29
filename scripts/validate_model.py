@@ -34,7 +34,7 @@ study and its NMD efficiency. TCGA has the out-of-fold predictions in oof_predic
 
 Steps:
 1. Read the benchmark tables of --benchmark-dir, except TCGA.
-2. Run nmd_scanner.annotate on their unique variants. It adds the prediction of the model as
+2. Run nmd_scanner.annotate_variants on their unique variants. It adds the prediction of the model as
    nmd_efficiency_prediction. Join each measured row to the NMD-Scanner row of its transcript and variant.
 3. Keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why.
 4. A benchmark with the column tissue has one row per variant and tissue. Its cohort has one row per variant, with the
@@ -49,8 +49,7 @@ Steps:
 7. For MMRF-TARGET, compute the numbers of step 5 also for the rows on transcripts of the TCGA training rows, and for
    the other rows.
 
-Outputs in --out-dir: variants.vcf (the input of nmd_scanner.annotate), validation.json, and figures/ with each
-figure as PNG and PDF.
+Outputs in --out-dir: validation.json and figures/ with each figure as PNG and PDF.
 """
 
 import argparse
@@ -63,8 +62,10 @@ from pathlib import Path
 import numpy as np
 import plotnine as pn
 import polars as pl
+from pyfaidx import Fasta
 from scipy.stats import rankdata
 
+from nmd_scanner import read_annotation
 from nmd_scanner.benchmark import DATASETS, KEY, join_features, run_nmd_scanner
 from nmd_scanner.benchmark.figures import (
     AXIS,
@@ -220,7 +221,8 @@ if trained.read_bytes() != MODEL_PATH.read_bytes():
 # %%
 benchmarks = {name: pl.read_parquet(args.benchmark_dir / f"{name}.parquet") for name in DATASETS if name != "tcga"}
 variants_df = pl.concat([table_df.select("chrom", "pos", "ref", "alt") for table_df in benchmarks.values()])
-scored_df = run_nmd_scanner(variants_df, args.out_dir / "variants.vcf", args.gff3, args.fasta).select(
+fasta = Fasta(str(args.fasta))
+scored_df = run_nmd_scanner(variants_df, read_annotation(args.gff3, fasta), fasta).select(
     *KEY, "nmd_efficiency_prediction_status", "nmd_escape", prediction="nmd_efficiency_prediction"
 )
 # The bootstrap of correlations and the sums of the means depend on the order of the rows

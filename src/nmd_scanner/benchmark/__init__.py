@@ -22,14 +22,15 @@ Every benchmark table has these columns, with one row per measurement:
 - source_row: the index of the row in the study table, from 0. Sorting on it gives the rows a fixed order.
 
 run_nmd_scanner runs NMD-Scanner on the variants of benchmark tables, and join_features keeps the rows that the NMD
-efficiency model can predict. Build the benchmark tables with the GFF3 of run_nmd_scanner, so that a null gene marks a
-transcript missing from it.
+efficiency model can predict. Read the annotation_df of run_nmd_scanner from the GFF3 of the benchmark tables, so
+that a null gene marks a transcript missing from it.
 """
 
 import logging
-from pathlib import Path
 
+import pandas as pd
 import polars as pl
+from pyfaidx import Fasta
 
 import nmd_scanner
 from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
@@ -42,28 +43,31 @@ KEY = ["transcript", "chrom", "pos", "ref", "alt"]
 
 
 def run_nmd_scanner(
-    variants_df: pl.DataFrame, vcf: Path, gff3: Path, fasta: Path, prediction: bool = True
+    variants_df: pl.DataFrame, annotation_df: pd.DataFrame, fasta: Fasta, prediction: bool = True
 ) -> pl.DataFrame:
     """
-    Write the unique variants of the columns chrom, pos, ref and alt of variants_df to vcf, and run nmd_scanner.annotate
-    on it without the sequence columns. Return the result as a polars table with the columns of KEY: transcript is
+    Run nmd_scanner.annotate_variants on the unique variants of the columns chrom, pos, ref and alt of variants_df,
+    without the sequence columns. annotation_df is the table of nmd_scanner.read_annotation, and fasta is the
+    pyfaidx.Fasta that it took. Return the result as a polars table with the columns of KEY: transcript is
     transcript_id without version, and pos is the 1-based start.
     """
-    unique_df = variants_df.select("chrom", "pos", "ref", "alt").unique().sort("chrom", "pos", "ref", "alt")
-    columns_df = unique_df.select(
-        pl.col("chrom").alias("#CHROM"),
-        POS="pos",
-        ID=pl.lit("."),
-        REF="ref",
-        ALT="alt",
-        QUAL=pl.lit("."),
-        FILTER=pl.lit("."),
-        INFO=pl.lit("."),
+    # vcf_df is the table of nmd_scanner.read_vcf, whose Start and End are 0-based half-open
+    start = pl.col("pos").cast(pl.Int64) - 1
+    vcf_df = (
+        variants_df.select("chrom", "pos", "ref", "alt")
+        .unique()
+        .sort("chrom", "pos", "ref", "alt")
+        .select(
+            Chromosome="chrom",
+            Start=start,
+            End=start + pl.col("ref").str.len_chars().cast(pl.Int64),
+            ID=pl.lit("."),
+            Ref="ref",
+            Alt="alt",
+        )
+        .to_pandas()
     )
-    with open(vcf, "w", newline="") as handle:
-        handle.write("##fileformat=VCFv4.2\n")
-        columns_df.write_csv(handle, separator="\t", quote_style="never")
-    result = nmd_scanner.annotate(vcf, gff3, fasta, sequences=False, prediction=prediction)
+    result = nmd_scanner.annotate_variants(vcf_df, annotation_df, fasta, sequences=False, prediction=prediction)
     # NMD-Scanner's start is 0-based
     return pl.DataFrame(nmd_scanner.to_arrow(result)).with_columns(
         transcript=pl.col("transcript_id").str.split(".").list.first(), pos=pl.col("start") + 1
