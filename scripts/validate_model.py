@@ -20,6 +20,7 @@ nmd_escape alone rank the measured NMD efficiency in the benchmarks of nmd_scann
 
 Run it as a script with:
 
+\b
     uv run --extra scripts python scripts/validate_model.py --benchmark-dir benchmarks/ \
         --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --train-dir train/ --out-dir validate/
 
@@ -33,6 +34,8 @@ Cohorts: the benchmarks of nmd_scanner.benchmark.DATASETS. Each module of nmd_sc
 study and its NMD efficiency. TCGA has the out-of-fold predictions in oof_predictions.parquet of --train-dir.
 
 Steps:
+
+\b
 1. Read the benchmark tables of --benchmark-dir, except TCGA.
 2. Run nmd_scanner.annotate_variants on their unique variants. It adds the prediction of the model as
    nmd_efficiency_prediction. Join each measured row to the NMD-Scanner row of its transcript and variant.
@@ -52,13 +55,15 @@ Steps:
 Outputs in --out-dir: validation.json and figures/ with each figure as PNG and PDF.
 """
 
-import argparse
 import json
 import logging
 import os
 import shlex
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import click
 import numpy as np
 import plotnine as pn
 import polars as pl
@@ -195,21 +200,47 @@ def interval_plot(rows_df: pl.DataFrame, labels: list[str]) -> pn.ggplot:
 
 
 # %%
-parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument(
-    "--benchmark-dir", required=True, type=Path, help="--out-dir of build_benchmarks.py, with the benchmark tables"
+@click.command(help=__doc__)
+@click.option(
+    "--benchmark-dir",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    help="--out-dir of build_benchmarks.py, with the benchmark tables",
 )
-parser.add_argument("--gff3", required=True, type=Path, help="GENCODE GFF3 of GRCh38, optionally gzip-compressed")
-parser.add_argument("--fasta", required=True, type=Path, help="GRCh38 FASTA with chr names and a .fai index")
-parser.add_argument(
+@click.option(
+    "--gff3",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    help="GENCODE GFF3 of GRCh38, optionally gzip-compressed",
+)
+@click.option(
+    "--fasta",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    help="GRCh38 FASTA with chr names and a .fai index",
+)
+@click.option(
     "--train-dir",
     required=True,
-    type=Path,
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
     help="--out-dir of the train_model.py run that trained the model; it has the out-of-fold predictions",
 )
-parser.add_argument("--out-dir", required=True, type=Path, help="directory for the outputs")
+@click.option(
+    "--out-dir", required=True, type=click.Path(path_type=Path, file_okay=False), help="directory for the outputs"
+)
+def command(**params: object) -> None:
+    pass
+
+
 # In a notebook, sys.argv holds the arguments of the kernel
-args = parser.parse_args(shlex.split(os.environ.get("VALIDATE_MODEL_ARGS", "")) if in_notebook() else None)
+argv = shlex.split(os.environ.get("VALIDATE_MODEL_ARGS", "")) if in_notebook() else sys.argv[1:]
+try:
+    args = SimpleNamespace(**command.make_context("validate_model.py", argv).params)
+except click.exceptions.Exit as exit_:
+    sys.exit(exit_.exit_code)
+except click.ClickException as error:
+    error.show()
+    sys.exit(error.exit_code)
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 for name in ("validate_model", "nmd_scanner.benchmark"):
     logging.getLogger(name).setLevel(logging.INFO)

@@ -20,6 +20,7 @@ training row out of fold.
 
 Run it as a script with:
 
+\b
     uv run --extra scripts python scripts/train_model.py --benchmark-dir benchmarks/ \
         --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa --out-dir train/
 
@@ -29,6 +30,8 @@ It is also a notebook (see scripts/README.md). In a notebook, the arguments come
 TRAIN_MODEL_ARGS.
 
 Steps:
+
+\b
 1. Read tcga.parquet of --benchmark-dir (see nmd_scanner.benchmark.datasets.tcga). Its column NMD_efficiency is the
    target.
 2. Run nmd_scanner.annotate_variants on the unique variants. Join each TCGA row to the NMD-Scanner row of its
@@ -46,13 +49,15 @@ Outputs in --out-dir: oof_predictions.parquet, nmd_efficiency_rf.onnx, nmd_effic
 R2 of each fold and the hyperparameters), and figures/ with each figure as PNG and PDF.
 """
 
-import argparse
 import json
 import logging
 import os
 import shlex
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import click
 import joblib
 import numpy as np
 import onnx
@@ -166,15 +171,41 @@ def save_onnx(estimator: RandomForestRegressor, path: Path) -> None:
 
 
 # %%
-parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument(
-    "--benchmark-dir", required=True, type=Path, help="--out-dir of build_benchmarks.py, with tcga.parquet"
+@click.command(help=__doc__)
+@click.option(
+    "--benchmark-dir",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    help="--out-dir of build_benchmarks.py, with tcga.parquet",
 )
-parser.add_argument("--gff3", required=True, type=Path, help="GENCODE GFF3 of GRCh38, optionally gzip-compressed")
-parser.add_argument("--fasta", required=True, type=Path, help="GRCh38 FASTA with chr names and a .fai index")
-parser.add_argument("--out-dir", required=True, type=Path, help="directory for the outputs")
+@click.option(
+    "--gff3",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    help="GENCODE GFF3 of GRCh38, optionally gzip-compressed",
+)
+@click.option(
+    "--fasta",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    help="GRCh38 FASTA with chr names and a .fai index",
+)
+@click.option(
+    "--out-dir", required=True, type=click.Path(path_type=Path, file_okay=False), help="directory for the outputs"
+)
+def command(**params: object) -> None:
+    pass
+
+
 # In a notebook, sys.argv holds the arguments of the kernel
-args = parser.parse_args(shlex.split(os.environ.get("TRAIN_MODEL_ARGS", "")) if in_notebook() else None)
+argv = shlex.split(os.environ.get("TRAIN_MODEL_ARGS", "")) if in_notebook() else sys.argv[1:]
+try:
+    args = SimpleNamespace(**command.make_context("train_model.py", argv).params)
+except click.exceptions.Exit as exit_:
+    sys.exit(exit_.exit_code)
+except click.ClickException as error:
+    error.show()
+    sys.exit(error.exit_code)
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 for name in ("train_model", "nmd_scanner.benchmark"):
     logging.getLogger(name).setLevel(logging.INFO)

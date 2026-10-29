@@ -4,16 +4,19 @@ Build the NMD efficiency benchmarks of nmd_scanner.benchmark from their pinned p
 
 Run it with:
 
+\b
     uv run --extra scripts python scripts/build_benchmarks.py --gff3 gencode.v42.annotation.gff3.gz --fasta GRCh38.fa \
         --out-dir benchmarks/
 
 --dataset builds only the named benchmarks, e.g. --dataset gtex --dataset geuvadis. By default, it builds all.
 """
 
-import argparse
 import logging
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import click
 from pyfaidx import Fasta
 
 from nmd_scanner.benchmark import DATASETS
@@ -21,20 +24,46 @@ from nmd_scanner.benchmark.sources import read_transcripts
 
 logger = logging.getLogger("build_benchmarks")
 
-parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--gff3", required=True, type=Path, help="GENCODE GFF3 of GRCh38, optionally gzip-compressed")
-parser.add_argument("--fasta", required=True, type=Path, help="GRCh38 FASTA with chr names and a .fai index")
-parser.add_argument("--out-dir", required=True, type=Path, help="directory for the benchmark tables")
-parser.add_argument(
+
+@click.command(help=__doc__)
+@click.option(
+    "--gff3",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    help="GENCODE GFF3 of GRCh38, optionally gzip-compressed",
+)
+@click.option(
+    "--fasta",
+    required=True,
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    help="GRCh38 FASTA with chr names and a .fai index",
+)
+@click.option(
+    "--out-dir",
+    required=True,
+    type=click.Path(path_type=Path, file_okay=False),
+    help="directory for the benchmark tables",
+)
+@click.option(
     "--downloads",
-    type=Path,
+    type=click.Path(path_type=Path, file_okay=False),
     help="directory for the downloaded study tables, by default <out-dir>/downloads. A study table that is there"
     " already is read from there, with the same sha256 check.",
 )
-parser.add_argument(
-    "--dataset", action="append", choices=list(DATASETS), help="a benchmark to build; repeat it for more"
+@click.option(
+    "--dataset", multiple=True, type=click.Choice(list(DATASETS)), help="a benchmark to build; repeat it for more"
 )
-args = parser.parse_args()
+def command(**params: object) -> None:
+    pass
+
+
+try:
+    args = SimpleNamespace(**command.make_context("build_benchmarks.py", sys.argv[1:]).params)
+except click.exceptions.Exit as exit_:
+    sys.exit(exit_.exit_code)
+except click.ClickException as error:
+    error.show()
+    sys.exit(error.exit_code)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 args.out_dir.mkdir(parents=True, exist_ok=True)
 downloads = args.downloads or args.out_dir / "downloads"
