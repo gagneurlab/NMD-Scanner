@@ -11,8 +11,6 @@ from pathlib import Path
 import polars as pl
 from pyfaidx import Fasta
 
-from nmd_scanner._polars_bio import pb
-
 logger = logging.getLogger(__name__)
 
 # Both tables of NMDEff (https://github.com/hjkng/nmdeff) were last changed in this commit, which is also its tag v1.0
@@ -52,42 +50,16 @@ def fetch(downloads: Path, url: str, sha256: str, member: str | None = None) -> 
     return data
 
 
-def read_transcripts(gff3: Path) -> pl.DataFrame:
-    """
-    Read the transcript lines of the GFF3 with polars-bio, one row per transcript. The columns are transcript, strand
-    and gene. transcript is the transcript ID without the prefix transcript: (Ensembl) and without version. gene is the
-    ID without the prefix gene: (Ensembl) and without version of the gene in the Parent of the line. A transcript line
-    is any line whose ID attribute starts with ENST after the prefix (exon, CDS and UTR lines have IDs like
-    exon:ENST... in GENCODE).
-    """
-    transcripts_df = (
-        pb.scan_gff(str(gff3), attr_fields=["ID", "Parent"])
-        # polars-bio's GFF frame takes the columns of select as one list
-        .select([pl.col("strand"), pl.col("ID"), pl.col("Parent")])
-        .collect()
-        .select(
-            transcript=pl.col("ID").str.strip_prefix("transcript:"),
-            strand=pl.col("strand"),
-            gene=pl.col("Parent").str.strip_prefix("gene:"),
-        )
-        .filter(pl.col("transcript").str.starts_with("ENST"))
-        .with_columns(pl.col("transcript", "gene").str.split(".").list.first())
-        .unique()
-    )
-    if transcripts_df.is_empty():
-        raise ValueError(f"{gff3} has no transcript line with an ID that starts with ENST")
-    return transcripts_df
-
-
 def hgvsc_alleles(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
     Rename the columns chromosome, start and Transcript_ID of a table of Kim et al. 2024 to chrom, pos and transcript,
-    and add ref and alt on the forward strand. transcripts_df is the table of read_transcripts.
+    and add ref and alt on the forward strand. transcripts_df is the transcript table of build (see
+    nmd_scanner.benchmark).
 
     HGVSc (c.123G>T, optionally prefixed by the transcript ID) has the alleles on the transcript strand. On a
     minus-strand transcript of the GFF3, complement them. For a transcript missing from the GFF3, use the orientation
     whose REF matches the FASTA. Fail if HGVSc is not a single-base substitution. The transcript IDs of the table must
-    lack the version, like those of read_transcripts.
+    lack the version, like those of transcripts_df.
     """
     table_df = table_df.rename({"chromosome": "chrom", "start": "pos", "Transcript_ID": "transcript"})
     table_df = table_df.with_columns(
@@ -113,8 +85,8 @@ def hgvsc_alleles(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: F
 def finish_table(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
     Add the gene of each transcript, check each REF against the FASTA, and keep the benchmark columns: COLUMNS,
-    tissue if table_df has it, and source_row. gene comes from transcripts_df (see read_transcripts), and it is null
-    for a transcript that the GFF3 lacks. Raise a ValueError at the first REF that differs from the FASTA.
+    tissue if table_df has it, and source_row. gene comes from transcripts_df (see nmd_scanner.benchmark), and it is
+    null for a transcript that the GFF3 lacks. Raise a ValueError at the first REF that differs from the FASTA.
     """
     table_df = table_df.with_columns(
         fasta_ref=pl.Series(

@@ -14,7 +14,7 @@ from pyfaidx import Fasta
 
 from nmd_scanner.benchmark import DATASETS, datasets, join_features
 from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
-from nmd_scanner.benchmark.sources import check_sha256, fetch, hgvsc_alleles, read_transcripts
+from nmd_scanner.benchmark.sources import check_sha256, fetch, hgvsc_alleles
 
 # ENST3 is missing from the GFF3
 TRANSCRIPTS = pl.DataFrame({"transcript": ["ENST1", "ENST2"], "strand": ["+", "-"], "gene": ["ENSG1", "ENSG2"]})
@@ -153,36 +153,6 @@ def test_build_geuvadis(fasta, caplog):
     assert_frame_equal(geuvadis.build((nonsense_df, isoforms_df), TRANSCRIPTS, fasta), expected_df)
     assert "Geuvadis: 2 of 5 rows lack VAF_mean or have 0" in caplog.text
     assert "Geuvadis: 1 of 3 rows are outside the study's accurate annotation" in caplog.text
-
-
-def test_read_transcripts(tmp_path):
-    gff3 = tmp_path / "annotation.gff3"
-    gff3.write_text(
-        "##gff-version 3\n"
-        "chr1\tHAVANA\tgene\t1\t8\t.\t-\t.\tID=ENSG2.1;gene_id=ENSG2.1\n"
-        "chr1\tHAVANA\ttranscript\t1\t8\t.\t-\t.\tID=ENST2.4;Parent=ENSG2.1\n"
-        "chr1\tHAVANA\texon\t1\t8\t.\t-\t.\tID=exon:ENST2.4:1;Parent=ENST2.4\n"
-    )
-    assert read_transcripts(gff3).rows() == [("ENST2", "-", "ENSG2")]
-
-
-def test_read_transcripts_ensembl(tmp_path):
-    gff3 = tmp_path / "annotation.gff3"
-    gff3.write_text(
-        "##gff-version 3\n"
-        "chr1\tensembl\tgene\t1\t8\t.\t-\t.\tID=gene:ENSG2;biotype=protein_coding\n"
-        "chr1\tensembl\tmRNA\t1\t8\t.\t-\t.\tID=transcript:ENST2;Parent=gene:ENSG2\n"
-        "chr1\tensembl\texon\t1\t8\t.\t-\t.\tID=ENSE2;Parent=transcript:ENST2\n"
-        "chr1\tensembl\tCDS\t1\t8\t.\t-\t0\tID=CDS:ENSP2;Parent=transcript:ENST2\n"
-    )
-    assert read_transcripts(gff3).rows() == [("ENST2", "-", "ENSG2")]
-
-
-def test_read_transcripts_fails_without_enst_ids(tmp_path):
-    gff3 = tmp_path / "annotation.gff3"
-    gff3.write_text("chr1\tensembl\tgene\t1\t8\t.\t-\t.\tID=gene:ENSG2.1\n")
-    with pytest.raises(ValueError, match="has no transcript line with an ID that starts with ENST"):
-        read_transcripts(gff3)
 
 
 def test_check_sha256():

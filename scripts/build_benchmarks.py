@@ -14,10 +14,11 @@ import logging
 from pathlib import Path
 
 import click
+import polars as pl
 from pyfaidx import Fasta
 
+from nmd_scanner import read_annotation
 from nmd_scanner.benchmark import DATASETS
-from nmd_scanner.benchmark.sources import read_transcripts
 
 logger = logging.getLogger("build_benchmarks")
 
@@ -61,8 +62,18 @@ def main(gff3: Path, fasta: Path, out_dir: Path, downloads: Path | None, dataset
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     out_dir.mkdir(parents=True, exist_ok=True)
     downloads = downloads or out_dir / "downloads"
-    transcripts_df = read_transcripts(gff3)
     genome = Fasta(str(fasta))
+    transcripts_df = (
+        pl.from_pandas(read_annotation(gff3, genome)[["transcript_id", "Strand", "gene_id"]])
+        .select(
+            transcript=pl.col("transcript_id").str.split(".").list.first(),
+            strand="Strand",
+            gene=pl.col("gene_id").str.split(".").list.first(),
+        )
+        .unique()
+    )
+    if transcripts_df.is_empty():
+        raise ValueError(f"{gff3} has no exon or CDS row")
     for name in datasets or DATASETS:
         dataset = DATASETS[name]
         table_df = dataset.build(dataset.download(downloads), transcripts_df, genome)

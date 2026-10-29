@@ -7,9 +7,10 @@ DATASETS maps the name of each benchmark to its module in nmd_scanner.benchmark.
 of the benchmark in logs and figures, and two functions:
 - download(downloads) returns the raw tables of the study. It downloads them with sources.fetch, which keeps the files
   in the directory downloads.
-- build(raw, transcripts_df, fasta) returns the benchmark table of the raw tables, without network. transcripts_df is
-  the table of sources.read_transcripts, and fasta is a pyfaidx.Fasta of GRCh38. build applies the study's own filters,
-  and it logs the rows that they drop.
+- build(raw, transcripts_df, fasta) returns the benchmark table of the raw tables, without network. fasta is a
+  pyfaidx.Fasta of GRCh38. transcripts_df has one row per transcript of nmd_scanner.read_annotation, with the columns
+  transcript (transcript_id without version), strand (Strand) and gene (gene_id without version).
+  scripts/build_benchmarks.py builds it. build applies the study's own filters, and it logs the rows that they drop.
 
 Every benchmark table has these columns, with one row per measurement:
 - chrom, pos, ref and alt: the variant on GRCh38. pos is 1-based, and ref and alt are on the forward strand.
