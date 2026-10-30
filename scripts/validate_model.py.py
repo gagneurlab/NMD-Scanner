@@ -76,11 +76,10 @@ from sklearn.metrics import r2_score
 from nmd_scanner import annotate_variants, read_annotation
 from nmd_scanner.benchmark import DATASETS, KEY, VARIANT_COLUMNS, join_features
 from nmd_scanner.benchmark.figures import (
-    AXIS,
     BLUE,
-    MUTED_INK,
-    ORANGE,
-    SECONDARY_INK,
+    GRAY,
+    INK,
+    LIGHT_GRAY,
     SURFACE,
     calibration,
     calibration_plot,
@@ -97,7 +96,7 @@ N_RESAMPLES = 2000
 EXCLUDED_TISSUES = ["Bladder", "Cervix - Ectocervix", "Cervix - Endocervix", "Fallopian Tube", "Kidney - Medulla"]
 # The scores of the Spearman bars and of the MMRF-TARGET intervals: the key in the dict of correlations, the direct
 # label, the color, and the offset from the position of the group
-MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
+MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", LIGHT_GRAY, -0.15)]
 GAIN = [("gain", "", BLUE, 0.0)]
 # The keys of the MMRF-TARGET variant-sample pairs by transcript in validation.json, and their names in the log and the
 # figure
@@ -274,7 +273,7 @@ oof_r2 = r2_score(oof_measured, oof_df["prediction"].to_numpy())
 plot = (
     pn.ggplot(oof_df, pn.aes("prediction", "NMD_efficiency"))
     + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
-    + pn.geom_abline(color=AXIS)
+    + pn.geom_abline(color=GRAY)
     + pn.labs(
         title=f"TCGA, out of fold, {len(oof_df):,} variant-sample pairs\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
         x="Predicted NMD efficiency",
@@ -309,16 +308,14 @@ importance_df = importance_df.with_columns(bar=bars.cast(pl.Enum(bars)))
 plot = (
     pn.ggplot(importance_df, pn.aes("bar", "value"))
     + pn.geom_col(fill=BLUE, width=0.6)
-    + pn.geom_linerange(
-        pn.aes(ymin="value - sd", ymax="value + sd"), data=importance_df.drop_nulls(), color=SECONDARY_INK
-    )
+    + pn.geom_linerange(pn.aes(ymin="value - sd", ymax="value + sd"), data=importance_df.drop_nulls(), color=INK)
     + pn.scale_x_discrete(labels=lambda bars: [bar.split("|")[1] for bar in bars])
     + pn.coord_flip()
     + pn.facet_wrap("kind", scales="free")
     + pn.labs(x="", y="Importance")
     + pn.theme(panel_grid_major_y=pn.element_blank())
 )
-save_figure(plot, OUT_DIR, "feature_importance", 9, 5)
+save_figure(plot, OUT_DIR, "feature_importance", 10.5, 5)
 
 # %% [markdown]
 # The learning curve shows the R2 of the final hyperparameters on the training variant-sample pairs and on the held-out
@@ -345,12 +342,12 @@ curves_df = pl.concat(
             }
         )
         for scores, label, color in (
-            (train_scores, "Training\nvariant-sample pairs", MUTED_INK),
+            (train_scores, "Training\nvariant-sample pairs", GRAY),
             (test_scores, "Held-out fold", BLUE),
         )
     ]
 )
-training_df, held_out_df = (curves_df.filter(pl.col("color") == color) for color in (MUTED_INK, BLUE))
+training_df, held_out_df = (curves_df.filter(pl.col("color") == color) for color in (GRAY, BLUE))
 # The label of the training curve goes on two lines centered above its fifth point, clear of the band there and at the
 # neighbouring points
 band_top = training_df[3:6].select((pl.col("mean") + pl.col("sd")).max()).item()
@@ -360,15 +357,13 @@ plot = (
     + pn.geom_ribbon(pn.aes(ymin="mean - sd", ymax="mean + sd", fill="color"), alpha=0.1)
     + pn.geom_line(pn.aes(color="color"))
     + pn.geom_point(pn.aes(color="color"), size=2.5)
-    + pn.geom_text(
-        pn.aes(y="y", label="label"), data=training_label_df, ha="center", va="bottom", color=SECONDARY_INK, size=9
-    )
+    + pn.geom_text(pn.aes(y="y", label="label"), data=training_label_df, ha="center", va="bottom", color=INK, size=9)
     + pn.geom_text(
         pn.aes(label="label"),
         data=held_out_df.tail(1),
         ha="left",
         nudge_x=0.03 * train_sizes[-1],
-        color=SECONDARY_INK,
+        color=INK,
         size=9,
     )
     + pn.scale_color_identity()
@@ -388,7 +383,7 @@ oob_df = pl.read_parquet(TRAIN_DIR / "oob_error.parquet").select("trees", error=
 final_trees = json.loads((TRAIN_DIR / "cv_results.json").read_text())["params"]["n_estimators"]
 plot = (
     pn.ggplot(oob_df, pn.aes("trees", "error"))
-    + pn.geom_vline(xintercept=final_trees, color=AXIS)
+    + pn.geom_vline(xintercept=final_trees, color=GRAY)
     + pn.annotate(
         "text",
         x=final_trees,
@@ -397,7 +392,7 @@ plot = (
         ha="left",
         va="top",
         nudge_x=5,
-        color=SECONDARY_INK,
+        color=INK,
         size=9,
     )
     + pn.geom_line(color=BLUE)
@@ -525,7 +520,7 @@ scatter_df = facet_frame(
 plot = (
     pn.ggplot(scatter_df, pn.aes("prediction", "NMD_efficiency"))
     + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
-    + pn.geom_abline(color=AXIS)
+    + pn.geom_abline(color=GRAY)
     + pn.facet_wrap("panel", scales="free")
     + pn.labs(x="Predicted NMD efficiency", y="Measured NMD efficiency")
 )
@@ -547,7 +542,7 @@ for cohort, cohort_df in cohorts.items():
     )
     calibrations[title] = bins_df.with_columns(slope=slope, intercept=intercept)
 plot = calibration_plot(facet_frame(calibrations)) + pn.facet_wrap("panel", scales="free")
-save_figure(plot, OUT_DIR, "calibration", 8, 9)
+save_figure(plot, OUT_DIR, "calibration", 9, 10.25)
 
 # %% [markdown]
 # The boxes show the measured NMD efficiency of the measurements by `nmd_escape`, per cohort. A box spans the quartiles,
@@ -572,7 +567,7 @@ plot = (
     + pn.labs(x="nmd_escape", y="Measured NMD efficiency")
     + pn.theme(panel_grid_major_x=pn.element_blank())
 )
-save_figure(plot, OUT_DIR, "efficiency_by_nmd_escape", 9.5, 3.5)
+save_figure(plot, OUT_DIR, "efficiency_by_nmd_escape", 11, 3.5)
 
 # %% [markdown]
 # The bars show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
@@ -598,11 +593,9 @@ bracket_lines_df = pl.concat(
 plot = (
     pn.ggplot(bars_df, pn.aes("position", "value"))
     + pn.geom_col(pn.aes(fill="color"), width=0.27)
-    + pn.geom_errorbar(pn.aes(ymin="low", ymax="high"), width=0.12, color=SECONDARY_INK)
-    + pn.geom_segment(pn.aes("x", "y", xend="xend", yend="yend"), data=bracket_lines_df, color=SECONDARY_INK)
-    + pn.geom_text(
-        pn.aes(y="rho", label="label"), data=brackets_df, ha="left", nudge_y=0.012, color=SECONDARY_INK, size=9
-    )
+    + pn.geom_errorbar(pn.aes(ymin="low", ymax="high"), width=0.12, color=INK, size=0.75)
+    + pn.geom_segment(pn.aes("x", "y", xend="xend", yend="yend"), data=bracket_lines_df, color=INK, size=0.75)
+    + pn.geom_text(pn.aes(y="rho", label="label"), data=brackets_df, ha="left", nudge_y=0.012, color=INK, size=9)
     + pn.scale_fill_identity(
         guide="legend",
         breaks=[color for _, _, color, _ in MODEL_AND_RULES],
@@ -616,7 +609,7 @@ plot = (
     + pn.scale_y_continuous(limits=(0, 1), breaks=np.linspace(0, 1, 6), expand=(0, 0))
     + pn.coord_flip()
     + pn.labs(x="", y="Spearman ρ with measured NMD efficiency (95% CI)")
-    + pn.theme(legend_title=pn.element_blank(), panel_grid_major_y=pn.element_blank())
+    + pn.theme(panel_grid_major_y=pn.element_blank())
 )
 save_figure(plot, OUT_DIR, "spearman_per_cohort", 7, 3.5)
 
@@ -646,16 +639,16 @@ r2_df = (
 )
 plot = (
     pn.ggplot(r2_df, pn.aes("term", "value"))
-    + pn.geom_hline(yintercept=0, color=AXIS)
+    + pn.geom_hline(yintercept=0, color=GRAY)
     + pn.geom_col(fill=BLUE, width=0.6)
-    + pn.geom_text(pn.aes(y="label_position", label="label", ha="ha"), color=SECONDARY_INK, size=9)
+    + pn.geom_text(pn.aes(y="label_position", label="label", ha="ha"), color=INK, size=9)
     + pn.scale_y_continuous(breaks=[-0.4, 0, 0.4], expand=(0, 0.3))
     + pn.coord_flip()
     + pn.facet_wrap("panel", nrow=1)
     + pn.labs(x="", y="Share of the variance of the measured NMD efficiency")
     + pn.theme(panel_grid_major_y=pn.element_blank())
 )
-save_figure(plot, OUT_DIR, "r2_decomposition", 10, 3)
+save_figure(plot, OUT_DIR, "r2_decomposition", 11, 3)
 
 # %% [markdown]
 # The dots show the mean measured NMD efficiency of the GTEx variant-tissue pairs with `nmd_escape` False, per tissue
@@ -671,7 +664,7 @@ nmd_triggering_df = gtex_df.filter(~pl.col("nmd_escape"), pl.col("tissue").is_in
 )
 plot = (
     pn.ggplot(nmd_triggering_df, pn.aes("tissue", "NMD_efficiency"))
-    + pn.geom_hline(yintercept=pairs_result["mean_nmd_triggering"], color=AXIS, linetype="dashed")
+    + pn.geom_hline(yintercept=pairs_result["mean_nmd_triggering"], color=GRAY, linetype="dashed")
     + pn.annotate(
         "text",
         x=tissues[-1],
@@ -679,7 +672,7 @@ plot = (
         label=f"All tissues {pairs_result['mean_nmd_triggering']:.2f}",
         ha="left",
         nudge_y=0.01,
-        color=SECONDARY_INK,
+        color=INK,
         size=9,
     )
     + pn.stat_summary(fun_data="mean_cl_normal", color=BLUE)
@@ -710,11 +703,11 @@ tissue_labels_df = pl.concat(
 ).with_columns(label=pl.format("{}, {} variants", "tissue", "n"))
 plot = (
     pn.ggplot(tissue_spearman_df, pn.aes("rules", "model"))
-    + pn.geom_abline(color=AXIS, linetype="dashed")
+    + pn.geom_abline(color=GRAY, linetype="dashed")
     + pn.geom_point(color=BLUE, size=2.5)
     # Both axes span the same range, so that the square panel gives them the same scale
     + pn.geom_blank(pn.aes(x="model", y="rules"))
-    + pn.geom_text(pn.aes(x="x", label="label", ha="ha", va="va"), data=tissue_labels_df, color=SECONDARY_INK, size=9)
+    + pn.geom_text(pn.aes(x="x", label="label", ha="ha", va="va"), data=tissue_labels_df, color=INK, size=9)
     + pn.labs(
         title=f"GTEx, Spearman ρ with the measured NMD efficiency in {len(tissue_spearman_df)} tissues",
         x="Spearman ρ, canonical rules",
@@ -743,8 +736,8 @@ plot = (
     pn.ggplot(transcript_intervals_df, pn.aes(y="position", color="color"))
     + pn.geom_segment(pn.aes(x="low", xend="high", yend="position"), size=1)
     + pn.geom_point(pn.aes(x="value"), size=2.5)
-    + pn.geom_text(pn.aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
-    + pn.geom_vline(pn.aes(xintercept="x"), data=zero_df, color=AXIS)
+    + pn.geom_text(pn.aes(x="high", label="label"), ha="left", nudge_x=0.01, color=INK, size=9)
+    + pn.geom_vline(pn.aes(xintercept="x"), data=zero_df, color=GRAY)
     + pn.scale_color_identity()
     + pn.scale_y_continuous(
         breaks=-np.arange(len(transcript_split)),
@@ -758,4 +751,4 @@ plot = (
     + pn.labs(title="MMRF-TARGET by transcript, 95% CIs", x="")
     + pn.theme(axis_title_y=pn.element_blank(), panel_grid_major_y=pn.element_blank())
 )
-save_figure(plot, OUT_DIR, "mmrf_target_by_transcript", 9, 3)
+save_figure(plot, OUT_DIR, "mmrf_target_by_transcript", 10, 3)

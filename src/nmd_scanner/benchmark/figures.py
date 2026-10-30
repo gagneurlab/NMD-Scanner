@@ -3,8 +3,11 @@ The plotnine theme, the calibration plot and save_figure of scripts/validate_mod
 calibration computes the statistics of the calibration plot, and save_figure saves each figure as PNG and PDF. This
 module needs the extra scripts of nmd-scanner.
 
-The colors come from a categorical palette that is checked for color vision deficiency: BLUE marks the model and the
-only series of a figure, ORANGE marks the rules, and MUTED_INK marks a series that gives context.
+The theme and the colors follow the style of the AbExp paper figures: the theme_cowplot of cowplot with its background
+grid, at FONT_SIZE and LINE_SIZE. BLUE marks the model and the only series of a figure, and LIGHT_GRAY marks the rules.
+GRAY marks a series that gives context, and the reference lines. Under simulated protanopia, deuteranopia and
+tritanopia, BLUE stays apart from both grays. BLUE and GRAY have about the same lightness, so a figure tells them apart
+by direct labels, not only by their color.
 """
 
 from pathlib import Path
@@ -15,34 +18,44 @@ import plotnine as pn
 import polars as pl
 from scipy.stats import t
 
-BLUE = "#2a78d6"
-ORANGE = "#eb6834"
-INK = "#0b0b0b"
-SECONDARY_INK = "#52514e"
-MUTED_INK = "#898781"
-GRID = "#e1e0d9"
-AXIS = "#c3c2b7"
+BLUE = "#55A2CF"
+LIGHT_GRAY = "#BDBDBD"
+GRAY = "#999999"
+INK = "black"
+GRID = "#D9D9D9"
+STRIP = "#CCCCCC"
 SURFACE = "#ffffff"
 DPI = 600
+# The base font size in points, and the width of the axis lines in points
+FONT_SIZE = 12
+LINE_SIZE = 1
 # The calibration plots bin the measurements into this many quantile bins of the prediction
 CALIBRATION_BINS = 10
 
+# theme_cowplot sets the axis text, the legend text and the strip text at 12/14 of the base size, and the caption at
+# 11/14 of it. background_grid adds the major grid lines.
 pn.theme_set(
-    pn.theme_minimal(base_size=9)
+    pn.theme_classic(base_size=FONT_SIZE)
     + pn.theme(
+        text=pn.element_text(color=INK),
         plot_background=pn.element_rect(fill=SURFACE, color=SURFACE),
-        plot_title=pn.element_text(size=10, color=INK, ha="left"),
-        plot_caption=pn.element_text(color=SECONDARY_INK, ha="left"),
-        strip_text=pn.element_text(size=9, color=INK, ha="left", va="top", ma="left"),
-        axis_title=pn.element_text(color=SECONDARY_INK),
-        axis_text=pn.element_text(size=9, color=MUTED_INK),
+        plot_title=pn.element_text(size=FONT_SIZE, ha="left"),
+        plot_caption=pn.element_text(size=FONT_SIZE * 11 / 14, ha="left"),
+        strip_background=pn.element_rect(fill=STRIP, color=STRIP),
+        strip_text=pn.element_text(size=FONT_SIZE * 12 / 14),
+        axis_title=pn.element_text(size=FONT_SIZE),
+        axis_text=pn.element_text(size=FONT_SIZE * 12 / 14, color=INK),
         axis_text_y=pn.element_text(ma="right"),
-        axis_line=pn.element_line(color=AXIS, size=0.75),
-        axis_ticks=pn.element_line(color=AXIS, size=0.75),
+        axis_line=pn.element_line(color=INK, size=LINE_SIZE),
+        axis_ticks=pn.element_line(color=INK, size=LINE_SIZE),
+        axis_ticks_length=FONT_SIZE / 4,
         axis_ticks_minor=pn.element_blank(),
-        panel_grid_major=pn.element_line(color=GRID, size=0.75),
+        panel_grid_major=pn.element_line(color=GRID, size=0.7 * LINE_SIZE),
         panel_grid_minor=pn.element_blank(),
         panel_spacing_y=0.04,
+        legend_title=pn.element_blank(),
+        legend_text=pn.element_text(size=FONT_SIZE * 12 / 14),
+        legend_key_size=FONT_SIZE,
     )
 )
 # Embed TrueType fonts, so that the text in the PDF stays text
@@ -80,7 +93,7 @@ def calibration_plot(bins_df: pl.DataFrame) -> pn.ggplot:
     """
     return (
         pn.ggplot(bins_df, pn.aes("prediction", "NMD_efficiency"))
-        + pn.geom_abline(color=AXIS)
+        + pn.geom_abline(color=GRAY)
         # One line per fit
         + pn.geom_abline(
             pn.aes(slope="slope", intercept="intercept"),
@@ -96,7 +109,8 @@ def calibration_plot(bins_df: pl.DataFrame) -> pn.ggplot:
             y="Mean measured NMD efficiency",
             caption=f"Dots: mean in each of {CALIBRATION_BINS} quantile bins of the prediction,\n"
             "with the 95% CI of the measured mean.\n"
-            "Blue line: least-squares fit over all measurements. Gray line: measured = predicted.",
+            "Blue line: least-squares fit over all measurements.\n"
+            "Gray line: measured = predicted.",
         )
         + pn.theme(aspect_ratio=1)
     )
