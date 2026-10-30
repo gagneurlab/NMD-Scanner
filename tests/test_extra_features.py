@@ -293,7 +293,7 @@ def test_calculate_ptc_exon_length():
 
 
 def _analyzed(ref_cds_seq, alt_cds_seq):
-    """analyze_sequence row of a single exon CDS with an annotated stop codon."""
+    """The variant-transcript pair that analyze_sequence gives for a single exon CDS with an annotated stop codon."""
     df = pd.DataFrame(
         [
             {
@@ -313,7 +313,10 @@ def _analyzed(ref_cds_seq, alt_cds_seq):
 
 
 def _as_feature_row(analyzed):
-    """The FeatureRow of an analyze_sequence row: its columns that are FeatureRow fields, None in the other fields."""
+    """
+    The FeatureRow of a variant-transcript pair of analyze_sequence: its columns that are FeatureRow fields, None in
+    the other fields.
+    """
 
     names = [field.name for field in dataclasses.fields(FeatureRow)]
     return feature_row(**{name: plain_value(analyzed[name]) for name in names if name in analyzed.index})

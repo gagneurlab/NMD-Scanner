@@ -178,7 +178,7 @@ These columns apply the NMD escape rules to the PTC. For a variant-transcript pa
 
 ### Prediction status
 
-This column says whether the [NMD efficiency model](#nmd-efficiency-prediction) can predict the variant-transcript pair. The model cannot predict a pair in which one of its inputs is null, and it does not predict a start-loss variant: the training data contain no start-loss variant, and translation after a start loss can begin at several sites.
+This column says whether the [NMD efficiency model](#nmd-efficiency-prediction) can predict the variant-transcript pair. The model cannot predict a pair in which one of its inputs is null, and it does not predict a start-loss variant: the TCGA training variant-sample pairs contain no start-loss variant, and translation after a start loss can begin at several sites.
 
 | Column                             | Kind                             | Meaning                                                                                              | Null when |
 | ---------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- | --------- |
@@ -201,7 +201,7 @@ A variant-transcript pair with both annotation reasons gets `no_annotated_stop`.
 
 ### NMD efficiency prediction
 
-The model is a random forest trained on TCGA data. It predicts only the variant-transcript pairs with `nmd_efficiency_prediction_status` `ok`.
+The model is a random forest trained on TCGA variant-sample pairs. It predicts only the variant-transcript pairs with `nmd_efficiency_prediction_status` `ok`.
 
 | Column           | Kind  | Meaning                                                                                                                      | Null when                      |
 | ---------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |

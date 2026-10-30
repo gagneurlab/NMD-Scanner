@@ -51,7 +51,7 @@ def annotate(
     :param prediction: add the column nmd_efficiency_prediction after nmd_efficiency_prediction_status (see
                   nmd_scanner.model.add_nmd_efficiency_prediction). With False, it is left out, and the other
                   columns stay the same.
-    :return: DataFrame summarizing all annotated variants, with the columns and dtypes of
+    :return: DataFrame of the variant-transcript pairs, with the columns and dtypes of
              output_column_kinds(sequences=sequences, prediction=prediction) (see nmd_scanner.schema). It has
              zero rows if no variant gives a result.
     """
@@ -94,8 +94,8 @@ def annotate_variants(
     3. Add the NMD features and the NMD escape rules (e.g. 3' & 5'UTR length, downstream & upstream exon counts)
     4. Add the NMD efficiency prediction
 
-    :param vcf_df: variants with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf`` returns
-        them (see rules.extract_ptc)
+    :param vcf_df: VCF records with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
+        returns them (see rules.extract_ptc)
     :param annotation_df: gene annotation, as ``scan.read_annotation`` returns it
     :param fasta: reference genome (pyfaidx.Fasta), the one that ``read_annotation`` took
     :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
@@ -135,7 +135,7 @@ def _main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, s
     :param reassign_exons: recompute the exon numbers of the annotation
     :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
     :param prediction: add the column nmd_efficiency_prediction (see annotate())
-    :return: DataFrame summarizing all annotated variants: the table that annotate() returns
+    :return: DataFrame of the variant-transcript pairs: the table that annotate() returns
     """
 
     results = annotate(

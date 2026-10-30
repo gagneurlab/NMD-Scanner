@@ -349,7 +349,7 @@ GFF3_ATTRIBUTES = (
     "rank",
     "ensembl_end_phase",
 )
-# The feature types that read_gff3 uses. Ensembl has many transcript types (mRNA, lnc_RNA, ...),
+# The types of the GFF3 records that read_gff3 uses. Ensembl has many transcript types (mRNA, lnc_RNA, ...),
 # so any record whose Parent is a gene is read too.
 GFF3_FEATURES = ("transcript", "exon", "CDS", "start_codon", "stop_codon")
 
@@ -678,7 +678,7 @@ def _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=False):
 
     This matters because some GFF3 flavors do not give exon/CDS records a gene_id/transcript_id
     attribute at all (Ensembl), and others reuse the same gene_id/transcript_id attribute value
-    for genomically distinct copies of a feature (GENCODE's chrY PAR transcripts: the "_PAR_Y"
+    for genomically distinct copies of a record (GENCODE's chrY PAR transcripts: the "_PAR_Y"
     suffix that disambiguates them from their chrX counterpart only shows up in ID/Parent, not
     in the gene_id/transcript_id attributes).
 
@@ -808,9 +808,9 @@ def _check_ids_resolved(df, mask):
 
 def compute_exon_numbers(annotation):
     """
-    Compute exon numbers for the Features exon, CDS and stop_codon in an annotation DataFrame.
+    Compute exon numbers for the records of the types exon, CDS and stop_codon in an annotation DataFrame.
     Exon numbers are assigned based on genomic order per transcript and strand.
-    CDS and stop_codon features inherit the exon number of the exon they overlap.
+    CDS and stop_codon records inherit the exon number of the exon they overlap.
 
     The exon numbers follow the direction of transcription: exon 1 has the smallest Start on
     the + strand and the largest Start on the - strand.
@@ -826,19 +826,19 @@ def compute_exon_numbers(annotation):
     annotation_df = annotation.reset_index(drop=True)
 
     # The computed numbers are ints, so hold the column as nullable integer. A caller may give it as
-    # text, e.g. "1", with missing values on features without one.
+    # text, e.g. "1", with missing values on records without one.
     if "exon_number" in annotation_df.columns:
         annotation_df["exon_number"] = annotation_df["exon_number"].astype("Int64")
     else:
         annotation_df["exon_number"] = pd.Series(pd.NA, index=annotation_df.index, dtype="Int64")
 
-    # Step 1: Compute exon numbers for exon features, by genomic order per transcript and strand
+    # Step 1: Compute exon numbers for exon records, by genomic order per transcript and strand
     exons = annotation_df[(annotation_df["Feature"] == "exon") & annotation_df["transcript_id"].notna()]
     sign = np.where(exons["Strand"] == "+", 1, -1)
     order = exons.assign(_key=exons["Start"].to_numpy() * sign).sort_values(["transcript_id", "_key"], kind="stable")
     annotation_df.loc[order.index, "exon_number"] = (order.groupby("transcript_id").cumcount() + 1).astype("Int64")
 
-    # Step 2: Assign exon numbers to CDS and stop_codon features
+    # Step 2: Assign exon numbers to CDS and stop_codon records
     return _assign_exon_numbers_to_cds(annotation_df)
 
 
