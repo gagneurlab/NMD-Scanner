@@ -351,13 +351,13 @@ GFF3_ATTRIBUTES = (
 )
 # The types of the GFF3 records that read_gff3 uses. Ensembl has many transcript types (mRNA, lnc_RNA, ...),
 # so any record whose Parent is a gene is read too.
-GFF3_FEATURES = ("transcript", "exon", "CDS", "start_codon", "stop_codon")
+GFF3_TYPES = ("transcript", "exon", "CDS", "start_codon", "stop_codon")
 
 
 def _read_gff3_records(gff3_path):
     """
     Reads the records of a GFF3 file that ``read_gff3`` uses, with polars-bio: the records of a
-    type in ``GFF3_FEATURES`` and the records whose Parent is a gene.
+    type in ``GFF3_TYPES`` and the records whose Parent is a gene.
 
     :param gff3_path: Path to the GFF3 file, plain or gzip-compressed
     :return: DataFrame with the columns Chromosome, Source, Feature (category), Start, End, Score
@@ -406,7 +406,7 @@ def _read_gff3_records(gff3_path):
             f"{data_lines.result()} data lines. It skips a line that it cannot parse, e.g. a line whose Start or "
             "Score is not a number or whose columns are not separated by tabs."
         )
-    records = records.filter(pl.col("Feature").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
+    records = records.filter(pl.col("Feature").is_in(GFF3_TYPES) | pl.col("Parent").str.starts_with("gene:"))
     # polars-bio gives Start as a 32-bit integer without sign, so a start of 0 wraps to the largest value
     reversed_records = records.filter(pl.col("Start") >= pl.col("End"))
     if reversed_records.height:
