@@ -905,16 +905,17 @@ def test_annotate_variants_does_not_change_its_inputs(chr18_annotation):
 
 
 def test_annotate_variants_takes_a_table_without_variant_id(chr18_annotation):
-    """A missing variant_id means ".", the ID of a VCF record without one."""
+    """Without the variant_id column, each row has a null variant_id. The other columns stay the same."""
     fasta, annotation_df = chr18_annotation
-    vcf_df = read_vcf("resources/test_files/test_variants.vcf").assign(variant_id=".")
+    vcf_df = read_vcf("resources/test_files/test_variants.vcf")
     expected = annotate_variants(vcf_df, annotation_df, fasta, sequences=False, prediction=False)
 
     results = annotate_variants(
         vcf_df.drop(columns="variant_id"), annotation_df, fasta, sequences=False, prediction=False
     )
 
-    pd.testing.assert_frame_equal(results, expected)
+    pd.testing.assert_frame_equal(results.drop(columns="variant_id"), expected.drop(columns="variant_id"))
+    assert results["variant_id"].isna().all()
 
 
 def test_annotate_variants_annotates_two_vcf_tables_with_one_annotation(chr18_annotation):

@@ -41,7 +41,8 @@ def read_vcf(vcf_path):
     start and end are 0-based half-open: start is POS - 1, and end is start plus the length of REF,
     also for a symbolic allele with an INFO END. variant_id is the ID of the record. Every other
     field stays text as written, e.g. ``01``, ``007`` and ``NA``. polars-bio returns ``.`` in ID and
-    ALT as an empty string, which becomes ``.`` again: a VCF field is never empty.
+    ALT as an empty string. In variant_id it becomes null, because ``.`` marks a missing value in a
+    VCF. In alt it becomes ``.`` again: a VCF field is never empty.
 
     The VCF needs its header, at least the ``##fileformat`` and ``#CHROM`` lines. It must be
     left-normalized and single-allelic (one ALT allele per record), e.g. produced by
@@ -70,7 +71,7 @@ def read_vcf(vcf_path):
                 pl.col("start").cast(pl.Int64),
                 # not the end polars-bio gives, which follows INFO END for a symbolic allele
                 (pl.col("start").cast(pl.Int64) + pl.col("ref").str.len_chars().cast(pl.Int64)).alias("end"),
-                pl.col("id").replace("", ".").alias("variant_id"),
+                pl.col("id").replace("", None).alias("variant_id"),
                 pl.col("ref"),
                 pl.col("alt").replace("", "."),
             )
