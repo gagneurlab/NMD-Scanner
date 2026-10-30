@@ -349,14 +349,22 @@ curves_df = pl.concat(
         )
     ]
 )
+training_df, held_out_df = (curves_df.filter(pl.col("color") == color) for color in (MUTED_INK, BLUE))
+# The label of the training curve goes on two lines centered above its fifth point, clear of the band there and at the
+# neighbouring points
+band_top = training_df[3:6].select((pl.col("mean") + pl.col("sd")).max()).item()
+training_label_df = training_df[4].with_columns(y=band_top + 0.003)
 plot = (
     pn.ggplot(curves_df, pn.aes("training_variant_sample_pairs", "mean"))
     + pn.geom_ribbon(pn.aes(ymin="mean - sd", ymax="mean + sd", fill="color"), alpha=0.1)
     + pn.geom_line(pn.aes(color="color"))
     + pn.geom_point(pn.aes(color="color"), size=2.5)
     + pn.geom_text(
+        pn.aes(y="y", label="label"), data=training_label_df, ha="center", va="bottom", color=SECONDARY_INK, size=9
+    )
+    + pn.geom_text(
         pn.aes(label="label"),
-        data=curves_df.filter(pl.col("training_variant_sample_pairs") == train_sizes[-1]),
+        data=held_out_df.tail(1),
         ha="left",
         nudge_x=0.03 * train_sizes[-1],
         color=SECONDARY_INK,
@@ -364,7 +372,7 @@ plot = (
     )
     + pn.scale_color_identity()
     + pn.scale_fill_identity()
-    + pn.scale_x_continuous(expand=(0.05, 0, 0.35, 0))
+    + pn.scale_x_continuous(expand=(0.05, 0, 0.2, 0))
     + pn.labs(title="Learning curve of the final hyperparameters", x="Training variant-sample pairs", y="R2")
 )
 save_figure(plot, OUT_DIR, "learning_curve", 6, 4)
