@@ -43,6 +43,8 @@
 #    without CIs. The per-tissue numbers leave out the EXCLUDED_TISSUES, which have too few samples.
 # 7. For MMRF-TARGET, compute the numbers of step 5 also for the rows on transcripts of the TCGA training rows, and for
 #    the other rows.
+# 8. Per cohort, split the r2_score of scikit-learn for the predictions into the squared Pearson correlation, minus a
+#    term for the offset of the means, minus a term for the mismatch of the spreads.
 
 # %% [markdown]
 # The paths, relative to the repo root:
@@ -100,6 +102,13 @@ TRANSCRIPT_GROUPS = {
     "in_tcga_training": "Transcript in the TCGA training rows",
     "not_in_tcga_training": "Transcript not in the TCGA training rows",
 }
+# The terms of r2_terms: the key, the sign in the sum, and the name in the figure
+R2_TERMS = [
+    ("r_squared", 1, "Squared Pearson r"),
+    ("mean_offset", -1, "Minus mean offset"),
+    ("spread_mismatch", -1, "Minus spread mismatch"),
+    ("r2_score", 1, "= R2"),
+]
 # The digits of the exponent of a P value, as superscripts
 SUPERSCRIPTS = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
@@ -153,6 +162,31 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
 def mean_nmd_triggering(cohort_df: pl.DataFrame) -> float:
     """The mean NMD_efficiency of the rows with nmd_escape False."""
     return float(cohort_df.filter(~pl.col("nmd_escape"))["NMD_efficiency"].mean())
+
+
+def r2_terms(cohort_df: pl.DataFrame) -> dict[str, float]:
+    """
+    The r2_score of scikit-learn for the prediction of NMD_efficiency, split as r_squared - mean_offset -
+    spread_mismatch. r_squared is the squared Pearson correlation r. mean_offset is the squared difference of the means,
+    and spread_mismatch is the squared difference of the standard deviation of the prediction and r times that of
+    NMD_efficiency. Both are divided by the variance of NMD_efficiency. With standard deviations over n, not n - 1, the
+    terms add up to r2_score exactly.
+    """
+    r, offset, sd_prediction, sd_measured = cohort_df.select(
+        r=pl.corr("prediction", "NMD_efficiency"),
+        offset=pl.col("prediction").mean() - pl.col("NMD_efficiency").mean(),
+        sd_prediction=pl.col("prediction").std(ddof=0),
+        sd_measured=pl.col("NMD_efficiency").std(ddof=0),
+    ).row(0)
+    terms = {
+        "r_squared": r**2,
+        "mean_offset": offset**2 / sd_measured**2,
+        "spread_mismatch": (sd_prediction - r * sd_measured) ** 2 / sd_measured**2,
+        "r2_score": float(r2_score(cohort_df["NMD_efficiency"].to_numpy(), cohort_df["prediction"].to_numpy())),
+    }
+    difference = terms["r_squared"] - terms["mean_offset"] - terms["spread_mismatch"] - terms["r2_score"]
+    assert abs(difference) < 1e-9, terms
+    return terms
 
 
 def estimate(value: float, ci: list[float]) -> str:
@@ -409,7 +443,11 @@ gtex_df = joined["gtex"]
 # %%
 validation = {}
 for cohort, cohort_df in cohorts.items():
-    result = {**correlations(cohort_df), "mean_nmd_triggering": mean_nmd_triggering(cohort_df)}
+    result = {
+        **correlations(cohort_df),
+        "mean_nmd_triggering": mean_nmd_triggering(cohort_df),
+        "r2_decomposition": r2_terms(cohort_df),
+    }
     logger.info(
         "%s, %d rows of %d genes: model %s, rules %s, gain %s, %s, NMD-triggering mean %.2f",
         cohort,
@@ -607,6 +645,44 @@ plot = (
     + pn.theme(legend_title=pn.element_blank(), panel_grid_major_y=pn.element_blank())
 )
 save_figure(plot, OUT_DIR, "spearman_per_cohort", 7, 3.5)
+
+# %% [markdown]
+# Per cohort, the bars split the R2 of the model into three terms: the squared Pearson correlation r of the prediction
+# with the measured NMD efficiency, minus the squared difference of their means, minus the squared difference of the
+# standard deviation of the prediction and r times that of the measured NMD efficiency. Each term is a share of the
+# variance of the measured NMD efficiency, and R2 is the r2_score of scikit-learn. The linear recalibration that the main
+# README suggests removes both error terms, so that R2 becomes the squared Pearson correlation.
+
+# %%
+r2_panels = {}
+for cohort, cohort_df in cohorts.items():
+    values = [sign * validation[cohort]["r2_decomposition"][term] for term, sign, _ in R2_TERMS]
+    r2_panels[f"{cohort_names[cohort]}\n{len(cohort_df):,} variants"] = pl.DataFrame(
+        {"term": [name for _, _, name in R2_TERMS], "value": values, "label": [f"{value:+.2f}" for value in values]}
+    )
+positive = pl.col("value") >= 0
+# coord_flip draws the first term at the bottom, so the terms go in reverse order. The label of a bar sits just beyond
+# its end.
+r2_df = (
+    facet_frame(r2_panels)
+    .cast({"term": pl.Enum([name for _, _, name in reversed(R2_TERMS)])})
+    .with_columns(
+        label_position=pl.col("value") + pl.when(positive).then(0.02).otherwise(-0.02),
+        ha=pl.when(positive).then(pl.lit("left")).otherwise(pl.lit("right")),
+    )
+)
+plot = (
+    pn.ggplot(r2_df, pn.aes("term", "value"))
+    + pn.geom_hline(yintercept=0, color=AXIS)
+    + pn.geom_col(fill=BLUE, width=0.6)
+    + pn.geom_text(pn.aes(y="label_position", label="label", ha="ha"), color=SECONDARY_INK, size=9)
+    + pn.scale_y_continuous(breaks=[-0.4, 0, 0.4], expand=(0, 0.3))
+    + pn.coord_flip()
+    + pn.facet_wrap("panel", nrow=1)
+    + pn.labs(x="", y="Share of the variance of the measured NMD efficiency")
+    + pn.theme(panel_grid_major_y=pn.element_blank())
+)
+save_figure(plot, OUT_DIR, "r2_decomposition", 10, 3)
 
 # %% [markdown]
 # The dots show the mean measured NMD efficiency of the GTEx variant-tissue rows with `nmd_escape` False, per tissue
