@@ -748,7 +748,7 @@ def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected
     gff3_path = _write(tmp_path, "a.gff3", gff3)
     results = _main(vcf, gff3_path, fasta, str(tmp_path / "out.csv"))
     columns = ["variant_id", "transcript_id", "has_stop_codon", "ref_cds_length", "alt_cds_length", "ref_cds_exons"]
-    assert [tuple(row) for row in results[columns].itertuples(index=False)] == expected
+    assert [tuple(pair) for pair in results[columns].itertuples(index=False)] == expected
     reassigned = _main(vcf, gff3_path, fasta, str(tmp_path / "reassigned.csv"), reassign_exons=True)
     pd.testing.assert_frame_equal(reassigned, results)
 
@@ -1441,7 +1441,8 @@ def _types_and_tags(annotation):
     """(transcript_id, Feature, transcript_type, transcript_tags) of each record, with None for a missing value."""
     columns = ["transcript_id", "Feature", "transcript_type", "transcript_tags"]
     return {
-        tuple(None if pd.isna(value) else value for value in row) for row in annotation[columns].itertuples(index=False)
+        tuple(None if pd.isna(value) else value for value in record)
+        for record in annotation[columns].itertuples(index=False)
     }
 
 

@@ -222,10 +222,10 @@ def test_empty_and_nonempty_results_have_the_same_schema(run_main, request, vcf,
 
 def test_feature_and_rule_columns_match_the_schema(run_main):
     _, written = run_main("resources/test_files/variants.vcf")
-    row = written.iloc[0]
+    pair = written.iloc[0]
 
-    assert list(add_nmd_features(row)) == list(NMD_FEATURE_COLUMN_KINDS)
-    assert list(evaluate_nmd_escape_rules(row)) == list(NMD_RULE_COLUMN_KINDS)
+    assert list(add_nmd_features(pair)) == list(NMD_FEATURE_COLUMN_KINDS)
+    assert list(evaluate_nmd_escape_rules(pair)) == list(NMD_RULE_COLUMN_KINDS)
 
 
 @pytest.mark.parametrize("vcf", ["resources/test_files/variants.vcf", "intergenic_vcf", "reference_mismatch_vcf"])

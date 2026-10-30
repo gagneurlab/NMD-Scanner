@@ -304,11 +304,11 @@ class Transcript:
                 if not part:
                     continue
                 if ensembl:
-                    feature_attributes = "ID=CDS:p1;Parent=transcript:tx1;protein_id=p1"
+                    record_attributes = "ID=CDS:p1;Parent=transcript:tx1;protein_id=p1"
                 else:
-                    feature_attributes = f"ID={feature}:tx1:{number};" + attributes
+                    record_attributes = f"ID={feature}:tx1:{number};" + attributes
                 records.append(
-                    record(feature, part[0], part[-1] + 1, phase if feature == "CDS" else ".", feature_attributes)
+                    record(feature, part[0], part[-1] + 1, phase if feature == "CDS" else ".", record_attributes)
                 )
                 if feature == "CDS":
                     # the phase of the next CDS record: the bases that its first codon still needs
