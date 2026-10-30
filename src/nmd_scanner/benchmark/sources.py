@@ -73,8 +73,8 @@ def hgvsc_alleles(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: F
         ),
     )
     if (invalid_df := table_df.filter(pl.col("ref").is_null())).height > 0:
-        row = invalid_df.row(0, named=True)
-        raise ValueError(f"{row['HGVSc']} ({row['transcript']}) is not a single-base substitution")
+        measurement = invalid_df.row(0, named=True)
+        raise ValueError(f"{measurement['HGVSc']} ({measurement['transcript']}) is not a single-base substitution")
     strand = pl.col("strand")
     complement = (strand == "-") | (strand.is_null() & (pl.col("ref") != pl.col("genomic_ref")))
     return table_df.with_columns(
@@ -103,8 +103,9 @@ def finish_table(table_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fa
         gene=pl.col("transcript").replace_strict(transcripts_df["transcript"], transcripts_df["gene"], default=None),
     )
     if (mismatches_df := table_df.filter(pl.col("ref") != pl.col("fasta_ref"))).height > 0:
-        row = mismatches_df.row(0, named=True)
+        measurement = mismatches_df.row(0, named=True)
         raise ValueError(
-            f"{row['chrom']}:{row['pos']} ({row['transcript']}): REF {row['ref']} but the FASTA has {row['fasta_ref']}"
+            f"{measurement['chrom']}:{measurement['pos']} ({measurement['transcript']}): REF {measurement['ref']} but"
+            f" the FASTA has {measurement['fasta_ref']}"
         )
     return table_df.select(*COLUMNS, *(["tissue"] if "tissue" in table_df.columns else []), "source_row")

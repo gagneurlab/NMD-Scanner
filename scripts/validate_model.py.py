@@ -95,8 +95,8 @@ SEED = 0
 N_RESAMPLES = 2000
 # The tissues to drop, because GTEx v8 has too few samples of them (see the AbExp paper)
 EXCLUDED_TISSUES = ["Bladder", "Cervix - Ectocervix", "Cervix - Endocervix", "Fallopian Tube", "Kidney - Medulla"]
-# The scores of the Spearman bars and of the MMRF-TARGET intervals: the key in a result of correlations, the direct
-# label, the color, and the offset from the position of the result
+# The scores of the Spearman bars and of the MMRF-TARGET intervals: the key in the dict of correlations, the direct
+# label, the color, and the offset from the position of the group
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
 GAIN = [("gain", "", BLUE, 0.0)]
 # The keys of the MMRF-TARGET variant-sample pairs by transcript in validation.json, and their names in the log and the
@@ -211,22 +211,23 @@ def facet_frame(panels: dict[str, pl.DataFrame]) -> pl.DataFrame:
     return pl.concat(frames, how="diagonal_relaxed").cast({"panel": pl.Enum(list(panels))})
 
 
-def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) -> pl.DataFrame:
+def intervals(correlations_by_group: dict[str, dict], scores: list[tuple[str, str, str, float]]) -> pl.DataFrame:
     """
-    One row per result and score, with the value of the score and its 95% CI as low and high. Result i has the
-    position -i plus the offset of the score. The rows of the last result, at the bottom, have the direct labels.
+    One row per group of correlations_by_group and score, with the value of the score and its 95% CI as low and high.
+    Group i has the position -i plus the offset of the score. The rows of the last group, at the bottom, have the direct
+    labels.
     """
     return pl.DataFrame(
         [
             {
                 "position": -i + offset,
-                "value": result[score],
-                "low": result[f"{score}_ci"][0],
-                "high": result[f"{score}_ci"][1],
+                "value": group_correlations[score],
+                "low": group_correlations[f"{score}_ci"][0],
+                "high": group_correlations[f"{score}_ci"][1],
                 "color": color,
-                "label": label if i == len(results) - 1 else "",
+                "label": label if i == len(correlations_by_group) - 1 else "",
             }
-            for i, result in enumerate(results)
+            for i, group_correlations in enumerate(correlations_by_group.values())
             for score, label, color, offset in scores
         ]
     )
@@ -443,24 +444,24 @@ gtex_df = joined["gtex"]
 # %%
 validation = {}
 for cohort, cohort_df in cohorts.items():
-    result = {
-        **correlations(cohort_df),
+    cohort_correlations = correlations(cohort_df)
+    validation[cohort] = {
+        **cohort_correlations,
         "mean_nmd_triggering": mean_nmd_triggering(cohort_df),
         "r2_decomposition": r2_terms(cohort_df),
     }
     logger.info(
         "%s, %d %s of %d genes: model %s, rules %s, gain %s, %s, NMD-triggering mean %.2f",
         cohort,
-        result["n"],
+        cohort_correlations["n"],
         MEASUREMENTS[cohort],
-        result["genes"],
-        estimate(result["model"], result["model_ci"]),
-        estimate(result["rules"], result["rules_ci"]),
-        estimate(result["gain"], result["gain_ci"]),
-        p_value(result["gain_p"]),
-        result["mean_nmd_triggering"],
+        cohort_correlations["genes"],
+        estimate(cohort_correlations["model"], cohort_correlations["model_ci"]),
+        estimate(cohort_correlations["rules"], cohort_correlations["rules_ci"]),
+        estimate(cohort_correlations["gain"], cohort_correlations["gain_ci"]),
+        p_value(cohort_correlations["gain_p"]),
+        validation[cohort]["mean_nmd_triggering"],
     )
-    validation[cohort] = result
 tissues_df = (
     gtex_df.filter(~pl.col("tissue").is_in(EXCLUDED_TISSUES))
     .group_by("tissue")
@@ -486,16 +487,16 @@ validation["mmrf_target_by_transcript"] = {
     "in_tcga_training": correlations(mmrf_df.filter(seen)),
     "not_in_tcga_training": correlations(mmrf_df.filter(~seen)),
 }
-for group, result in validation["mmrf_target_by_transcript"].items():
+for group, group_correlations in validation["mmrf_target_by_transcript"].items():
     logger.info(
         "mmrf_target, %s, %d variant-sample pairs of %d genes: model %s, rules %s, gain %s, %s",
         TRANSCRIPT_GROUPS[group],
-        result["n"],
-        result["genes"],
-        estimate(result["model"], result["model_ci"]),
-        estimate(result["rules"], result["rules_ci"]),
-        estimate(result["gain"], result["gain_ci"]),
-        p_value(result["gain_p"]),
+        group_correlations["n"],
+        group_correlations["genes"],
+        estimate(group_correlations["model"], group_correlations["model_ci"]),
+        estimate(group_correlations["rules"], group_correlations["rules_ci"]),
+        estimate(group_correlations["gain"], group_correlations["gain_ci"]),
+        p_value(group_correlations["gain_p"]),
     )
 (OUT_DIR / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
 logger.info(
@@ -579,7 +580,7 @@ save_figure(plot, OUT_DIR, "efficiency_by_nmd_escape", 9.5, 3.5)
 # README. The bracket of a cohort gives the P value of the gain of the model over the rules.
 
 # %%
-bars_df = intervals([validation[cohort] for cohort in cohorts], MODEL_AND_RULES)
+bars_df = intervals({cohort: validation[cohort] for cohort in cohorts}, MODEL_AND_RULES)
 # The bracket of each cohort spans the centers of its two bars, just right of their CIs
 brackets_df = pl.DataFrame(
     {
@@ -730,10 +731,12 @@ save_figure(plot, OUT_DIR, "gtex_tissue_spearman", 6.5, 6.5)
 
 # %%
 transcript_split = validation["mmrf_target_by_transcript"]
-results = list(transcript_split.values())
 gain_panel = "Gain of the model over the rules"
 transcript_intervals_df = facet_frame(
-    {"Spearman correlation": intervals(results, MODEL_AND_RULES), gain_panel: intervals(results, GAIN)}
+    {
+        "Spearman correlation": intervals(transcript_split, MODEL_AND_RULES),
+        gain_panel: intervals(transcript_split, GAIN),
+    }
 )
 zero_df = pl.DataFrame({"panel": [gain_panel], "x": [0.0]}).cast({"panel": transcript_intervals_df["panel"].dtype})
 plot = (
@@ -744,10 +747,10 @@ plot = (
     + pn.geom_vline(pn.aes(xintercept="x"), data=zero_df, color=AXIS)
     + pn.scale_color_identity()
     + pn.scale_y_continuous(
-        breaks=-np.arange(len(results)),
+        breaks=-np.arange(len(transcript_split)),
         labels=[
-            f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} variant-sample pairs"
-            for group, result in transcript_split.items()
+            f"{TRANSCRIPT_GROUPS[group]}\n{group_correlations['n']:,} variant-sample pairs"
+            for group, group_correlations in transcript_split.items()
         ],
         expand=(0, 0.4),
     )
