@@ -235,8 +235,8 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
             pl.DataFrame(
                 {
                     "kind": (
-                        "Permutation importance\nDecrease in R2 on the training variant-sample pairs,"
-                        f"\nmean and SD of {N_PERMUTATIONS} permutations"
+                        "Permutation importance\nDecrease in R2 on the training\nvariant-sample pairs, mean and SD"
+                        f"\nof {N_PERMUTATIONS} permutations"
                     ),
                     "input": MODEL_INPUTS,
                     "value": permutation.importances_mean,
