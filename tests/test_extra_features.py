@@ -151,8 +151,8 @@ TXNL1_EXONS = [
 ]
 
 
-def ptc_row(ptc_pos, exons=TXNL1_EXONS, alt_exons=None, cds_start=152):
-    """A PTC row without a start loss: the PTC at alt CDS position ``ptc_pos``, and the alt exons ``alt_exons``."""
+def ptc_variant(ptc_pos, exons=TXNL1_EXONS, alt_exons=None, cds_start=152):
+    """A PTC variant without a start loss: the PTC at alt CDS position ``ptc_pos``, and the alt exons ``alt_exons``."""
 
     return feature_row(
         alt_has_ptc=True,
@@ -165,38 +165,38 @@ def ptc_row(ptc_pos, exons=TXNL1_EXONS, alt_exons=None, cds_start=152):
 
 def test_calculate_exon_features():
     # PTC in exon 1, at transcript position 152 + 50 = 202
-    assert calculate_exon_features(ptc_row(50)) == {
+    assert calculate_exon_features(ptc_variant(50)) == {
         "total_exon_count": 8,
         "upstream_exon_count": 0,
         "downstream_exon_count": 7,
     }
 
     # PTC in exon 2, at transcript position 152 + 100 = 252: exon 1 ends at 250
-    assert calculate_exon_features(ptc_row(100)) == {
+    assert calculate_exon_features(ptc_variant(100)) == {
         "total_exon_count": 8,
         "upstream_exon_count": 1,
         "downstream_exon_count": 6,
     }
 
     # PTC in the last exon, at transcript position 152 + 900 = 1052: exon 7 ends at 992
-    assert calculate_exon_features(ptc_row(900)) == {
+    assert calculate_exon_features(ptc_variant(900)) == {
         "total_exon_count": 8,
         "upstream_exon_count": 7,
         "downstream_exon_count": 0,
     }
 
     # Single exon transcript
-    row = ptc_row(90, exons=[{"exon_number": 1, "length": 500}], cds_start=100)
+    row = ptc_variant(90, exons=[{"exon_number": 1, "length": 500}], cds_start=100)
     assert calculate_exon_features(row) == {"total_exon_count": 1, "upstream_exon_count": 0, "downstream_exon_count": 0}
 
     # After a start loss, the PTC lies at alt_scan_first_stop_pos, in alt transcript positions: 260 is in exon 2
-    row = dataclasses.replace(ptc_row(None), start_loss=True, alt_scan_first_stop_pos=260)
+    row = dataclasses.replace(ptc_variant(None), start_loss=True, alt_scan_first_stop_pos=260)
     assert calculate_exon_features(row) == {"total_exon_count": 8, "upstream_exon_count": 1, "downstream_exon_count": 6}
 
     # The counts take the alt exons. After a 3 nt deletion in exon 1, transcript position 152 + 95 = 247 is the first
     # base of exon 2. With the ref exon lengths, it would lie in exon 1.
     alt_exons = [{"exon_number": 1, "length": 247}, *TXNL1_EXONS[1:]]
-    assert calculate_exon_features(ptc_row(95, alt_exons=alt_exons)) == {
+    assert calculate_exon_features(ptc_variant(95, alt_exons=alt_exons)) == {
         "total_exon_count": 8,
         "upstream_exon_count": 1,
         "downstream_exon_count": 6,
@@ -210,22 +210,22 @@ def test_calculate_exon_features():
         {"exon_number": 3, "length": 0},
         *TXNL1_EXONS[3:],
     ]
-    assert calculate_exon_features(ptc_row(100, alt_exons=alt_exons)) == {
+    assert calculate_exon_features(ptc_variant(100, alt_exons=alt_exons)) == {
         "total_exon_count": 8,
         "upstream_exon_count": 1,
         "downstream_exon_count": 5,
     }
 
     # Without the PTC position, or without the alt exons (no alt transcript): no counts
-    for row in [ptc_row(None), dataclasses.replace(ptc_row(50), alt_transcript_exons=None)]:
+    for row in [ptc_variant(None), dataclasses.replace(ptc_variant(50), alt_transcript_exons=None)]:
         assert calculate_exon_features(row) == {
             "total_exon_count": 8,
             "upstream_exon_count": None,
             "downstream_exon_count": None,
         }
 
-    # Not a PTC row
-    row = dataclasses.replace(ptc_row(50), alt_has_ptc=False)
+    # Not a PTC variant
+    row = dataclasses.replace(ptc_variant(50), alt_has_ptc=False)
     assert calculate_exon_features(row) == {
         "total_exon_count": 8,
         "upstream_exon_count": None,
@@ -273,23 +273,23 @@ def test_calculate_ptc_to_start_distance():
 
 def test_calculate_ptc_exon_length():
     # PTC in exon 1, at transcript position 152 + 50 = 202
-    assert calculate_ptc_exon_length(ptc_row(50)) == 250
+    assert calculate_ptc_exon_length(ptc_variant(50)) == 250
 
     # PTC in exon 2, at transcript position 152 + 100 = 252
-    assert calculate_ptc_exon_length(ptc_row(100)) == 97
+    assert calculate_ptc_exon_length(ptc_variant(100)) == 97
 
     # The alt exons locate the PTC: after a 3 nt deletion in exon 1, transcript position 152 + 95 = 247 is the first
     # base of exon 2
     alt_exons = [{"exon_number": 1, "length": 247}, *TXNL1_EXONS[1:]]
-    assert calculate_ptc_exon_length(ptc_row(95, alt_exons=alt_exons)) == 97
+    assert calculate_ptc_exon_length(ptc_variant(95, alt_exons=alt_exons)) == 97
 
     # The length is the one in the alt transcript: a 3 nt deletion in exon 2 shortens it to 94 nt
     alt_exons = [{"exon_number": 1, "length": 250}, {"exon_number": 2, "length": 94}, *TXNL1_EXONS[2:]]
-    assert calculate_ptc_exon_length(ptc_row(100, alt_exons=alt_exons)) == 94
+    assert calculate_ptc_exon_length(ptc_variant(100, alt_exons=alt_exons)) == 94
 
-    # Not a PTC row, no PTC position
-    assert calculate_ptc_exon_length(dataclasses.replace(ptc_row(100), alt_has_ptc=False)) is None
-    assert calculate_ptc_exon_length(ptc_row(None)) is None
+    # Not a PTC variant, no PTC position
+    assert calculate_ptc_exon_length(dataclasses.replace(ptc_variant(100), alt_has_ptc=False)) is None
+    assert calculate_ptc_exon_length(ptc_variant(None)) is None
 
 
 def _analyzed(ref_cds_seq, alt_cds_seq):
@@ -604,11 +604,11 @@ def test_add_likely_misannotated_flag():
     assert add_likely_misannotated_flag(row5) is True
 
 
-def _status_row(**values):
-    """A PTC row that the model can predict: a new PTC and all model inputs set. ``values`` overrides columns."""
+def _status_pair(**values):
+    """A PTC variant that the model can predict: a new PTC and all model inputs set. ``values`` overrides columns."""
 
-    row = {name: 1 for name in MODEL_INPUTS}
-    row.update(
+    pair = {name: 1 for name in MODEL_INPUTS}
+    pair.update(
         unknown_reason=None,
         alt_has_ptc=True,
         ref_has_ptc=False,
@@ -616,11 +616,11 @@ def _status_row(**values):
         has_start_codon=True,
         start_loss=False,
     )
-    row.update(values)
-    return row
+    pair.update(values)
+    return pair
 
 
-# The null model inputs of a row with an unknown alt transcript: 15 of the 19 model inputs
+# The null model inputs of a variant-transcript pair with an unknown alt transcript: 15 of the 19 model inputs
 _UNKNOWN_INPUTS = {
     name: None
     for name in MODEL_INPUTS
@@ -660,7 +660,7 @@ _UNKNOWN_INPUTS = {
     ],
 )
 def test_nmd_efficiency_prediction_status(values, status):
-    table = pd.DataFrame([_status_row(), _status_row(**values)], index=[7, 3])
+    table = pd.DataFrame([_status_pair(), _status_pair(**values)], index=[7, 3])
 
     result = nmd_efficiency_prediction_status(table)
 

@@ -17,7 +17,10 @@ ARGS = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "re
 
 @pytest.fixture(scope="module")
 def results():
-    """The annotate result of the chr18 test variants, without the prediction. Some rows have nmd_efficiency_prediction_status ok."""
+    """
+    The annotate result of the chr18 test variants, without the prediction. Some variant-transcript pairs have
+    nmd_efficiency_prediction_status ok.
+    """
     return annotate(*ARGS, prediction=False)
 
 
@@ -30,7 +33,7 @@ def test_add_nmd_efficiency_prediction_is_exported_from_the_package():
     assert nmd_scanner.add_nmd_efficiency_prediction is add_nmd_efficiency_prediction
 
 
-def test_the_prediction_is_finite_exactly_in_the_rows_with_nmd_efficiency_prediction_status_ok(results):
+def test_the_prediction_is_finite_exactly_in_the_pairs_with_nmd_efficiency_prediction_status_ok(results):
     predicted = add_nmd_efficiency_prediction(results)
 
     ok = (results["nmd_efficiency_prediction_status"] == "ok").to_numpy()
@@ -53,9 +56,7 @@ def test_the_prediction_follows_nmd_efficiency_prediction_status_and_the_other_c
 
 
 @pytest.mark.parametrize("has_rows", [False, True])
-def test_without_a_row_to_prediction_the_prediction_is_float64_and_the_model_does_not_run(
-    monkeypatch, results, has_rows
-):
+def test_without_a_pair_to_predict_the_prediction_is_float64_and_the_model_does_not_run(monkeypatch, results, has_rows):
     import onnxruntime
 
     def run(*args, **kwargs):
@@ -86,7 +87,7 @@ def test_annotate_adds_the_prediction_unless_prediction_is_false(results):
     pd.testing.assert_frame_equal(annotate(*ARGS), add_nmd_efficiency_prediction(results))
 
 
-def test_add_nmd_efficiency_prediction_logs_the_rows_per_nmd_efficiency_prediction_status(results, caplog):
+def test_add_nmd_efficiency_prediction_logs_the_pairs_per_nmd_efficiency_prediction_status(results, caplog):
     with caplog.at_level(logging.INFO, logger="nmd_scanner.model"):
         add_nmd_efficiency_prediction(results)
 

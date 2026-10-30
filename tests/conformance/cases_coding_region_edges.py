@@ -1,7 +1,7 @@
 """
 Conformance cases of variant placement at the edges of the coding region and at exon boundaries
 ("Technical Notes.md", section "Variants at exon boundaries"). The cases cover the deletion of a whole exon or intron,
-splice sites of exons whose edge is also an edge of the coding region or of no coding row, intron variants that
+splice sites of exons whose edge is also an edge of the coding region or of no coding interval, intron variants that
 touch nothing, insertions and delins at the start codon and at the stop codon, UTR changes and
 alt_cds_start_in_transcript.
 
@@ -25,7 +25,7 @@ from .runner import (
     Case,
     Change,
     Layout,
-    NoRow,
+    NoResult,
     Ruler,
     Span,
     Transcript,
@@ -252,7 +252,7 @@ CODING_EXON_2 = Layout(
     },
 )
 
-# Exon 1 is 5'UTR only. Intron 1 has 4 nt (GTAG), so its donor GT ends 2 nt before the coding row of exon 2.
+# Exon 1 is 5'UTR only. Intron 1 has 4 nt (GTAG), so its donor GT ends 2 nt before the coding interval of exon 2.
 UTR_EXON_1_SHORT_INTRON = Layout(
     Transcript(("gccaccgcag", "ATGGCCAAGCTGTAAgccgcc"), introns=("GTAG",)),
     {
@@ -363,7 +363,7 @@ UTR5_ENDS_IN_T = Layout(
     },
 )
 
-# One exon with the non-ATG start codon CTG, which the start_codon rows mark. The 5'UTR ends in a, so a C inserted
+# One exon with the non-ATG start codon CTG, which the start_codon records mark. The 5'UTR ends in a, so a C inserted
 # before the CTG can shift 1 nt into the CDS, but not into the 5'UTR.
 CTG_START_AFTER_A = Layout(
     Transcript(("gccaCTGGCCAAGCTGTAAgcc",)),
@@ -401,7 +401,7 @@ CTG_START_AFTER_A = Layout(
     },
 )
 
-TOUCHES_NO_CODING_REGION = NoRow("touches no coding region")
+TOUCHES_NO_CODING_REGION = NoResult("touches no coding region")
 
 CASES = [
     Case(
@@ -553,7 +553,7 @@ CASES = [
                             ^ T>C
         T>C at donor +2 of exon 1
         Intron 1 has 4 nt: the donor GT of exon 1 and the acceptor AG of exon 2. The SNV lies 3 nt before the
-        coding row, but changes only the donor of exon 1, which is an edge of no coding row.
+        coding interval, but changes only the donor of exon 1, which is an edge of no coding interval.
         """,
         UTR_EXON_1_SHORT_INTRON,
         Change("GCAGG[T>C]AGATGG"),
@@ -626,7 +626,7 @@ CASES = [
         alt 5' [gccac ATG GCC AAG CTG CTG]gt-agtcccccccctttcag[CAG CAG CTG CTG]|[AAG CTG TAA gcccccccc] 3'
                                             ^ A>-
         A>- at intron +3 or +4
-        The deletion shifts only within AA. It lies 3 nt after the coding row, but no placement changes the
+        The deletion shifts only within AA. It lies 3 nt after the coding interval, but no placement changes the
         donor GT.
         """,
         SHORT_EXON_2,
@@ -1069,7 +1069,7 @@ CASES = [
     # the non-ATG codon CTG ("It can be a non-ATG codon such as CTG"). With an ATG start codon, the placement of
     # such an insertion in the 5'UTR keeps the ATG at the edge, so the fallback is never reached. In
     # insertion_right_before_the_start_codon_whose_bases_do_not_start_with_atg_touches_no_coding_region, no placement
-    # of the insertion reaches into the CDS, so it gives no row.
+    # of the insertion reaches into the CDS, so it gives no result.
     # deletion_of_ta_over_the_start_codon_edge_without_atg_takes_the_placement_farthest_into_the_5utr reaches the
     # fallback with a deletion.
     Case(
@@ -1081,7 +1081,7 @@ CASES = [
                         ^ ->C
         alt tx     0     5
         ->C between the 5'UTR base a at tx 3 and the start codon CTG at tx 4. The C also fits after the C of CTG,
-        inside the CDS, so the variant gives a row. It cannot shift farther 5', because tx 3 is a.
+        inside the CDS, so the variant gives a result. It cannot shift farther 5', because tx 3 is a.
         No placement puts an ATG at the start codon edge: the edge reads CTG after the inserted C, and CCT at it.
         So the edge takes the placement farthest into the 5'UTR, and the C goes into the 5'UTR.
         alt [gccac CTGGCCAAGCTGTAA gcc]: the CDS is unchanged, alt_cds_start_in_transcript = 5, start_loss False,

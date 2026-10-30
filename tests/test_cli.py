@@ -388,8 +388,8 @@ def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, cap
 
 def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp_path, intergenic_vcf):
     """
-    The full run has rows with an unknown alt transcript. Their start and stop loss and NMD rules are null, and
-    those columns stay bool in Parquet, as in the empty run.
+    The full run has variant-transcript pairs with an unknown alt transcript. Their start and stop loss and NMD rules
+    are null, and those columns stay bool in Parquet, as in the empty run.
     """
 
     pytest.importorskip("pyarrow")
@@ -545,7 +545,7 @@ def test_main_end_to_end_reassign_exons(tmp_path):
 
 
 def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
-    """Variants over a splice site get a row without prediction, and unknown_reason says why."""
+    """Variants over a splice site give a result without prediction, and unknown_reason says why."""
 
     results = _main(
         vcf_path="resources/test_files/variants.vcf",
@@ -561,11 +561,12 @@ def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
     assert unknown["ref_cds_seq"].notna().all()
     for column in ["alt_cds_seq", "alt_has_ptc", "start_loss", "stop_loss", "nmd_escape"]:
         assert unknown[column].isna().all(), column
-    # The NMD rules are null on a row that is not a PTC row. Each PTC row here has the inputs of the rules.
-    ptc_rows = results["alt_has_ptc"].fillna(False).astype(bool)
-    assert ptc_rows.any()
-    assert results.loc[ptc_rows, "nmd_escape"].notna().all()
-    assert results.loc[~ptc_rows, "nmd_escape"].isna().all()
+    # The NMD rules are null for a variant-transcript pair that is not a PTC variant. Each PTC variant here has the
+    # inputs of the rules.
+    ptc_variants = results["alt_has_ptc"].fillna(False).astype(bool)
+    assert ptc_variants.any()
+    assert results.loc[ptc_variants, "nmd_escape"].notna().all()
+    assert results.loc[~ptc_variants, "nmd_escape"].isna().all()
 
 
 @pytest.fixture(scope="module")
@@ -827,7 +828,7 @@ def test_annotate_without_symbolic_alleles_does_not_warn_about_them(caplog):
     assert "symbolic ALT" not in caplog.text
 
 
-def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_rows(tmp_path):
+def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_records(tmp_path):
     fasta = tmp_path / "chr1.fa"
     fasta.write_text(">chr1\nACGT\n")
 
@@ -840,7 +841,7 @@ def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_r
     )
 
 
-def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp_path):
+def test_annotate_ignores_a_chromosome_without_cds_records_that_the_fasta_lacks(tmp_path):
     vcf = tmp_path / "chrZ.vcf"
     vcf.write_text(
         "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrZ\t1000\tz1\tA\tT\t.\t.\t.\n"
@@ -852,7 +853,7 @@ def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp
     assert list(results.columns) == list(output_column_kinds())
 
 
-def test_annotate_sets_nmd_efficiency_prediction_status_ok_exactly_for_the_rows_the_model_can_prediction():
+def test_annotate_sets_nmd_efficiency_prediction_status_ok_exactly_for_the_pairs_the_model_can_predict():
     results = annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
     new_ptc = results["alt_has_ptc"].fillna(False) & ~results["ref_has_ptc"].fillna(False)
@@ -905,7 +906,10 @@ def test_annotate_variants_does_not_change_its_inputs(chr18_annotation):
 
 
 def test_annotate_variants_takes_a_table_without_variant_id(chr18_annotation):
-    """Without the variant_id column, each row has a null variant_id. The other columns stay the same."""
+    """
+    Without the variant_id column, each variant-transcript pair has a null variant_id. The other columns stay the
+    same.
+    """
     fasta, annotation_df = chr18_annotation
     vcf_df = read_vcf("resources/test_files/test_variants.vcf")
     expected = annotate_variants(vcf_df, annotation_df, fasta, sequences=False, prediction=False)
@@ -943,7 +947,7 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
 
     assert list(results.columns) == list(output_column_kinds())
     assert list(results["transcript_id"]) == ["T1"]
-    # The FASTA has TAG (reverse complement of chr18:47390-47392) at the end of the last CDS row, so the
+    # The FASTA has TAG (reverse complement of chr18:47390-47392) at the end of the last CDS record, so the
     # coding region ends in a stop codon: 57 + 109 + 111 + 1058 nt.
     assert results["strand"].tolist() == ["-"]
     assert results["has_stop_codon"].tolist() == [True]
@@ -1013,7 +1017,8 @@ def test_main_cli_writes_nmd_efficiency_prediction_unless_no_prediction(monkeypa
         loaded = table.to_pandas()
     assert list(loaded.columns) == list(output_column_kinds())
     assert len(loaded) == len(expected)
-    # nmd_efficiency_prediction is NaN in the rows whose nmd_efficiency_prediction_status is not ok. CSV writes it as an empty field.
+    # nmd_efficiency_prediction is NaN for the variant-transcript pairs whose nmd_efficiency_prediction_status is
+    # not ok. CSV writes it as an empty field.
     np.testing.assert_allclose(
         loaded["nmd_efficiency_prediction"].to_numpy(dtype=float), expected["nmd_efficiency_prediction"]
     )
