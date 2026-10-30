@@ -39,10 +39,7 @@ def annotate(
     Steps:
     1. Read input files (VCF, FASTA, annotation)
     2. Assign exon numbers (optional, recommended for hg19)
-    3. Parse and preprocess gene annotations (coding regions, i.e. CDS plus stop codon, and exons)
-    4. Extract premature termination codons (PTCs) & Evaluate NMD escape rules
-    5. Add extra features to output (e.g. 3' & 5'UTR length, downstream & upstream exon counts, etc.)
-    6. Add the NMD efficiency prediction
+    3. Run annotate_variants on the tables
 
     :param vcf_path: path to the input VCF file
     :param annotation_path: path to the input gene annotation file (GFF3, optionally gzip-compressed)
@@ -61,8 +58,8 @@ def annotate(
 
     # read VCF file (variants)
     logger.info("Reading VCF file: %s", vcf_path)
-    vcf = read_vcf(vcf_path)
-    logger.info("VCF shape: %s", vcf.shape)
+    vcf_df = read_vcf(vcf_path)
+    logger.info("VCF shape: %s", vcf_df.shape)
 
     # read FASTA file (genome sequence)
     logger.info("Reading FASTA file: %s", fasta_path)
@@ -72,14 +69,45 @@ def annotate(
     # has_stop_codon).
     # reassign_exons recomputes the exon numbers (recommended for hg19).
     logger.info("Reading annotation file: %s", annotation_path)
-    annotation = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
-    logger.info("Annotation file shape: %s", annotation.shape)
-    cds_df = annotation[annotation["Feature"] == "CDS"]
-    exons_df = annotation[annotation["Feature"] == "exon"]
+    annotation_df = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
+    logger.info("Annotation file shape: %s", annotation_df.shape)
+
+    return annotate_variants(vcf_df, annotation_df, fasta, sequences=sequences, prediction=prediction)
+
+
+def annotate_variants(
+    vcf_df: pd.DataFrame,
+    annotation_df: pd.DataFrame,
+    fasta: Fasta,
+    *,
+    sequences: bool = True,
+    prediction: bool = True,
+) -> pd.DataFrame:
+    """
+    Annotate the variants of vcf_df with NMD features and return the result table of ``annotate``.
+
+    It takes the tables that ``annotate`` reads, so one annotation serves many VCF tables. It does not change them.
+
+    Steps:
+    1. Split the annotation into the coding regions (CDS rows) and the exon rows
+    2. Extract premature termination codons (PTCs)
+    3. Add the NMD features and the NMD escape rules (e.g. 3' & 5'UTR length, downstream & upstream exon counts)
+    4. Add the NMD efficiency prediction
+
+    :param vcf_df: variants, as ``scan.read_vcf`` returns them
+    :param annotation_df: gene annotation, as ``scan.read_annotation`` returns it
+    :param fasta: reference genome (pyfaidx.Fasta), the one that ``read_annotation`` took
+    :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
+    :param prediction: add the column nmd_efficiency_prediction (see annotate())
+    :return: the table that annotate() returns
+    """
+
+    cds_df = annotation_df[annotation_df["Feature"] == "CDS"]
+    exons_df = annotation_df[annotation_df["Feature"] == "exon"]
 
     # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
     logger.info("Creating sequences and analyzing...")
-    results = extract_ptc(cds_df, vcf, fasta, exons_df)
+    results = extract_ptc(cds_df, vcf_df, fasta, exons_df)
 
     # Add the NMD features (inspired by the NMD efficiency benchmark dataset) and the NMD escape rules
     results = add_features_and_rules(results)

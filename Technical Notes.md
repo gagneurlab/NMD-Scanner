@@ -1,6 +1,6 @@
 ## How `annotate` builds the result
 
-`nmd_scanner.annotate` builds the result table in 4 steps. The CLI calls it and writes the table.
+`nmd_scanner.annotate` builds the result table in 4 steps. The CLI calls it and writes the table. `annotate_variants` runs steps 2 to 4 on the tables of step 1.
 
 1. Read the VCF, the FASTA and the GFF3. The annotation gives the exon rows and the coding regions, i.e. the CDS rows plus the stop codon. With `reassign_exons=True`, `scan.compute_exon_numbers` recomputes the exon numbers. The pipeline does not model ribosomal slippage, i.e. CDS rows that share bases, so the output for such a transcript can be wrong.
 2. `rules.extract_ptc` gives the [PTC columns](#ptc-columns). It finds the placements of each variant and joins them with the coding regions and the splice dinucleotides at their exon edges (see [Variants at exon boundaries](#variants-at-exon-boundaries)). A variant whose REF does not match the reference genome gives no row, and a warning lists it. `extract_ptc` applies each variant to the coding rows of each transcript, or sets `unknown_reason` if the alt transcript is unknown. It builds the ref and alt CDS and the ref and alt transcript, and scans the ref and alt CDS for codons. Last, `rules.analyze_transcript` sets `alt_has_ptc` and `stop_loss` from the first in-frame stop codon of the alt transcript (see [Stop codon classification](#stop-codon-classification)). After a start or stop loss, it then scans the alt transcript.

@@ -10,15 +10,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from pyfaidx import Fasta
 
 import nmd_scanner.cli as cli_module
 from nmd_scanner.cli import (
     _is_valid_output_path,
     _main,
     annotate,
+    annotate_variants,
     main_cli,
     write_results,
 )
+from nmd_scanner.scan import read_annotation, read_vcf
 from nmd_scanner.schema import (
     MODEL_INPUTS,
     NMD_RULE_COLUMN_KINDS,
@@ -868,9 +871,48 @@ def test_annotate_reassign_exons_matches_main(tmp_path):
     pd.testing.assert_frame_equal(results, expected)
 
 
-def test_annotate_reads_gff3_with_the_fasta(tmp_path):
-    from pyfaidx import Fasta
+@pytest.fixture(scope="module")
+def chr18_annotation():
+    """The FASTA of the bundled chr18 test data, and the annotation that read_annotation returns with it"""
 
+    fasta = Fasta("resources/chr18.fa.gz")
+    return fasta, read_annotation("resources/chr18.gff3.gz", fasta)
+
+
+@pytest.mark.parametrize("sequences", [True, False])
+@pytest.mark.parametrize("prediction", [True, False])
+def test_annotate_variants_returns_what_annotate_returns(chr18_annotation, sequences, prediction):
+    fasta, annotation_df = chr18_annotation
+    vcf = "resources/test_files/test_variants.vcf"
+    expected = annotate(
+        vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", sequences=sequences, prediction=prediction
+    )
+
+    results = annotate_variants(read_vcf(vcf), annotation_df, fasta, sequences=sequences, prediction=prediction)
+
+    pd.testing.assert_frame_equal(results, expected)
+
+
+def test_annotate_variants_does_not_change_its_inputs(chr18_annotation):
+    fasta, annotation_df = chr18_annotation
+    vcf_df = read_vcf("resources/test_files/test_variants.vcf")
+    vcf_before_df, annotation_before_df = vcf_df.copy(), annotation_df.copy()
+
+    annotate_variants(vcf_df, annotation_df, fasta)
+
+    pd.testing.assert_frame_equal(vcf_df, vcf_before_df)
+    pd.testing.assert_frame_equal(annotation_df, annotation_before_df)
+
+
+def test_annotate_variants_annotates_two_vcf_tables_with_one_annotation(chr18_annotation):
+    fasta, annotation_df = chr18_annotation
+
+    for vcf in ("resources/test_files/test_variants.vcf", "resources/test_files/test_variants_minus.vcf"):
+        expected = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
+        pd.testing.assert_frame_equal(annotate_variants(read_vcf(vcf), annotation_df, fasta), expected)
+
+
+def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     fasta_path = "resources/chr18.fa.gz"
     ref = str(Fasta(fasta_path)["chr18"][48000:48001]).upper()
     alt = "A" if ref != "A" else "C"
