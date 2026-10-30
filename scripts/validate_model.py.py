@@ -36,7 +36,8 @@
 #    efficiency. The 95% CIs are percentiles of N_RESAMPLES bootstrap resamples of the genes. A resample draws genes
 #    with replacement and takes all rows of each drawn gene. Rows of one gene share a transcript structure, so they are
 #    not independent. The gene of a row is the gene of its transcript in the GFF3. The gain, model minus rules, has a
-#    paired CI from the same resamples. Each cohort draws from its own generator, seeded with SEED.
+#    paired CI from the same resamples. Its P value is from a two-sided z-test, with the standard deviation of the
+#    resampled gains as the standard error. Each cohort draws from its own generator, seeded with SEED.
 # 6. Per cohort, compute the mean measured NMD efficiency of the rows with nmd_escape False. For GTEx, also compute it
 #    over the variant-tissue rows, in total and per tissue. The per-tissue means leave out the EXCLUDED_TISSUES,
 #    which have too few samples.
@@ -65,7 +66,7 @@ import numpy as np
 import plotnine as pn
 import polars as pl
 from pyfaidx import Fasta
-from scipy.stats import rankdata, spearmanr
+from scipy.stats import norm, rankdata, spearmanr
 from sklearn.metrics import r2_score
 
 from nmd_scanner import annotate_variants, read_annotation
@@ -90,8 +91,8 @@ SEED = 0
 N_RESAMPLES = 2000
 # The tissues to drop, because GTEx v8 has too few samples of them (see the AbExp paper)
 EXCLUDED_TISSUES = ["Bladder", "Cervix - Ectocervix", "Cervix - Endocervix", "Fallopian Tube", "Kidney - Medulla"]
-# The scores of interval_plot: the key in a result of correlations, the direct label, the color, and the offset from the
-# position of the result
+# The scores of interval_plot and of the Spearman bars: the key in a result of correlations, the direct label, the color,
+# and the offset from the position of the result
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
 GAIN = [("gain", "", BLUE, 0.0)]
 # The keys of the MMRF-TARGET rows by transcript in validation.json, and their names in the log and the figure
@@ -99,6 +100,8 @@ TRANSCRIPT_GROUPS = {
     "in_tcga_training": "Transcript in the TCGA training rows",
     "not_in_tcga_training": "Transcript not in the TCGA training rows",
 }
+# The digits of the exponent of a P value, as superscripts
+SUPERSCRIPTS = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -113,7 +116,9 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
     """
     Spearman correlation of the prediction and of the rules with NMD_efficiency, and their difference, with bootstrap
     CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first. Each resample draws
-    the genes of the column gene with replacement, and it takes all rows of each drawn gene.
+    the genes of the column gene with replacement, and it takes all rows of each drawn gene. The P value of the
+    difference is two-sided, from a z-test with the standard deviation of the resampled differences as the standard
+    error.
     """
     y = cohort_df["NMD_efficiency"].to_numpy()
     model = cohort_df["prediction"].to_numpy()
@@ -130,6 +135,8 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
         rules_resampled[resample] = spearman(rules[i], y[i])
     model_value = spearman(model, y)
     rules_value = spearman(rules, y)
+    gain = model_value - rules_value
+    gain_resampled = model_resampled - rules_resampled
     return {
         "n": len(y),
         "genes": len(gene_rows),
@@ -137,8 +144,9 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
         "model_ci": percentiles(model_resampled),
         "rules": rules_value,
         "rules_ci": percentiles(rules_resampled),
-        "gain": model_value - rules_value,
-        "gain_ci": percentiles(model_resampled - rules_resampled),
+        "gain": gain,
+        "gain_ci": percentiles(gain_resampled),
+        "gain_p": float(2 * norm.sf(abs(gain) / gain_resampled.std(ddof=1))),
     }
 
 
@@ -149,6 +157,14 @@ def mean_nmd_triggering(cohort_df: pl.DataFrame) -> float:
 
 def estimate(value: float, ci: list[float]) -> str:
     return f"{value:.2f} ({ci[0]:.2f} to {ci[1]:.2f})"
+
+
+def p_value(p: float) -> str:
+    """P with 2 significant digits, and below 0.001 as a power of 10, such as P = 1.6×10⁻⁷."""
+    if p >= 0.001:
+        return f"P = {p:.2g}"
+    mantissa, exponent = f"{p:.1e}".split("e")
+    return f"P = {mantissa}×10{str(int(exponent)).translate(SUPERSCRIPTS)}"
 
 
 def facet_frame(panels: dict[str, pl.DataFrame]) -> pl.DataFrame:
@@ -395,13 +411,14 @@ validation = {}
 for cohort, cohort_df in cohorts.items():
     result = {**correlations(cohort_df), "mean_nmd_triggering": mean_nmd_triggering(cohort_df)}
     logger.info(
-        "%s, %d rows of %d genes: model %s, rules %s, gain %s, NMD-triggering mean %.2f",
+        "%s, %d rows of %d genes: model %s, rules %s, gain %s, %s, NMD-triggering mean %.2f",
         cohort,
         result["n"],
         result["genes"],
         estimate(result["model"], result["model_ci"]),
         estimate(result["rules"], result["rules_ci"]),
         estimate(result["gain"], result["gain_ci"]),
+        p_value(result["gain_p"]),
         result["mean_nmd_triggering"],
     )
     validation[cohort] = result
@@ -428,13 +445,14 @@ validation["mmrf_target_by_transcript"] = {
 }
 for group, result in validation["mmrf_target_by_transcript"].items():
     logger.info(
-        "mmrf_target, %s, %d rows of %d genes: model %s, rules %s, gain %s",
+        "mmrf_target, %s, %d rows of %d genes: model %s, rules %s, gain %s, %s",
         TRANSCRIPT_GROUPS[group],
         result["n"],
         result["genes"],
         estimate(result["model"], result["model_ci"]),
         estimate(result["rules"], result["rules_ci"]),
         estimate(result["gain"], result["gain_ci"]),
+        p_value(result["gain_p"]),
     )
 (OUT_DIR / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
 logger.info(
@@ -510,16 +528,67 @@ plot = (
 save_figure(plot, OUT_DIR, "efficiency_by_nmd_escape", 9.5, 3.5)
 
 # %% [markdown]
-# The dots show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
+# The bars show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
 # cohort, with the 95% bootstrap CIs. These are the numbers of the table in the section "Model validation" of the main
-# README.
+# README. The bracket of a cohort gives the P value of the gain of the model over the rules.
 
 # %%
-plot = interval_plot(
-    intervals([validation[cohort] for cohort in cohorts], MODEL_AND_RULES),
-    [f"{cohort_names[cohort]}\n{validation[cohort]['n']:,} rows" for cohort in cohorts],
-) + pn.labs(title="Spearman correlation with the measured NMD efficiency, 95% CIs", x="Spearman correlation")
-save_figure(plot, OUT_DIR, "spearman_per_cohort", 6.5, 3.5)
+bars_df = intervals([validation[cohort] for cohort in cohorts], MODEL_AND_RULES)
+# The bracket of each cohort spans the centers of its two bars, just right of their CIs
+bracket_ends = [offset for _, _, _, offset in MODEL_AND_RULES]
+brackets_df = pl.DataFrame(
+    {
+        "position": -np.arange(len(cohorts), dtype=float),
+        "rho": [
+            max(validation[cohort][f"{score}_ci"][1] for score, _, _, _ in MODEL_AND_RULES) + 0.03 for cohort in cohorts
+        ],
+        "label": [p_value(validation[cohort]["gain_p"]) for cohort in cohorts],
+    }
+)
+# The vertical line of each bracket, and a short tick at each end that points to the bars
+bracket_lines_df = pl.concat(
+    [
+        brackets_df.select(
+            position=pl.col("position") + bracket_ends[0],
+            position_end=pl.col("position") + bracket_ends[1],
+            rho="rho",
+            rho_end="rho",
+        ),
+        *(
+            brackets_df.select(
+                position=pl.col("position") + end,
+                position_end=pl.col("position") + end,
+                rho=pl.col("rho") - 0.015,
+                rho_end="rho",
+            )
+            for end in bracket_ends
+        ),
+    ]
+)
+plot = (
+    pn.ggplot(bars_df, pn.aes("position", "value"))
+    + pn.geom_col(pn.aes(fill="color"), width=0.27)
+    + pn.geom_errorbar(pn.aes(ymin="low", ymax="high"), width=0.12, color=SECONDARY_INK)
+    + pn.geom_segment(pn.aes(xend="position_end", y="rho", yend="rho_end"), data=bracket_lines_df, color=SECONDARY_INK)
+    + pn.geom_text(
+        pn.aes(y="rho", label="label"), data=brackets_df, ha="left", nudge_y=0.012, color=SECONDARY_INK, size=9
+    )
+    + pn.scale_fill_identity(
+        guide="legend",
+        breaks=[color for _, _, color, _ in MODEL_AND_RULES],
+        labels=[label for _, label, _, _ in MODEL_AND_RULES],
+    )
+    + pn.scale_x_continuous(
+        breaks=-np.arange(len(cohorts)),
+        labels=[f"{cohort_names[cohort]}\n{validation[cohort]['n']:,} variants" for cohort in cohorts],
+        expand=(0, 0.4),
+    )
+    + pn.scale_y_continuous(limits=(0, 1), breaks=np.linspace(0, 1, 6), expand=(0, 0))
+    + pn.coord_flip()
+    + pn.labs(x="", y="Spearman ρ with measured NMD efficiency (95% CI)")
+    + pn.theme(legend_title=pn.element_blank(), panel_grid_major_y=pn.element_blank())
+)
+save_figure(plot, OUT_DIR, "spearman_per_cohort", 7, 3.5)
 
 # %% [markdown]
 # The dots show the mean measured NMD efficiency of the GTEx variant-tissue rows with `nmd_escape` False, per tissue
