@@ -89,7 +89,7 @@ logger = logging.getLogger("validate_model")
 SEED = 0
 N_RESAMPLES = 2000
 # The tissues to drop, because GTEx v8 has too few samples of them (see the AbExp paper)
-EXCLUDED_TISSUES = ["BLDDER", "CVSEND", "CVXECT", "FLLPNT", "KDNMDL"]
+EXCLUDED_TISSUES = ["Bladder", "Cervix - Ectocervix", "Cervix - Endocervix", "Fallopian Tube", "Kidney - Medulla"]
 # The scores of interval_plot: the key in a result of correlations, the direct label, the color, and the offset from the
 # position of the result
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
@@ -555,7 +555,7 @@ plot = (
     )
     + pn.theme(panel_grid_major_y=pn.element_blank())
 )
-save_figure(plot, OUT_DIR, "gtex_tissues", 6, 9)
+save_figure(plot, OUT_DIR, "gtex_tissues", 8, 9)
 
 # %% [markdown]
 # The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the rows whose

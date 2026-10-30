@@ -20,7 +20,8 @@ Every benchmark table has these columns, with one row per measurement:
   from the GFF3.
 - NMD_efficiency: the NMD efficiency that the study measured. 0 means no NMD, and 1 means that the variant allele
   fraction in the RNA is half of that in the DNA.
-- tissue: the tissue of the measurement, only in a table with one row per variant and tissue.
+- tissue: the GTEx v8 name (SMTSD) of the tissue of the measurement, only in a table with one row per variant and
+  tissue.
 - source_row: the index of the row in the study table, from 0. Sorting on it gives the rows a fixed order.
 
 nmd_scanner.annotate_variants takes the unique VARIANT_COLUMNS of a benchmark table as its vcf_df, in pandas.

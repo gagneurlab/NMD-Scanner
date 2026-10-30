@@ -100,7 +100,7 @@ def test_build_nmdeff_tables(dataset, fasta):
 
 def test_build_gtex(fasta, caplog):
     caplog.set_level(logging.INFO)
-    raw_df = kim_table(Tissue_type=["LIVER", "LUNG", "LIVER", "LUNG"], ASE_altered=[0.25, 0.0, None, 0.5])
+    raw_df = kim_table(Tissue_type=["LCL", "WHLBLD", "LCL", "WHLBLD"], ASE_altered=[0.25, 0.0, None, 0.5])
     expected_df = benchmark(
         {
             "chrom": ["chr1"] * 2,
@@ -111,13 +111,19 @@ def test_build_gtex(fasta, caplog):
             "transcript": ["ENST1", "ENST3"],
             "gene": ["ENSG1", None],
             "NMD_efficiency": [1.5, -0.25],
-            "tissue": ["LIVER", "LUNG"],
+            "tissue": ["Cells - EBV-transformed lymphocytes", "Whole Blood"],
             "source_row": [0, 3],
         },
         {"tissue": pl.String},
     )
     assert_frame_equal(gtex.build(raw_df, TRANSCRIPTS, fasta), expected_df)
     assert "GTEx: 2 of 4 rows lack ASE_altered or have 0" in caplog.text
+
+
+def test_build_gtex_rejects_an_unknown_tissue(fasta):
+    raw_df = kim_table(Tissue_type=["LCL", "WHLBLD", "LCL", "BLOOD"], ASE_altered=[0.25, 0.5, 0.5, 0.5])
+    with pytest.raises(pl.exceptions.InvalidOperationError, match="replace_strict"):
+        gtex.build(raw_df, TRANSCRIPTS, fasta)
 
 
 def test_build_geuvadis(fasta, caplog):
