@@ -39,8 +39,8 @@
 #    paired CI from the same resamples. Its P value is from a two-sided z-test, with the standard deviation of the
 #    resampled gains as the standard error. Each cohort draws from its own generator, seeded with SEED.
 # 6. Per cohort, compute the mean measured NMD efficiency of the rows with nmd_escape False. For GTEx, also compute it
-#    over the variant-tissue rows, in total and per tissue. The per-tissue means leave out the EXCLUDED_TISSUES,
-#    which have too few samples.
+#    over the variant-tissue rows, in total and per tissue. Per tissue, also compute the Spearman correlations of step 5,
+#    without CIs. The per-tissue numbers leave out the EXCLUDED_TISSUES, which have too few samples.
 # 7. For MMRF-TARGET, compute the numbers of step 5 also for the rows on transcripts of the TCGA training rows, and for
 #    the other rows.
 
@@ -430,12 +430,25 @@ tissue_means = dict(
     .select("tissue", "mean")
     .iter_rows()
 )
+# The Spearman correlation of the prediction and of the rules with NMD_efficiency in each tissue, from the lowest
+# correlation of the prediction to the highest
+tissue_spearman_df = (
+    gtex_df.filter(~pl.col("tissue").is_in(EXCLUDED_TISSUES))
+    .group_by("tissue")
+    .agg(
+        n=pl.len(),
+        model=pl.corr("prediction", "NMD_efficiency", method="spearman"),
+        rules=pl.corr(~pl.col("nmd_escape"), "NMD_efficiency", method="spearman"),
+    )
+    .sort("model", "tissue")
+)
 validation["gtex_variant_tissue_rows"] = {
     "n": len(gtex_df),
     "tissues": gtex_df["tissue"].n_unique(),
     "mean_nmd_triggering": mean_nmd_triggering(gtex_df),
     "excluded_tissues": EXCLUDED_TISSUES,
     "mean_nmd_triggering_per_tissue": tissue_means,
+    "spearman_per_tissue": tissue_spearman_df.rows_by_key("tissue", named=True, unique=True),
 }
 mmrf_df = cohorts["mmrf_target"]
 seen = mmrf_df["transcript"].is_in(cohorts["tcga"]["transcript"].implode())
@@ -464,6 +477,11 @@ logger.info(
     max(tissue_means.values()),
     len(tissue_means),
     len(EXCLUDED_TISSUES),
+)
+logger.info(
+    "gtex, Spearman per tissue: the model correlates higher than the rules in %d of the %d tissues",
+    len(tissue_spearman_df.filter(pl.col("model") > pl.col("rules"))),
+    len(tissue_spearman_df),
 )
 
 # %% [markdown]
@@ -625,6 +643,38 @@ plot = (
     + pn.theme(panel_grid_major_y=pn.element_blank())
 )
 save_figure(plot, OUT_DIR, "gtex_tissues", 8, 9)
+
+# %% [markdown]
+# The dots show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
+# GTEx tissue without the 5 tissues with too few samples. The dashed line marks equal values. The labels name the 3
+# tissues with the highest and the 3 with the lowest correlation of the model.
+
+# %%
+# The labels of the highest tissues go left of their points, and those of the lowest go right. The label of the lowest
+# tissue hangs below its point, so that it clears the label of the next one.
+tissue_labels_df = pl.concat(
+    [
+        tissue_spearman_df.tail(3).with_columns(x=pl.col("rules") - 0.008, ha=pl.lit("right"), va=pl.lit("center")),
+        tissue_spearman_df.head(3).with_columns(
+            x=pl.col("rules") + 0.008, ha=pl.lit("left"), va=pl.Series(["top", "center", "center"])
+        ),
+    ]
+).with_columns(label=pl.format("{}, {} variants", "tissue", "n"))
+plot = (
+    pn.ggplot(tissue_spearman_df, pn.aes("rules", "model"))
+    + pn.geom_abline(color=AXIS, linetype="dashed")
+    + pn.geom_point(color=BLUE, size=2.5)
+    # Both axes span the same range, so that the square panel gives them the same scale
+    + pn.geom_blank(pn.aes(x="model", y="rules"))
+    + pn.geom_text(pn.aes(x="x", label="label", ha="ha", va="va"), data=tissue_labels_df, color=SECONDARY_INK, size=9)
+    + pn.labs(
+        title=f"GTEx, Spearman ρ with the measured NMD efficiency in {len(tissue_spearman_df)} tissues",
+        x="Spearman ρ, canonical rules",
+        y="Spearman ρ, model",
+    )
+    + pn.theme(aspect_ratio=1)
+)
+save_figure(plot, OUT_DIR, "gtex_tissue_spearman", 6.5, 6.5)
 
 # %% [markdown]
 # The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the rows whose
