@@ -24,7 +24,7 @@ GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 SURFACE = "#ffffff"
 DPI = 600
-# The calibration plots bin the rows into this many quantile bins of the prediction
+# The calibration plots bin the measurements into this many quantile bins of the prediction
 CALIBRATION_BINS = 10
 
 pn.theme_set(
@@ -52,9 +52,9 @@ matplotlib.rcParams["pdf.fonttype"] = 42
 def calibration(cohort_df: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
     """
     One row per bin of CALIBRATION_BINS quantile bins of the column prediction of cohort_df, from the lowest bin to the
-    highest. A row has the mean prediction, the mean NMD_efficiency, and the 95% CI of the mean NMD_efficiency from the
+    highest. A bin has the mean prediction, the mean NMD_efficiency, and the 95% CI of the mean NMD_efficiency from the
     t distribution as low and high. Also the slope and the intercept of the least-squares line of NMD_efficiency on
-    prediction over all rows.
+    prediction over all measurements.
     """
     bins_df = (
         cohort_df.group_by(bin=pl.col("prediction").qcut(CALIBRATION_BINS, allow_duplicates=True))
@@ -96,7 +96,7 @@ def calibration_plot(bins_df: pl.DataFrame) -> pn.ggplot:
             y="Mean measured NMD efficiency",
             caption=f"Dots: mean in each of {CALIBRATION_BINS} quantile bins of the prediction,\n"
             "with the 95% CI of the measured mean.\n"
-            "Blue line: least-squares fit over all rows. Gray line: measured = predicted.",
+            "Blue line: least-squares fit over all measurements. Gray line: measured = predicted.",
         )
         + pn.theme(aspect_ratio=1)
     )

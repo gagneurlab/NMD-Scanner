@@ -3,10 +3,10 @@ GTEx: germline nonsense variants in the tissues of GTEx v8, Supplementary Data 2
 7:1461).
 
 The table has one row per variant and tissue. NMD_efficiency is its column NMD_efficiency, and ASE_altered is the
-variant allele fraction in the RNA. For ASE_altered 0, the table caps NMD_efficiency at 10, so build keeps the rows with
-ASE_altered above 0. In 4,102 of the 17,816 rows with ASE_altered above 0, NMD_efficiency differs from
--log2(ASE_altered / 0.5). The difference moves the Spearman correlations of scripts/validate_model.py.py by only about
-0.001.
+variant allele fraction in the RNA. For ASE_altered 0, the table caps NMD_efficiency at 10, so build keeps the
+variant-tissue pairs with ASE_altered above 0. In 4,102 of the 17,816 variant-tissue pairs with ASE_altered above 0,
+NMD_efficiency differs from -log2(ASE_altered / 0.5). The difference moves the Spearman correlations of
+scripts/validate_model.py.py by only about 0.001.
 """
 
 import logging
@@ -96,10 +96,12 @@ def download(downloads: Path) -> pl.DataFrame:
 def build(raw_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
     The benchmark table of raw_df, the table of download, with the alleles of hgvsc_alleles and the column tissue. It has
-    the rows with ASE_altered above 0. tissue is the name of Tissue_type in TISSUE_NAMES. build raises an
-    InvalidOperationError at an abbreviation that TISSUE_NAMES lacks.
+    the variant-tissue pairs with ASE_altered above 0. tissue is the name of Tissue_type in TISSUE_NAMES. build raises
+    an InvalidOperationError at an abbreviation that TISSUE_NAMES lacks.
     """
     table_df = raw_df.with_row_index("source_row").filter(pl.col("ASE_altered") > 0)
-    logger.info("%s: %d of %d rows lack ASE_altered or have 0", NAME, len(raw_df) - len(table_df), len(raw_df))
+    logger.info(
+        "%s: %d of %d variant-tissue pairs lack ASE_altered or have 0", NAME, len(raw_df) - len(table_df), len(raw_df)
+    )
     table_df = table_df.with_columns(tissue=pl.col("Tissue_type").replace_strict(TISSUE_NAMES))
     return finish_table(hgvsc_alleles(table_df, transcripts_df, fasta), transcripts_df, fasta)

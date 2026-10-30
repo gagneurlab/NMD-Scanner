@@ -1,7 +1,7 @@
 """
 Train the NMD efficiency model nmd_efficiency_rf.onnx, a random forest on the NMD-Scanner features of the TCGA benchmark
-(see nmd_scanner.benchmark.datasets.tcga), and predict each training row out of fold. A grid search on folds of whole
-chromosomes tunes the random forest (see chromosome_folds). scripts/validate_model.py.py draws the figures.
+(see nmd_scanner.benchmark.datasets.tcga), and predict each TCGA variant-sample pair out of fold. A grid search on folds
+of whole chromosomes tunes the random forest (see chromosome_folds). scripts/validate_model.py.py draws the figures.
 
 Run it from the repo root with:
 
@@ -14,7 +14,7 @@ Run it from the repo root with:
 Outputs in --out-dir:
 - nmd_efficiency_rf.onnx (see save_onnx), and the same random forest as the joblib pickle nmd_efficiency_rf.pkl
 - cv_results.json: the R2 of each fold and the hyperparameters
-- oof_predictions.parquet: the out-of-fold prediction of each training row
+- oof_predictions.parquet: the out-of-fold prediction of each TCGA variant-sample pair
 - feature_importance.parquet, learning_curve.parquet and oob_error.parquet: the numbers of the training figures
 """
 
@@ -57,8 +57,8 @@ RF_GRID = {
 }
 # The permutation importance permutes each input this many times
 N_PERMUTATIONS = 10
-# The learning curve fits the final hyperparameters on these shares of the training rows of the fold with the fewest,
-# in every fold
+# The learning curve fits the final hyperparameters on these shares of the training variant-sample pairs of the fold
+# with the fewest, in every fold
 LEARNING_CURVE_SIZES = np.linspace(0.1, 1.0, 8)
 # The out-of-bag error curve fits the final hyperparameters with these numbers of trees
 OOB_TREES = [50, 100, 200, 300, 400, 500]
@@ -66,9 +66,9 @@ OOB_TREES = [50, 100, 200, 300, 400, 500]
 
 def chromosome_folds(y: np.ndarray, chrom: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
     """
-    Split the rows into N_FOLDS folds of whole chromosomes, stratified by N_TARGET_BINS quantile bins of y. The folds
-    then have similar sizes and target distributions. Genes can overlap (antisense, nested), so a grouping by gene could
-    still leak.
+    Split the variant-sample pairs into N_FOLDS folds of whole chromosomes, stratified by N_TARGET_BINS quantile bins of
+    y. The folds then have similar sizes and target distributions. Genes can overlap (antisense, nested), so a grouping
+    by gene could still leak.
     """
     target_bins = np.digitize(y, np.quantile(y, np.linspace(0, 1, N_TARGET_BINS + 1)[1:-1]), right=True)
     splitter = StratifiedGroupKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
@@ -76,7 +76,7 @@ def chromosome_folds(y: np.ndarray, chrom: np.ndarray) -> list[tuple[np.ndarray,
 
 
 def tune(x_df: pl.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
-    """Run a grid search over RF_GRID on chromosome_folds, and refit the best random forest on all given rows."""
+    """Run a grid search over RF_GRID on chromosome_folds, and refit the best random forest on all of x_df and y."""
     forest = RandomForestRegressor(random_state=SEED, n_jobs=1)
     search = GridSearchCV(forest, RF_GRID, scoring="r2", cv=chromosome_folds(y, chrom), n_jobs=-1)
     return search.fit(x_df, y)
@@ -170,7 +170,11 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         prediction=False,
     )
     training_df = join_features(tcga_df, results_df, "TCGA").sort("source_row")
-    logger.info("%d TCGA rows, %d of them with nmd_efficiency_prediction_status ok", len(tcga_df), len(training_df))
+    logger.info(
+        "%d TCGA variant-sample pairs, %d of them with nmd_efficiency_prediction_status ok",
+        len(tcga_df),
+        len(training_df),
+    )
     # A DataFrame, so that the random forest keeps the input names as feature_names_in_
     x_df = training_df.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
     y = training_df["NMD_efficiency"].to_numpy()
@@ -190,7 +194,9 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         )
         chromosomes = sorted(set(chrom[test].tolist()))
         r2 = r2_score(y[test], prediction)
-        folds.append({"chromosomes": chromosomes, "rows": len(test), "r2": r2, "params": search.best_params_})
+        folds.append(
+            {"chromosomes": chromosomes, "variant_sample_pairs": len(test), "r2": r2, "params": search.best_params_}
+        )
         logger.info("fold %d (%s): R2 %.3f, %s", fold, " ".join(chromosomes), r2, search.best_params_)
     pl.concat(predictions).write_parquet(out_dir / "oof_predictions.parquet")
 
@@ -202,7 +208,12 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
     if (onnx_prediction != final.predict(x_df).astype(np.float32)).any():
         raise ValueError(f"{onnx_path} predicts other values than the random forest")
 
-    results = {"rows": len(training_df), "folds": folds, "inner_cv_r2": final.best_score_, "params": final.best_params_}
+    results = {
+        "variant_sample_pairs": len(training_df),
+        "folds": folds,
+        "inner_cv_r2": final.best_score_,
+        "params": final.best_params_,
+    }
     (out_dir / "cv_results.json").write_text(json.dumps(results, indent=2) + "\n")
     joblib.dump(final.best_estimator_, out_dir / "nmd_efficiency_rf.pkl")
     logger.info("final model: inner CV R2 %.3f, %s", final.best_score_, final.best_params_)
@@ -224,7 +235,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
             pl.DataFrame(
                 {
                     "kind": (
-                        "Permutation importance\nDecrease in R2 on the training rows,"
+                        "Permutation importance\nDecrease in R2 on the training variant-sample pairs,"
                         f"\nmean and SD of {N_PERMUTATIONS} permutations"
                     ),
                     "input": MODEL_INPUTS,
@@ -238,7 +249,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
 
     # The learning curve of the final hyperparameters, in the chromosome folds
     learning_folds = chromosome_folds(y, chrom)
-    # learning_curve would scale shares by the training rows of the first fold only
+    # learning_curve would scale shares by the training variant-sample pairs of the first fold only
     learning_sizes = (LEARNING_CURVE_SIZES * min(len(train) for train, _ in learning_folds)).astype(int)
     # A copy of the final random forest with its hyperparameters, unfitted. The final model stays as it is.
     train_sizes, train_scores, test_scores = learning_curve(
@@ -255,14 +266,14 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
     # One row per training size and fold
     pl.DataFrame(
         {
-            "training_rows": np.repeat(train_sizes, N_FOLDS),
+            "training_variant_sample_pairs": np.repeat(train_sizes, N_FOLDS),
             "fold": np.tile(np.arange(N_FOLDS), len(train_sizes)),
             "training_r2": train_scores.ravel(),
             "held_out_r2": test_scores.ravel(),
         }
     ).write_parquet(out_dir / "learning_curve.parquet")
 
-    # The out-of-bag R2 of the final hyperparameters, fitted on all rows with a growing number of trees
+    # The out-of-bag R2 of the final hyperparameters, fitted on all variant-sample pairs with a growing number of trees
     oob_r2 = [
         clone(final.best_estimator_).set_params(n_estimators=trees, oob_score=True, n_jobs=-1).fit(x_df, y).oob_score_
         for trees in OOB_TREES

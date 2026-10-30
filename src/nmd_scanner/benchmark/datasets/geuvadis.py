@@ -3,7 +3,7 @@ Geuvadis: germline nonsense SNVs in lymphoblastoid cell lines (Iha et al. 2025),
 
 Nonsense_list.txt has one row per variant and MANE Select transcript, with REF and ALT on the forward strand. VAF_mean
 is the variant allele fraction in the RNA. NMD_efficiency is -log2(VAF_mean / 0.5), because a heterozygous germline
-variant has a variant allele fraction of 0.5 in the DNA. build keeps the rows with VAF_mean above 0 in the study's
+variant has a variant allele fraction of 0.5 in the DNA. build keeps the variants with VAF_mean above 0 in the study's
 accurate annotation: no rescued MNV, no nontranslating gene, no mixed NMD isoforms.
 """
 
@@ -47,16 +47,18 @@ def download(downloads: Path) -> tuple[pl.DataFrame, pl.DataFrame]:
 def build(raw: tuple[pl.DataFrame, pl.DataFrame], transcripts_df: pl.DataFrame, fasta: Fasta) -> pl.DataFrame:
     """
     The benchmark table of raw, the tables Nonsense_list.txt and IsoformLevel.NMDannotation.txt of download. It has
-    the rows with VAF_mean above 0 in the accurate annotation. IsoformLevel.NMDannotation.txt has the evaluated
+    the variants with VAF_mean above 0 in the accurate annotation. IsoformLevel.NMDannotation.txt has the evaluated
     variants, and a variant that it lacks has no flag.
     """
     nonsense_df, isoforms_df = raw
     table_df = nonsense_df.with_row_index("source_row").filter(pl.col("VAF_mean") > 0)
-    logger.info("%s: %d of %d rows lack VAF_mean or have 0", NAME, len(nonsense_df) - len(table_df), len(nonsense_df))
+    logger.info(
+        "%s: %d of %d variants lack VAF_mean or have 0", NAME, len(nonsense_df) - len(table_df), len(nonsense_df)
+    )
     flagged = isoforms_df.filter(pl.any_horizontal(ACCURATE_ANNOTATION_FLAGS))["Variant_ID"]
     accurate_df = table_df.filter(~pl.col("Variant_ID").is_in(flagged.implode()))
     logger.info(
-        "%s: %d of %d rows are outside the study's accurate annotation (flags %s)",
+        "%s: %d of %d variants are outside the study's accurate annotation (flags %s)",
         NAME,
         len(table_df) - len(accurate_df),
         len(table_df),

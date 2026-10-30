@@ -102,16 +102,16 @@ The model predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 202
 
 ## Model validation
 
-The table gives the Spearman correlation of the prediction with the measured NMD efficiency, with 95% CIs from a bootstrap over genes. "Canonical rules" ranks the same rows by `nmd_escape` alone. [scripts/README.md](scripts/README.md) shows how to reproduce it.
+The table gives the Spearman correlation of the prediction with the measured NMD efficiency, with 95% CIs from a bootstrap over genes. "Canonical rules" ranks the same measurements by `nmd_escape` alone. [scripts/README.md](scripts/README.md) shows how to reproduce it.
 
-| Cohort                                                                                 | Variants        |  Rows | Model               | Canonical rules     |
-| -------------------------------------------------------------------------------------- | --------------- | ----: | ------------------- | ------------------- |
-| TCGA (Kim et al. 2024), out of fold, folds grouped by chromosome                       | somatic, tumors | 4,224 | 0.65 (0.63 to 0.67) | 0.61 (0.59 to 0.64) |
-| Geuvadis (Iha et al. 2025), lymphoblastoid cell lines, the study's accurate annotation | germline        | 1,133 | 0.65 (0.61 to 0.68) | 0.60 (0.55 to 0.63) |
-| GTEx v8 (Kim et al. 2024), 54 tissues, mean per variant                                | germline        | 2,287 | 0.48 (0.45 to 0.52) | 0.44 (0.40 to 0.48) |
-| MMRF-TARGET (Kim et al. 2024)                                                          | somatic, tumors |   509 | 0.46 (0.38 to 0.53) | 0.38 (0.30 to 0.46) |
+| Cohort                                                                                 | Variant origin     | n                          | Model               | Canonical rules     |
+| -------------------------------------------------------------------------------------- | ------------------ | -------------------------- | ------------------- | ------------------- |
+| TCGA (Kim et al. 2024), out of fold, folds grouped by chromosome                       | somatic, in tumors | 4,224 variant-sample pairs | 0.65 (0.63 to 0.67) | 0.61 (0.59 to 0.64) |
+| Geuvadis (Iha et al. 2025), lymphoblastoid cell lines, the study's accurate annotation | germline           | 1,133 variants             | 0.65 (0.61 to 0.68) | 0.60 (0.55 to 0.63) |
+| GTEx v8 (Kim et al. 2024), 54 tissues, mean per variant                                | germline           | 2,287 variants             | 0.48 (0.45 to 0.52) | 0.44 (0.40 to 0.48) |
+| MMRF-TARGET (Kim et al. 2024)                                                          | somatic, in tumors | 509 variant-sample pairs   | 0.46 (0.38 to 0.53) | 0.38 (0.30 to 0.46) |
 
-The model ranks the variants better than the rules in every cohort, by 0.04 to 0.08, with paired 95% CIs above 0. 219 of the 509 MMRF-TARGET rows lie on transcripts of the TCGA training rows. The gain is 0.16 (0.10 to 0.23) on these rows and 0.05 (-0.01 to 0.11) on the other 290.
+The model ranks the measurements better than the rules in every cohort, by 0.04 to 0.08, with paired 95% CIs above 0. 219 of the 509 MMRF-TARGET variant-sample pairs lie on transcripts of the TCGA training data. The gain is 0.16 (0.10 to 0.23) on these pairs and 0.05 (-0.01 to 0.11) on the other 290.
 
 The level of the measured efficiency differs between cohorts and tissues. Before you compare the predictions with another cohort's measurements, recalibrate them with a linear fit.
 

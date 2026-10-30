@@ -10,7 +10,8 @@ of the benchmark in logs and figures, and two functions:
 - build(raw, transcripts_df, fasta) returns the benchmark table of the raw tables, without network. fasta is a
   pyfaidx.Fasta of GRCh38. transcripts_df has one row per transcript of nmd_scanner.read_annotation, with the columns
   transcript (transcript_id without version), strand (Strand) and gene (gene_id without version).
-  scripts/build_benchmarks.py builds it. build applies the study's own filters, and it logs the rows that they drop.
+  scripts/build_benchmarks.py builds it. build applies the study's own filters, and it logs the measurements that they
+  drop.
 
 Every benchmark table has these columns, with one row per measurement:
 - chrom, start, end, ref and alt: the variant on GRCh38, with the names and the coordinates of the NMD-Scanner
@@ -25,7 +26,7 @@ Every benchmark table has these columns, with one row per measurement:
 - source_row: the index of the row in the study table, from 0. Sorting on it gives the rows a fixed order.
 
 nmd_scanner.annotate_variants takes the unique VARIANT_COLUMNS of a benchmark table as its vcf_df, in pandas.
-join_features joins the result of annotate_variants to the benchmark table, and it keeps the rows that the NMD
+join_features joins the result of annotate_variants to the benchmark table, and it keeps the measurements that the NMD
 efficiency model can predict. Read the annotation_df of annotate_variants from the GFF3 of the benchmark tables, so
 that a null gene marks a transcript missing from it.
 """
@@ -41,21 +42,21 @@ from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
 logger = logging.getLogger(__name__)
 
 DATASETS = {"tcga": tcga, "geuvadis": geuvadis, "gtex": gtex, "mmrf_target": mmrf_target}
-# The columns of the variant of a row
+# The columns of the variant of a measurement
 VARIANT_COLUMNS = ["chrom", "start", "end", "ref", "alt"]
-# The columns that join a row of a benchmark table to the NMD-Scanner row of its transcript and variant
+# The columns that join a measurement to the NMD-Scanner result of its variant-transcript pair
 KEY = ["transcript", *VARIANT_COLUMNS]
 
 
 def join_features(table_df: pl.DataFrame, results_df: pd.DataFrame, dataset: str) -> pl.DataFrame:
     """
-    Join each row of a benchmark table to the row of results_df, the result of nmd_scanner.annotate_variants, of its
-    transcript and variant.
-    Keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why, with dataset as
-    the name of the table. The rows have no fixed order.
+    Join each measurement of a benchmark table to its variant-transcript pair in results_df, the result of
+    nmd_scanner.annotate_variants.
+    Keep the measurements with nmd_efficiency_prediction_status "ok". Log the measurements that this drops, and why,
+    with dataset as the name of the table. The rows of the result have no fixed order.
 
-    A row has no NMD-Scanner row if the GFF3 lacks its transcript, or if its variant touches no coding region of the
-    transcript (see "Technical Notes.md").
+    A measurement has no variant-transcript pair in results_df if the GFF3 lacks its transcript, or if its variant
+    touches no coding region of the transcript (see "Technical Notes.md").
     """
     # transcript is transcript_id without version
     features_df = pl.DataFrame(nmd_scanner.to_arrow(results_df)).with_columns(
@@ -66,8 +67,8 @@ def join_features(table_df: pl.DataFrame, results_df: pd.DataFrame, dataset: str
     missing = unmatched_df["gene"].is_null()
     if len(unmatched_df) > 0:
         logger.info(
-            "%s: %d of %d rows have no NMD-Scanner row of their transcript and variant: %d on transcripts missing from"
-            " the GFF3, %d with a variant that touches no coding region of its transcript (%s)",
+            "%s: %d of %d measurements have no NMD-Scanner result for their variant-transcript pair: %d on transcripts"
+            " missing from the GFF3, %d with a variant that touches no coding region of its transcript (%s)",
             dataset,
             len(unmatched_df),
             len(table_df),
@@ -79,7 +80,7 @@ def join_features(table_df: pl.DataFrame, results_df: pd.DataFrame, dataset: str
     dropped_df = status.filter(status != "ok").value_counts(sort=True)
     if len(dropped_df) > 0:
         logger.info(
-            "%s: %d of the %d joined rows have an nmd_efficiency_prediction_status other than ok: %s",
+            "%s: %d of the %d joined measurements have an nmd_efficiency_prediction_status other than ok: %s",
             dataset,
             dropped_df["count"].sum(),
             len(joined_df),

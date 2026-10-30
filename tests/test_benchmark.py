@@ -41,8 +41,8 @@ def fasta(tmp_path):
 
 def kim_table(**columns) -> pl.DataFrame:
     """
-    A table of Kim et al. 2024 with 4 rows: a plus-strand transcript, a minus-strand transcript, and two
-    rows on a transcript missing from the GFF3, whose REF matches the FASTA on the minus and on the plus strand.
+    A table of Kim et al. 2024 with 4 measurements: a plus-strand transcript, a minus-strand transcript, and two
+    measurements on a transcript missing from the GFF3, whose REF matches the FASTA on the minus and on the plus strand.
     """
     return pl.DataFrame(
         {
@@ -56,8 +56,8 @@ def kim_table(**columns) -> pl.DataFrame:
     )
 
 
-def benchmark(rows: dict, extra_schema: dict | None = None) -> pl.DataFrame:
-    return pl.DataFrame(rows, schema={**SCHEMA, **(extra_schema or {}), "source_row": pl.UInt32})
+def benchmark(columns: dict, extra_schema: dict | None = None) -> pl.DataFrame:
+    return pl.DataFrame(columns, schema={**SCHEMA, **(extra_schema or {}), "source_row": pl.UInt32})
 
 
 def test_hgvsc_alleles_on_both_strands(fasta):
@@ -117,7 +117,7 @@ def test_build_gtex(fasta, caplog):
         {"tissue": pl.String},
     )
     assert_frame_equal(gtex.build(raw_df, TRANSCRIPTS, fasta), expected_df)
-    assert "GTEx: 2 of 4 rows lack ASE_altered or have 0" in caplog.text
+    assert "GTEx: 2 of 4 variant-tissue pairs lack ASE_altered or have 0" in caplog.text
 
 
 def test_build_gtex_rejects_an_unknown_tissue(fasta):
@@ -162,8 +162,8 @@ def test_build_geuvadis(fasta, caplog):
         }
     )
     assert_frame_equal(geuvadis.build((nonsense_df, isoforms_df), TRANSCRIPTS, fasta), expected_df)
-    assert "Geuvadis: 2 of 5 rows lack VAF_mean or have 0" in caplog.text
-    assert "Geuvadis: 1 of 3 rows are outside the study's accurate annotation" in caplog.text
+    assert "Geuvadis: 2 of 5 variants lack VAF_mean or have 0" in caplog.text
+    assert "Geuvadis: 1 of 3 variants are outside the study's accurate annotation" in caplog.text
 
 
 def test_check_sha256():
@@ -244,9 +244,10 @@ def test_join_features(caplog):
     kept_df = join_features(table_df, results_df, "Test")
     assert kept_df.select("transcript", "start", "nmd_efficiency_prediction_status").rows() == [("ENST1", 0, "ok")]
     assert (
-        "Test: 2 of 4 rows have no NMD-Scanner row of their transcript and variant: 1 on transcripts missing from the"
-        " GFF3, 1 with a variant that touches no coding region of its transcript (ENST2)"
+        "Test: 2 of 4 measurements have no NMD-Scanner result for their variant-transcript pair: 1 on transcripts"
+        " missing from the GFF3, 1 with a variant that touches no coding region of its transcript (ENST2)"
     ) in caplog.text
     assert (
-        "Test: 1 of the 2 joined rows have an nmd_efficiency_prediction_status other than ok: 1 ref_ptc" in caplog.text
+        "Test: 1 of the 2 joined measurements have an nmd_efficiency_prediction_status other than ok: 1 ref_ptc"
+        in caplog.text
     )

@@ -1,8 +1,9 @@
 """
 TCGA: somatic nonsense variants in tumors of TCGA, the table tcga_dataset.csv of NMDEff (Kim et al. 2024).
 
-NMD_efficiency is the column of the table. In 29 rows, it differs from -log2(VAF_DNA_RNA_ratio) by up to 0.36. Every
-row has VAF_RNA above 0. scripts/train_model.py trains the NMD efficiency model on this table.
+The table has one row per variant-sample pair: one variant in one tumor sample. NMD_efficiency is the column of the
+table. In 29 variant-sample pairs, it differs from -log2(VAF_DNA_RNA_ratio) by up to 0.36. Every variant-sample pair
+has VAF_RNA above 0. scripts/train_model.py trains the NMD efficiency model on this table.
 """
 
 from pathlib import Path

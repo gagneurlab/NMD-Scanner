@@ -2,7 +2,8 @@
 MMRF-TARGET: somatic nonsense variants in tumors of the projects MMRF and TARGET, the table MMRF_TARGET_dataset.csv
 of NMDEff (Kim et al. 2024).
 
-NMD_efficiency is the column of the table. Every row has VAF_RNA above 0.
+The table has one row per variant-sample pair: one variant in one tumor sample. NMD_efficiency is the column of the
+table. Every variant-sample pair has VAF_RNA above 0.
 """
 
 from pathlib import Path

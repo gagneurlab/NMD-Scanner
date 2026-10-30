@@ -73,7 +73,7 @@ def main(gff3: Path, fasta: Path, out_dir: Path, downloads: Path | None, dataset
         .unique()
     )
     if transcripts_df.is_empty():
-        raise ValueError(f"{gff3} has no exon or CDS row")
+        raise ValueError(f"{gff3} has no exon or CDS record")
     for name in datasets or DATASETS:
         dataset = DATASETS[name]
         table_df = dataset.build(dataset.download(downloads), transcripts_df, genome)

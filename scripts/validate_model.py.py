@@ -28,21 +28,23 @@
 #
 # 1. Read the benchmark tables of BENCHMARK_DIR, except TCGA.
 # 2. Run nmd_scanner.annotate_variants on their unique variants. It adds the prediction of the model as
-#    nmd_efficiency_prediction. Join each measured row to the NMD-Scanner row of its transcript and variant.
-# 3. Keep the rows with nmd_efficiency_prediction_status "ok". Log the rows that this drops, and why.
+#    nmd_efficiency_prediction. Join each measurement to the NMD-Scanner result of its variant-transcript pair.
+# 3. Keep the measurements with nmd_efficiency_prediction_status "ok". Log the measurements that this drops, and why.
 # 4. A benchmark with the column tissue has one row per variant and tissue. Its cohort has one row per variant, with
 #    the mean NMD efficiency over the tissues.
 # 5. Per cohort, compute the Spearman correlation of the predictions and of (not nmd_escape) with the measured NMD
 #    efficiency. The 95% CIs are percentiles of N_RESAMPLES bootstrap resamples of the genes. A resample draws genes
-#    with replacement and takes all rows of each drawn gene. Rows of one gene share a transcript structure, so they are
-#    not independent. The gene of a row is the gene of its transcript in the GFF3. The gain, model minus rules, has a
-#    paired CI from the same resamples. Its P value is from a two-sided z-test, with the standard deviation of the
-#    resampled gains as the standard error. Each cohort draws from its own generator, seeded with SEED.
-# 6. Per cohort, compute the mean measured NMD efficiency of the rows with nmd_escape False. For GTEx, also compute it
-#    over the variant-tissue rows, in total and per tissue. Per tissue, also compute the Spearman correlations of step 5,
-#    without CIs. The per-tissue numbers leave out the EXCLUDED_TISSUES, which have too few samples.
-# 7. For MMRF-TARGET, compute the numbers of step 5 also for the rows on transcripts of the TCGA training rows, and for
-#    the other rows.
+#    with replacement and takes all measurements of each drawn gene. Measurements of one gene share a transcript
+#    structure, so they are not independent. The gene of a measurement is the gene of its transcript in the GFF3. The
+#    gain, model minus rules, has a paired CI from the same resamples. Its P value is from a two-sided z-test, with the
+#    standard deviation of the resampled gains as the standard error. Each cohort draws from its own generator, seeded
+#    with SEED.
+# 6. Per cohort, compute the mean measured NMD efficiency of the measurements with nmd_escape False. For GTEx, also
+#    compute it over the variant-tissue pairs, in total and per tissue. Per tissue, also compute the Spearman
+#    correlations of step 5, without CIs. The per-tissue numbers leave out the EXCLUDED_TISSUES, which have too few
+#    samples.
+# 7. For MMRF-TARGET, compute the numbers of step 5 also for the variant-sample pairs on transcripts of the TCGA
+#    training data, and for the other variant-sample pairs.
 # 8. Per cohort, split the r2_score of scikit-learn for the predictions into the squared Pearson correlation, minus a
 #    term for the offset of the means, minus a term for the mismatch of the spreads.
 
@@ -97,10 +99,19 @@ EXCLUDED_TISSUES = ["Bladder", "Cervix - Ectocervix", "Cervix - Endocervix", "Fa
 # label, the color, and the offset from the position of the result
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
 GAIN = [("gain", "", BLUE, 0.0)]
-# The keys of the MMRF-TARGET rows by transcript in validation.json, and their names in the log and the figure
+# The keys of the MMRF-TARGET variant-sample pairs by transcript in validation.json, and their names in the log and the
+# figure
 TRANSCRIPT_GROUPS = {
-    "in_tcga_training": "Transcript in the TCGA training rows",
-    "not_in_tcga_training": "Transcript not in the TCGA training rows",
+    "in_tcga_training": "Transcript in the TCGA training data",
+    "not_in_tcga_training": "Transcript not in the TCGA training data",
+}
+# The name of the measurements of each cohort in the figures and the log. A measurement of the GTEx cohort is the mean
+# of one variant over the tissues.
+MEASUREMENTS = {
+    "tcga": "variant-sample pairs",
+    "geuvadis": "variants",
+    "gtex": "variants",
+    "mmrf_target": "variant-sample pairs",
 }
 # The terms of r2_terms: the key, the sign in the sum, and the name in the figure
 R2_TERMS = [
@@ -123,19 +134,19 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
     """
     Spearman correlation of the prediction and of the rules with NMD_efficiency, and their difference, with bootstrap
     CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first. Each resample draws
-    the genes of the column gene with replacement, and it takes all rows of each drawn gene.
+    the genes of the column gene with replacement, and it takes all measurements of each drawn gene.
     """
     y = cohort_df["NMD_efficiency"].to_numpy()
     model = cohort_df["prediction"].to_numpy()
     rules = (~cohort_df["nmd_escape"]).cast(pl.Float64).to_numpy()
-    # The positions of the rows of each gene, in the order of the genes
+    # The positions of the measurements of each gene, in the order of the genes
     genes_df = cohort_df.with_row_index().group_by("gene").agg("index").sort("gene")
-    gene_rows = [positions.to_numpy() for positions in genes_df["index"]]
+    gene_positions = [positions.to_numpy() for positions in genes_df["index"]]
     rng = np.random.default_rng(SEED)
     model_resampled = np.empty(N_RESAMPLES)
     rules_resampled = np.empty(N_RESAMPLES)
     for resample in range(N_RESAMPLES):
-        i = np.concatenate([gene_rows[gene] for gene in rng.integers(0, len(gene_rows), len(gene_rows))])
+        i = np.concatenate([gene_positions[gene] for gene in rng.integers(0, len(gene_positions), len(gene_positions))])
         model_resampled[resample] = spearman(model[i], y[i])
         rules_resampled[resample] = spearman(rules[i], y[i])
     model_value = spearman(model, y)
@@ -144,7 +155,7 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
     gain_resampled = model_resampled - rules_resampled
     return {
         "n": len(y),
-        "genes": len(gene_rows),
+        "genes": len(gene_positions),
         "model": model_value,
         "model_ci": percentiles(model_resampled),
         "rules": rules_value,
@@ -156,7 +167,7 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
 
 
 def mean_nmd_triggering(cohort_df: pl.DataFrame) -> float:
-    """The mean NMD_efficiency of the rows with nmd_escape False."""
+    """The mean NMD_efficiency of the measurements with nmd_escape False."""
     return float(cohort_df.filter(~pl.col("nmd_escape"))["NMD_efficiency"].mean())
 
 
@@ -234,22 +245,26 @@ if trained.read_bytes() != MODEL_PATH.read_bytes():
 # ## Training
 
 # %% [markdown]
-# The histogram shows the target `NMD_efficiency` of the training rows. 0 means no NMD, and 1 means that the variant
-# allele fraction in the RNA is half of that in the DNA.
+# The histogram shows the target `NMD_efficiency` of the TCGA variant-sample pairs. 0 means no NMD, and 1 means that the
+# variant allele fraction in the RNA is half of that in the DNA.
 
 # %%
 oof_df = pl.read_parquet(TRAIN_DIR / "oof_predictions.parquet")
 plot = (
     pn.ggplot(oof_df, pn.aes("NMD_efficiency"))
     + pn.geom_histogram(bins=60, fill=BLUE, color=SURFACE, size=0.25)
-    + pn.labs(title=f"NMD_efficiency of {len(oof_df):,} TCGA rows", x="NMD_efficiency", y="Rows")
+    + pn.labs(
+        title=f"NMD_efficiency of {len(oof_df):,} TCGA variant-sample pairs",
+        x="NMD_efficiency",
+        y="Variant-sample pairs",
+    )
     + pn.theme(panel_grid_major_x=pn.element_blank())
 )
 save_figure(plot, OUT_DIR, "target_histogram", 6, 3.5)
 
 # %% [markdown]
-# The scatter shows the measured NMD efficiency of each TCGA row over its out-of-fold prediction, with Spearman and R2
-# over all rows. The gray line marks equal values.
+# The scatter shows the measured NMD efficiency of each TCGA variant-sample pair over its out-of-fold prediction, with
+# Spearman and R2 over all variant-sample pairs. The gray line marks equal values.
 
 # %%
 oof_measured = oof_df["NMD_efficiency"].to_numpy()
@@ -260,7 +275,7 @@ plot = (
     + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
     + pn.geom_abline(color=AXIS)
     + pn.labs(
-        title=f"TCGA, out of fold, {len(oof_df):,} rows\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
+        title=f"TCGA, out of fold, {len(oof_df):,} variant-sample pairs\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
         x="Predicted NMD efficiency",
         y="Measured NMD efficiency",
     )
@@ -270,19 +285,19 @@ save_figure(plot, OUT_DIR, "tcga_measured_vs_predicted", 5, 4.5)
 # %% [markdown]
 # The dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the out-of-fold
 # prediction, with the 95% CI of the measured mean. The blue line is the least-squares fit of measured on predicted over
-# all rows, and the gray line marks equal values.
+# all variant-sample pairs, and the gray line marks equal values.
 
 # %%
 bins_df, slope, intercept = calibration(oof_df)
 plot = calibration_plot(bins_df.with_columns(slope=slope, intercept=intercept)) + pn.labs(
-    title=f"TCGA, out of fold, {len(oof_df):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
+    title=f"TCGA, out of fold, {len(oof_df):,} variant-sample pairs\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
 )
 save_figure(plot, OUT_DIR, "calibration_oof", 5, 6)
 
 # %% [markdown]
 # The bars show the impurity importance and the permutation importance of the model inputs in the final random forest.
-# The permutation importance is the loss in R2 on the training rows when one input is permuted, with the standard
-# deviation over the permutations.
+# The permutation importance is the loss in R2 on the training variant-sample pairs when one input is permuted, with the
+# standard deviation over the permutations.
 
 # %%
 importance_df = pl.read_parquet(TRAIN_DIR / "feature_importance.parquet").sort("value", "input")
@@ -305,13 +320,14 @@ plot = (
 save_figure(plot, OUT_DIR, "feature_importance", 9, 5)
 
 # %% [markdown]
-# The learning curve shows the R2 of the final hyperparameters on the training rows and on the held-out fold, for
-# growing numbers of training rows, with bands of one standard deviation over the folds. Each chromosome fold trains on
-# the same numbers of rows, up to all training rows of the fold with the fewest.
+# The learning curve shows the R2 of the final hyperparameters on the training variant-sample pairs and on the held-out
+# fold, for growing numbers of training variant-sample pairs, with bands of one standard deviation over the folds. Each
+# chromosome fold trains on the same numbers of variant-sample pairs, up to all training variant-sample pairs of the
+# fold with the fewest.
 
 # %%
-learning_df = pl.read_parquet(TRAIN_DIR / "learning_curve.parquet").sort("training_rows", "fold")
-train_sizes = learning_df["training_rows"].unique().sort().to_numpy()
+learning_df = pl.read_parquet(TRAIN_DIR / "learning_curve.parquet").sort("training_variant_sample_pairs", "fold")
+train_sizes = learning_df["training_variant_sample_pairs"].unique().sort().to_numpy()
 # The scores as learning_curve returns them: one row per training size, and one column per fold
 train_scores, test_scores = (
     learning_df[column].to_numpy().reshape(len(train_sizes), -1) for column in ("training_r2", "held_out_r2")
@@ -320,24 +336,24 @@ curves_df = pl.concat(
     [
         pl.DataFrame(
             {
-                "rows": train_sizes,
+                "training_variant_sample_pairs": train_sizes,
                 "mean": scores.mean(axis=1),
                 "sd": scores.std(axis=1),
                 "label": label,
                 "color": color,
             }
         )
-        for scores, label, color in ((train_scores, "Training rows", MUTED_INK), (test_scores, "Held-out fold", BLUE))
+        for scores, label, color in ((train_scores, "Training set", MUTED_INK), (test_scores, "Held-out fold", BLUE))
     ]
 )
 plot = (
-    pn.ggplot(curves_df, pn.aes("rows", "mean"))
+    pn.ggplot(curves_df, pn.aes("training_variant_sample_pairs", "mean"))
     + pn.geom_ribbon(pn.aes(ymin="mean - sd", ymax="mean + sd", fill="color"), alpha=0.1)
     + pn.geom_line(pn.aes(color="color"))
     + pn.geom_point(pn.aes(color="color"), size=2.5)
     + pn.geom_text(
         pn.aes(label="label"),
-        data=curves_df.filter(pl.col("rows") == train_sizes[-1]),
+        data=curves_df.filter(pl.col("training_variant_sample_pairs") == train_sizes[-1]),
         ha="left",
         nudge_x=0.03 * train_sizes[-1],
         color=SECONDARY_INK,
@@ -346,14 +362,14 @@ plot = (
     + pn.scale_color_identity()
     + pn.scale_fill_identity()
     + pn.scale_x_continuous(expand=(0.05, 0, 0.2, 0))
-    + pn.labs(title="Learning curve of the final hyperparameters", x="Training rows", y="R2")
+    + pn.labs(title="Learning curve of the final hyperparameters", x="Training variant-sample pairs", y="R2")
 )
 save_figure(plot, OUT_DIR, "learning_curve", 6, 4)
 
 # %% [markdown]
-# The curve shows the out-of-bag error of the final hyperparameters, fitted on all rows with a growing number of trees.
-# The out-of-bag prediction of a row is the mean prediction of the trees that did not draw it, and the out-of-bag error
-# is 1 - R2 of these predictions.
+# The curve shows the out-of-bag error of the final hyperparameters, fitted on all TCGA variant-sample pairs with a
+# growing number of trees. The out-of-bag prediction of a variant-sample pair is the mean prediction of the trees that
+# did not draw it, and the out-of-bag error is 1 - R2 of these predictions.
 
 # %%
 oob_df = pl.read_parquet(TRAIN_DIR / "oob_error.parquet").select("trees", error=1 - pl.col("oob_r2"))
@@ -410,7 +426,7 @@ for name, cohort_df in joined.items():
         )
         cohort_names[name] += ", mean per variant"
     cohorts[name] = cohort_df
-# The variant-tissue rows of GTEx
+# The variant-tissue pairs of GTEx
 gtex_df = joined["gtex"]
 
 # %%
@@ -422,9 +438,10 @@ for cohort, cohort_df in cohorts.items():
         "r2_decomposition": r2_terms(cohort_df),
     }
     logger.info(
-        "%s, %d rows of %d genes: model %s, rules %s, gain %s, %s, NMD-triggering mean %.2f",
+        "%s, %d %s of %d genes: model %s, rules %s, gain %s, %s, NMD-triggering mean %.2f",
         cohort,
         result["n"],
+        MEASUREMENTS[cohort],
         result["genes"],
         estimate(result["model"], result["model_ci"]),
         estimate(result["rules"], result["rules_ci"]),
@@ -445,7 +462,7 @@ tissues_df = (
 )
 tissue_means = dict(tissues_df.sort("mean", "tissue").select("tissue", "mean").iter_rows())
 tissue_spearman_df = tissues_df.drop("mean").sort("model", "tissue")
-validation["gtex_variant_tissue_rows"] = {
+validation["gtex_variant_tissue_pairs"] = {
     "n": len(gtex_df),
     "tissues": gtex_df["tissue"].n_unique(),
     "mean_nmd_triggering": mean_nmd_triggering(gtex_df),
@@ -460,7 +477,7 @@ validation["mmrf_target_by_transcript"] = {
 }
 for group, result in validation["mmrf_target_by_transcript"].items():
     logger.info(
-        "mmrf_target, %s, %d rows of %d genes: model %s, rules %s, gain %s, %s",
+        "mmrf_target, %s, %d variant-sample pairs of %d genes: model %s, rules %s, gain %s, %s",
         TRANSCRIPT_GROUPS[group],
         result["n"],
         result["genes"],
@@ -471,7 +488,7 @@ for group, result in validation["mmrf_target_by_transcript"].items():
     )
 (OUT_DIR / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
 logger.info(
-    "gtex, %d variant-tissue rows: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues without"
+    "gtex, %d variant-tissue pairs: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues without"
     " the %d with too few samples",
     len(gtex_df),
     mean_nmd_triggering(gtex_df),
@@ -482,13 +499,14 @@ logger.info(
 )
 
 # %% [markdown]
-# The scatters show the measured NMD efficiency of each row over the prediction of the model, per cohort. The gray
-# line marks equal values.
+# The scatters show the measured NMD efficiency of each measurement over the prediction of the model, per cohort. The
+# gray line marks equal values.
 
 # %%
 scatter_df = facet_frame(
     {
-        f"{cohort_names[cohort]}, {len(cohort_df):,} rows\nSpearman {validation[cohort]['model']:.2f}": cohort_df
+        f"{cohort_names[cohort]}, {len(cohort_df):,} {MEASUREMENTS[cohort]}\n"
+        f"Spearman {validation[cohort]['model']:.2f}": cohort_df
         for cohort, cohort_df in cohorts.items()
     }
 )
@@ -504,30 +522,32 @@ save_figure(plot, OUT_DIR, "measured_vs_predicted", 8, 7.5)
 # %% [markdown]
 # Per cohort, the dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the
 # prediction, with the 95% CI of the measured mean. The gray line marks equal values, and the blue line is the
-# least-squares fit of measured on predicted over all rows, the linear recalibration that the main README suggests.
+# least-squares fit of measured on predicted over all measurements, the linear recalibration that the main README
+# suggests.
 
 # %%
 calibrations = {}
 for cohort, cohort_df in cohorts.items():
     bins_df, slope, intercept = calibration(cohort_df)
-    title = f"{cohort_names[cohort]}, {len(cohort_df):,} rows\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
+    title = (
+        f"{cohort_names[cohort]}, {len(cohort_df):,} {MEASUREMENTS[cohort]}\n"
+        f"Fit: slope {slope:.2f}, intercept {intercept:.2f}"
+    )
     calibrations[title] = bins_df.with_columns(slope=slope, intercept=intercept)
 plot = calibration_plot(facet_frame(calibrations)) + pn.facet_wrap("panel", scales="free")
 save_figure(plot, OUT_DIR, "calibration", 8, 9)
 
 # %% [markdown]
-# The boxes show the measured NMD efficiency of the rows by `nmd_escape`, per cohort. A box spans the quartiles, and
-# its whiskers reach the furthest row within 1.5 times the interquartile range.
+# The boxes show the measured NMD efficiency of the measurements by `nmd_escape`, per cohort. A box spans the quartiles,
+# and its whiskers reach the furthest measurement within 1.5 times the interquartile range. The number below a box
+# counts its measurements.
 
 # %%
 boxes_df = facet_frame(
     {
-        cohort_names[cohort]: cohort_df.with_columns(
+        f"{cohort_names[cohort]}\n{len(cohort_df):,} {MEASUREMENTS[cohort]}": cohort_df.with_columns(
             pl.col("nmd_escape").replace_strict(
-                {
-                    escape: f"{escape}\n{count:,} rows"
-                    for escape, count in cohort_df["nmd_escape"].value_counts().iter_rows()
-                }
+                {escape: f"{escape}\n{count:,}" for escape, count in cohort_df["nmd_escape"].value_counts().iter_rows()}
             )
         )
         for cohort, cohort_df in cohorts.items()
@@ -578,7 +598,7 @@ plot = (
     )
     + pn.scale_x_continuous(
         breaks=-np.arange(len(cohorts)),
-        labels=[f"{cohort_names[cohort]}\n{validation[cohort]['n']:,} variants" for cohort in cohorts],
+        labels=[f"{cohort_names[cohort]}\n{validation[cohort]['n']:,} {MEASUREMENTS[cohort]}" for cohort in cohorts],
         expand=(0, 0.4),
     )
     + pn.scale_y_continuous(limits=(0, 1), breaks=np.linspace(0, 1, 6), expand=(0, 0))
@@ -599,7 +619,7 @@ save_figure(plot, OUT_DIR, "spearman_per_cohort", 7, 3.5)
 r2_panels = {}
 for cohort, cohort_df in cohorts.items():
     values = [sign * validation[cohort]["r2_decomposition"][term] for term, sign, _ in R2_TERMS]
-    r2_panels[f"{cohort_names[cohort]}\n{len(cohort_df):,} variants"] = pl.DataFrame(
+    r2_panels[f"{cohort_names[cohort]}\n{len(cohort_df):,} {MEASUREMENTS[cohort]}"] = pl.DataFrame(
         {"term": [name for _, _, name in R2_TERMS], "value": values, "label": [f"{value:+.2f}" for value in values]}
     )
 positive = pl.col("value") >= 0
@@ -626,25 +646,25 @@ plot = (
 save_figure(plot, OUT_DIR, "r2_decomposition", 10, 3)
 
 # %% [markdown]
-# The dots show the mean measured NMD efficiency of the GTEx variant-tissue rows with `nmd_escape` False, per tissue
+# The dots show the mean measured NMD efficiency of the GTEx variant-tissue pairs with `nmd_escape` False, per tissue
 # without the 5 tissues with too few samples, with the 95% CI of the mean. The gray line marks the mean over all
-# variant-tissue rows with `nmd_escape` False.
+# variant-tissue pairs with `nmd_escape` False.
 
 # %%
-tissue_rows = validation["gtex_variant_tissue_rows"]
+pairs_result = validation["gtex_variant_tissue_pairs"]
 # The tissues from the lowest mean to the highest, which coord_flip draws from the bottom to the top
-tissues = list(tissue_rows["mean_nmd_triggering_per_tissue"])
+tissues = list(pairs_result["mean_nmd_triggering_per_tissue"])
 nmd_triggering_df = gtex_df.filter(~pl.col("nmd_escape"), pl.col("tissue").is_in(tissues)).cast(
     {"tissue": pl.Enum(tissues)}
 )
 plot = (
     pn.ggplot(nmd_triggering_df, pn.aes("tissue", "NMD_efficiency"))
-    + pn.geom_hline(yintercept=tissue_rows["mean_nmd_triggering"], color=AXIS, linetype="dashed")
+    + pn.geom_hline(yintercept=pairs_result["mean_nmd_triggering"], color=AXIS, linetype="dashed")
     + pn.annotate(
         "text",
         x=tissues[-1],
-        y=tissue_rows["mean_nmd_triggering"],
-        label=f"All tissues {tissue_rows['mean_nmd_triggering']:.2f}",
+        y=pairs_result["mean_nmd_triggering"],
+        label=f"All tissues {pairs_result['mean_nmd_triggering']:.2f}",
         ha="left",
         nudge_y=0.01,
         color=SECONDARY_INK,
@@ -653,7 +673,7 @@ plot = (
     + pn.stat_summary(fun_data="mean_cl_normal", color=BLUE)
     + pn.coord_flip()
     + pn.labs(
-        title=f"GTEx, NMD-triggering variant-tissue rows of {len(tissues)} tissues",
+        title=f"GTEx, NMD-triggering variant-tissue pairs of {len(tissues)} tissues",
         x="",
         y="Mean measured NMD efficiency, 95% CI",
     )
@@ -693,9 +713,9 @@ plot = (
 save_figure(plot, OUT_DIR, "gtex_tissue_spearman", 6.5, 6.5)
 
 # %% [markdown]
-# The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the rows whose
-# transcript is in the TCGA training rows of TRAIN_DIR and for the other rows, with 95% bootstrap CIs. The numbers
-# are `mmrf_target_by_transcript` in validation.json.
+# The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the
+# variant-sample pairs whose transcript is in the TCGA training data of TRAIN_DIR and for the other variant-sample
+# pairs, with 95% bootstrap CIs. The numbers are `mmrf_target_by_transcript` in validation.json.
 
 # %%
 transcript_split = validation["mmrf_target_by_transcript"]
@@ -714,7 +734,10 @@ plot = (
     + pn.scale_color_identity()
     + pn.scale_y_continuous(
         breaks=-np.arange(len(results)),
-        labels=[f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} rows" for group, result in transcript_split.items()],
+        labels=[
+            f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} variant-sample pairs"
+            for group, result in transcript_split.items()
+        ],
         expand=(0, 0.4),
     )
     + pn.facet_wrap("panel", scales="free_x")
