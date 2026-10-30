@@ -1,9 +1,9 @@
 """
-Conformance cases of what gives a row and what gives none (REF mismatch, intergenic and UTR variants, a
+Conformance cases of what gives a result and what gives none (REF mismatch, intergenic and UTR variants, a
 chromosome without a coding region, a VCF without a record), several transcripts or variants in one run, variant_id,
 the location of the CDS in the transcript, reassign_exons, an Ensembl GFF3, the type and the tags of the transcript,
-and the values of unknown_reason. A variant on a chromosome that the FASTA lacks is an error, and so is a CDS row
-outside the exon rows of its transcript.
+and the values of unknown_reason. A variant on a chromosome that the FASTA lacks is an error, and so is a CDS record
+outside the exon records of its transcript.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
@@ -28,7 +28,7 @@ from .runner import (
     Change,
     Layout,
     Mark,
-    NoRow,
+    NoResult,
     Raises,
     Ruler,
     Span,
@@ -96,8 +96,8 @@ alt 5' [gtcagacc ATG GCC]|[AGG CAG GGC]|[TCC TAA gcagccaggc] 3'
                                 ^ T>A
 T>A at CDS 10: CTG>CAG
 """
-# The row of MISSENSE: the alt transcript is known, and no stop codon changes
-MISSENSE_ROW = {
+# The variant-transcript pair of MISSENSE: the alt transcript is known, and no stop codon changes
+MISSENSE_PAIR = {
     "variant_id": "var1",
     "ref": per_strand("T", "A"),
     "alt": per_strand("A", "T"),
@@ -131,65 +131,66 @@ MISSENSE_ROW = {
 }
 
 
-def _is_exon(row, number):
-    """Whether a GFF3 row is the exon row with the exon_number attribute number."""
-    return row[2] == "exon" and re.search(rf"exon_number={number}(;|$)", row[8]) is not None
+def _is_exon(record, number):
+    """Whether a GFF3 record is the exon record with the exon_number attribute number."""
+    return record[2] == "exon" and re.search(rf"exon_number={number}(;|$)", record[8]) is not None
 
 
-def _move_3prime_end(row, strand, length):
-    """Move the 3' end of a GFF3 row by length nt upstream, in transcript orientation."""
+def _move_3prime_end(record, strand, length):
+    """Move the 3' end of a GFF3 record by length nt upstream, in transcript orientation."""
     if strand == "+":
-        row[4] = str(int(row[4]) - length)
+        record[4] = str(int(record[4]) - length)
     else:
-        row[3] = str(int(row[3]) + length)
-    return row
+        record[3] = str(int(record[3]) + length)
+    return record
 
 
-def chromosome_2(rows, strand):
-    """Put every GFF3 row on chr2. The FASTA and the VCF stay on chr1."""
-    return [["chr2", *row[1:]] for row in rows]
+def chromosome_2(records, strand):
+    """Put every GFF3 record on chr2. The FASTA and the VCF stay on chr1."""
+    return [["chr2", *record[1:]] for record in records]
 
 
-def second_transcript_with_a_shorter_3utr(rows, strand):
+def second_transcript_with_a_shorter_3utr(records, strand):
     """
     Add the transcript tx2 to the gene g1: a copy of tx1 whose exon 3 ends 4 nt earlier, so its 3' UTR has 6 nt
     instead of 10.
     """
     copies = []
-    for row in rows[1:]:
-        copy = [*row[:8], row[8].replace("tx1", "tx2")]
+    for record in records[1:]:
+        copy = [*record[:8], record[8].replace("tx1", "tx2")]
         if copy[2] == "transcript" or _is_exon(copy, 3):
             copy = _move_3prime_end(copy, strand, 4)
         copies.append(copy)
-    return rows + copies
+    return records + copies
 
 
-def copy_of_the_gene_on_chromosome_2(rows, strand):
+def copy_of_the_gene_on_chromosome_2(records, strand):
     """
-    Add a copy of every GFF3 row on chr2, as the gene g2 with the transcript tx2. The FASTA and the VCF stay on chr1.
+    Add a copy of every GFF3 record on chr2, as the gene g2 with the transcript tx2. The FASTA and the VCF stay on
+    chr1.
     """
-    copies = [["chr2", *row[1:8], row[8].replace("tx1", "tx2").replace("=g1", "=g2")] for row in rows]
-    return rows + copies
+    copies = [["chr2", *record[1:8], record[8].replace("tx1", "tx2").replace("=g1", "=g2")] for record in records]
+    return records + copies
 
 
-def exon_numbers_1_and_3_swapped(rows, strand):
-    """Swap the exon_number attributes 1 and 3 on every row, so that they no longer follow the transcript order."""
+def exon_numbers_1_and_3_swapped(records, strand):
+    """Swap the exon_number attributes 1 and 3 on every record, so that they no longer follow the transcript order."""
     swap = {"1": "3", "3": "1"}
     return [
-        [*row[:8], re.sub(r"exon_number=(\d+)", lambda m: "exon_number=" + swap.get(m[1], m[1]), row[8])]
-        for row in rows
+        [*record[:8], re.sub(r"exon_number=(\d+)", lambda m: "exon_number=" + swap.get(m[1], m[1]), record[8])]
+        for record in records
     ]
 
 
-def exon_1_ends_2_nt_before_its_cds_row(rows, strand):
-    """Move the 3' end of the exon 1 row 2 nt upstream. The CDS row of exon 1 then reaches 2 nt past the exon."""
-    return [_move_3prime_end(row, strand, 2) if _is_exon(row, 1) else row for row in rows]
+def exon_1_ends_2_nt_before_its_cds_record(records, strand):
+    """Move the 3' end of the exon 1 record 2 nt upstream. The CDS record of exon 1 then reaches 2 nt past the exon."""
+    return [_move_3prime_end(record, strand, 2) if _is_exon(record, 1) else record for record in records]
 
 
-def nonsense_mediated_decay_transcript(rows, strand):
+def nonsense_mediated_decay_transcript(records, strand):
     """
-    Give tx1 the type nonsense_mediated_decay: as transcript_type (GENCODE) or biotype (Ensembl), on every row except
-    the gene row. The gene g1 keeps the type protein_coding.
+    Give tx1 the type nonsense_mediated_decay: as transcript_type (GENCODE) or biotype (Ensembl), on every record except
+    the gene record. The gene g1 keeps the type protein_coding.
     """
 
     def retype(attributes):
@@ -197,19 +198,22 @@ def nonsense_mediated_decay_transcript(rows, strand):
             "biotype=protein_coding", "biotype=nonsense_mediated_decay"
         )
 
-    return [row if row[2] == "gene" else [*row[:8], retype(row[8])] for row in rows]
+    return [record if record[2] == "gene" else [*record[:8], retype(record[8])] for record in records]
 
 
-def without_the_transcript_row(rows, strand):
-    """Drop the GENCODE transcript row. The exon, CDS and codon rows keep transcript_id, transcript_type and tag."""
-    return [row for row in rows if row[2] != "transcript"]
+def without_the_transcript_record(records, strand):
+    """
+    Drop the GENCODE transcript record. The exon, CDS and codon records keep transcript_id, transcript_type and
+    tag.
+    """
+    return [record for record in records if record[2] != "transcript"]
 
 
-def transcript_row_without_transcript_type(rows, strand):
-    """Drop transcript_type from the GENCODE transcript row. The exon, CDS and codon rows keep it."""
+def transcript_record_without_transcript_type(records, strand):
+    """Drop transcript_type from the GENCODE transcript record. The exon, CDS and codon records keep it."""
     return [
-        [*row[:8], row[8].replace(";transcript_type=protein_coding", "")] if row[2] == "transcript" else row
-        for row in rows
+        [*record[:8], record[8].replace(";transcript_type=protein_coding", "")] if record[2] == "transcript" else record
+        for record in records
     ]
 
 
@@ -255,7 +259,7 @@ REPEATED_CDS = Layout(
 )
 
 
-# Ensembl GFF3. The CDS rows of exon 2 and exon 3 have phase 2, because exon 1 holds 7 CDS nt and exon 2 9.
+# Ensembl GFF3. The CDS records of exon 2 and exon 3 have phase 2, because exon 1 holds 7 CDS nt and exon 2 9.
 # has_start_codon and has_stop_codon come from the FASTA: ATG at CDS 0 with phase 0, and TAA as the last 3 CDS nt.
 #   5' [gtcagacc ATG GCC A]|[GG CTG GGC T]|[CC TAA gcagccaggc] 3'
 ENSEMBL = Layout(
@@ -280,7 +284,7 @@ CANONICAL_TAGS = ("basic", "Ensembl_canonical", "MANE_Select")
 CASES = [
     # A VCF whose only record has a REF that the genome does not have
     Case(
-        "only_variant_with_a_ref_mismatch_gives_no_row",
+        "only_variant_with_a_ref_mismatch_gives_no_result",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GTC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
@@ -289,23 +293,23 @@ CASES = [
         """,
         THREE_EXONS,
         Change("CCATGG[C>T]CGTAAG", vcf_ref="A"),
-        NoRow("REF mismatch"),
+        NoResult("REF mismatch"),
     ),
-    # The variant with the REF mismatch gives no row, the other variant keeps its row
+    # The variant with the REF mismatch gives no result, the other variant keeps its result
     Case(
-        "variant_with_a_ref_mismatch_gives_no_row_and_the_other_variant_keeps_its_row",
+        "variant_with_a_ref_mismatch_gives_no_result_and_the_other_variant_keeps_its_result",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GCC]|[AGG CAG GGC]|[TCC TAA gcagccaggc] 3'
                                         ^ T>A
                               ^ C>T var2
-        var1 T>A at CDS 10: the row.
-        var2 C>T at CDS 4: the VCF has REF A, the genome C: no row.
+        var1 T>A at CDS 10: gives a result.
+        var2 C>T at CDS 4: the VCF has REF A, the genome C: no result.
         """,
         THREE_EXONS,
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
@@ -315,7 +319,7 @@ CASES = [
         more_changes=(Change("CCATGG[C>T]CGTAAG", vcf_ref="A", vcf_id="var2"),),
     ),
     Case(
-        "intergenic_snv_gives_no_row",
+        "intergenic_snv_gives_no_result",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc]cccccccccc 3'
         alt 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc]ccccaccccc 3'
@@ -324,10 +328,10 @@ CASES = [
         """,
         THREE_EXONS,
         Change("CAGGCCCCC[C>A]CCCCC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
     ),
     Case(
-        "snv_in_the_5utr_away_from_the_start_codon_gives_no_row",
+        "snv_in_the_5utr_away_from_the_start_codon_gives_no_result",
         """
         tx       1       8
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
@@ -337,11 +341,11 @@ CASES = [
         """,
         THREE_EXONS,
         Change("CG[T>A]CAGACC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
         ruler=Ruler((1, 8)),
     ),
     Case(
-        "snv_in_the_3utr_away_from_the_stop_codon_gives_no_row",
+        "snv_in_the_3utr_away_from_the_stop_codon_gives_no_result",
         """
         tx                                               29    35
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
@@ -351,12 +355,12 @@ CASES = [
         """,
         THREE_EXONS,
         Change("CAGCC[A>T]GGC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
         ruler=Ruler((29, 35)),
     ),
     # The variant lies next to the coding region but changes only the UTR
     Case(
-        "snv_right_before_the_start_codon_gives_no_row",
+        "snv_right_before_the_start_codon_gives_no_result",
         """
         tx             7
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
@@ -366,11 +370,11 @@ CASES = [
         """,
         THREE_EXONS,
         Change("AGAC[C>A]ATGGCC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
         ruler=Ruler((7,)),
     ),
     Case(
-        "snv_right_after_the_stop_codon_gives_no_row",
+        "snv_right_after_the_stop_codon_gives_no_result",
         """
         tx                                               29
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
@@ -380,11 +384,11 @@ CASES = [
         """,
         THREE_EXONS,
         Change("CTAA[G>C]CAGCC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
         ruler=Ruler((29,)),
     ),
     Case(
-        "snv_on_a_chromosome_without_a_coding_region_gives_no_row",
+        "snv_on_a_chromosome_without_a_coding_region_gives_no_result",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GCC]|[AGG CAG GGC]|[TCC TAA gcagccaggc] 3'
@@ -394,21 +398,21 @@ CASES = [
         """,
         Layout(Transcript(THREE_EXONS.transcript.exons, edit_gff3=chromosome_2), THREE_EXONS.ref),
         MISSENSE,
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
     ),
     Case(
-        "vcf_without_a_record_gives_no_row",
+        "vcf_without_a_record_gives_no_result",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         The VCF has its header and no record.
         """,
         THREE_EXONS,
         None,
-        NoRow("no record"),
+        NoResult("no record"),
     ),
-    # One row per transcript; each row has the transcript columns of its own transcript
+    # One row per transcript; each variant-transcript pair has the transcript columns of its own transcript
     Case(
-        "variant_in_the_cds_of_two_transcripts_gives_a_row_for_each",
+        "variant_in_the_cds_of_two_transcripts_gives_a_result_for_each",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GCC]|[AGG CAG GGC]|[TCC TAA gcagccaggc] 3'
@@ -423,14 +427,14 @@ CASES = [
         ),
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        more_rows=(
+        more_pairs=(
             {
                 "transcript_id": "tx2",
                 "transcript_start": per_strand(10, 14),
@@ -452,25 +456,26 @@ CASES = [
         ),
         marks=(Span("ref", 29, 39, "tx1: utr3_length = 10"), Span("ref", 29, 35, "tx2: utr3_length = 6")),
     ),
-    # Pins the row rule of "Output columns" in a run with a touched and an untouched transcript: a row is a variant
-    # in a transcript whose coding region it touches. So tx1 gives its row and tx2 gives none. In the closest cases,
-    # every transcript is touched (variant_in_the_cds_of_two_transcripts_gives_a_row_for_each) or none is
-    # (snv_on_a_chromosome_without_a_coding_region_gives_no_row). The FASTA lacks chr2. That is no error, because chr2
-    # has no variant.
+    # Pins the definition of a variant-transcript pair in "Output columns": the variant of one VCF record in one
+    # transcript whose coding region the variant touches. The run has the touched transcript tx1 and the untouched
+    # transcript tx2, so tx1 gives a result and tx2 gives none. In the closest cases, every transcript is touched
+    # (variant_in_the_cds_of_two_transcripts_gives_a_result_for_each) or none is
+    # (snv_on_a_chromosome_without_a_coding_region_gives_no_result). The FASTA lacks chr2. That is no error,
+    # because chr2 has no variant.
     Case(
-        "variant_in_tx1_with_an_untouched_copy_of_the_gene_on_chr2_gives_one_row",
+        "variant_in_tx1_with_an_untouched_copy_of_the_gene_on_chr2_gives_one_result",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GCC]|[AGG CAG GGC]|[TCC TAA gcagccaggc] 3'
                                         ^ T>A
-        The block shows tx1 on chr1. The GFF3 also has every row of tx1 and its gene on chr2, as the gene g2 with
+        The block shows tx1 on chr1. The GFF3 also has every record of tx1 and its gene on chr2, as the gene g2 with
         the transcript tx2. The VCF and the FASTA have chr1 only.
-        T>A at CDS 10: CTG>CAG in tx1. No variant touches the coding region of tx2, so tx2 gives no row.
+        T>A at CDS 10: CTG>CAG in tx1. No variant touches the coding region of tx2, so tx2 gives no result.
         """,
         Layout(Transcript(THREE_EXONS.transcript.exons, edit_gff3=copy_of_the_gene_on_chromosome_2), THREE_EXONS.ref),
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
@@ -478,21 +483,21 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # One row per variant; each row applies only its own variant
+    # One row per variant; each variant-transcript pair applies only its own variant
     Case(
-        "two_variants_in_one_transcript_give_a_row_each_with_only_their_own_change",
+        "two_variants_in_one_transcript_give_a_result_each_with_only_their_own_change",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GCC]|[AGG CAG GGC]|[TCC TAA gcagccaggc] 3'
                                         ^ T>A
                                             ^ G>A var2
         var1 T>A at CDS 10: CTG>CAG. var2 G>A at CDS 13: GGC>GAC.
-        The row of each variant applies only its own change.
+        The variant-transcript pair of each variant applies only its own change.
         """,
         THREE_EXONS,
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
@@ -500,7 +505,7 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
         more_changes=(Change("CTGG[G>A]CGTAAG", vcf_id="var2"),),
-        more_rows=(
+        more_pairs=(
             {
                 "variant_id": "var2",
                 "ref": per_strand("G", "C"),
@@ -522,7 +527,7 @@ CASES = [
         THREE_EXONS,
         Change("AGGC[T>A]GGGC", vcf_id="."),
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "variant_id": None,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
@@ -537,7 +542,7 @@ CASES = [
         THREE_EXONS,
         Change("AGGC[T>A]GGGC", vcf_id="007"),
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "variant_id": "007",
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
@@ -552,7 +557,7 @@ CASES = [
         THREE_EXONS,
         Change("AGGC[T>A]GGGC", vcf_id="NA"),
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "variant_id": "NA",
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
@@ -610,7 +615,8 @@ CASES = [
         marks=(Mark("ref", 1, 10, "~", "copy of the CDS"),),
         ruler=Ruler((1, 12)),
     ),
-    # reassign_exons numbers the exons by their position, 5' to 3'. The row is that of the correct numbers.
+    # reassign_exons numbers the exons by their position, 5' to 3'. The variant-transcript pair is that of the
+    # correct numbers.
     Case(
         "reassign_exons_numbers_the_exons_by_their_position",
         MISSENSE_DRAWING
@@ -618,7 +624,7 @@ CASES = [
         Layout(Transcript(THREE_EXONS.transcript.exons, edit_gff3=exon_numbers_1_and_3_swapped), THREE_EXONS.ref),
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
@@ -635,45 +641,46 @@ CASES = [
         + "that names the chromosome chr1.\n",
         Layout(Transcript(THREE_EXONS.transcript.exons, fasta_contig="chr2"), THREE_EXONS.ref),
         MISSENSE,
-        Raises(ValueError, match=r"\bchromosome\(s\) with variants and CDS rows: chr1\b"),
+        Raises(ValueError, match=r"\bchromosome\(s\) with variants and CDS records: chr1\b"),
     ),
     Case(
-        "cds_row_that_reaches_past_its_exon_end_is_an_error_that_names_the_transcript_and_the_cds_row",
+        "cds_record_that_reaches_past_its_exon_end_is_an_error_that_names_the_transcript_and_the_cds_record",
         """
         ref 5' [gtcagacc ATG GCC]|[AGG CTG GGC]|[TCC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GCC]|[AGG CAG GGC]|[TCC TAA gcagccaggc] 3'
                                         ^ T>A
-                              xx past the end of the exon 1 row
-        The block shows the CDS rows. The exon 1 row ends 2 nt before the CDS row of exon 1, so the CDS row
-        reaches 2 nt into the intron. T>A at CDS 10.
-        annotate() rejects the GFF3 with a ValueError that names the transcript tx1 and the CDS row.
+                              xx past the end of the exon 1 record
+        The block shows the CDS records. The exon 1 record ends 2 nt before the CDS record of exon 1, so the CDS
+        record reaches 2 nt into the intron. T>A at CDS 10.
+        annotate() rejects the GFF3 with a ValueError that names the transcript tx1 and the CDS record.
         """,
         Layout(
-            Transcript(THREE_EXONS.transcript.exons, edit_gff3=exon_1_ends_2_nt_before_its_cds_row), THREE_EXONS.ref
+            Transcript(THREE_EXONS.transcript.exons, edit_gff3=exon_1_ends_2_nt_before_its_cds_record), THREE_EXONS.ref
         ),
         MISSENSE,
         Raises(
             ValueError,
             match=per_strand(
-                names("CDS row of transcript tx1 at chr1:19-24"), names("CDS row of transcript tx1 at chr1:76-81")
+                names("CDS record of transcript tx1 at chr1:19-24"),
+                names("CDS record of transcript tx1 at chr1:76-81"),
             ),
         ),
-        marks=(Mark("ref", 12, 14, "x", "past the end of the exon 1 row"),),
+        marks=(Mark("ref", 12, 14, "x", "past the end of the exon 1 record"),),
     ),
-    # An Ensembl GFF3 with phase 2 CDS rows
+    # An Ensembl GFF3 with phase 2 CDS records
     Case(
-        "ensembl_gff3_with_phase_2_cds_rows",
+        "ensembl_gff3_with_phase_2_cds_records",
         """
         ref 5' [gtcagacc ATG GCC A]|[GG CTG GGC T]|[CC TAA gcagccaggc] 3'
         alt 5' [gtcagacc ATG GCC A]|[GG CAG GGC T]|[CC TAA gcagccaggc] 3'
                                          ^ T>A
-        The CDS rows of exon 1, 2 and 3 have phase 0, 2 and 2.
+        The CDS records of exon 1, 2 and 3 have phase 0, 2 and 2.
         T>A at CDS 10: CTG>CAG.
         """,
         ENSEMBL,
         Change("GGC[T>A]GGGCT"),
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_cds_exons": [
                 {"exon_number": 1, "length": 7},
                 {"exon_number": 2, "length": 9},
@@ -686,12 +693,12 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # transcript_type and transcript_tags come from the transcript row, not from the gene row
+    # transcript_type and transcript_tags come from the transcript record, not from the gene record
     Case(
-        "gencode_transcript_row_gives_the_transcript_type_and_the_transcript_tags",
+        "gencode_transcript_record_gives_the_transcript_type_and_the_transcript_tags",
         MISSENSE_DRAWING
-        + "The transcript row of tx1 has transcript_type=nonsense_mediated_decay and\n"
-        + "tag=basic,Ensembl_canonical,MANE_Select. The gene row of g1 has gene_type=protein_coding.\n",
+        + "The transcript record of tx1 has transcript_type=nonsense_mediated_decay and\n"
+        + "tag=basic,Ensembl_canonical,MANE_Select. The gene record of g1 has gene_type=protein_coding.\n",
         Layout(
             Transcript(THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=nonsense_mediated_decay_transcript),
             {
@@ -702,7 +709,7 @@ CASES = [
         ),
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
@@ -710,19 +717,19 @@ CASES = [
             "stop_classification": "alt_transcript",
         },
     ),
-    # input_defects.md: a transcript without a transcript row, and a transcript row without its type
+    # input_defects.md: a transcript without a transcript record, and a transcript record without its type
     Case(
-        "gencode_transcript_without_a_transcript_row_has_a_null_transcript_type_and_null_transcript_tags",
+        "gencode_transcript_without_a_transcript_record_has_a_null_transcript_type_and_null_transcript_tags",
         MISSENSE_DRAWING
-        + "The GFF3 has no transcript row for tx1. Its exon and CDS rows have transcript_type=protein_coding and\n"
-        + "tag=basic,Ensembl_canonical,MANE_Select, but the two columns come from the transcript row only.\n",
+        + "The GFF3 has no transcript record for tx1. Its exon and CDS records have transcript_type=protein_coding\n"
+        + "and tag=basic,Ensembl_canonical,MANE_Select, but the two columns come from the transcript record only.\n",
         Layout(
-            Transcript(THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=without_the_transcript_row),
+            Transcript(THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=without_the_transcript_record),
             {**THREE_EXONS.ref, "transcript_type": None, "transcript_tags": None},
         ),
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
@@ -731,19 +738,19 @@ CASES = [
         },
     ),
     Case(
-        "gencode_transcript_row_without_transcript_type_has_a_null_transcript_type",
+        "gencode_transcript_record_without_transcript_type_has_a_null_transcript_type",
         MISSENSE_DRAWING
-        + "The transcript row of tx1 has no transcript_type, and tag=basic,Ensembl_canonical,MANE_Select. Its exon\n"
-        + "and CDS rows have transcript_type=protein_coding.\n",
+        + "The transcript record of tx1 has no transcript_type, and tag=basic,Ensembl_canonical,MANE_Select.\n"
+        + "Its exon and CDS records have transcript_type=protein_coding.\n",
         Layout(
             Transcript(
-                THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=transcript_row_without_transcript_type
+                THREE_EXONS.transcript.exons, tags=CANONICAL_TAGS, edit_gff3=transcript_record_without_transcript_type
             ),
             {**THREE_EXONS.ref, "transcript_type": None, "transcript_tags": "basic,Ensembl_canonical,MANE_Select"},
         ),
         MISSENSE,
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "alt_transcript_exons": SAME_EXONS,
             "nmd_efficiency_prediction_status": "no_ptc",
             "ptc_pos_in_alt_transcript": None,
@@ -817,7 +824,7 @@ CASES = [
         THREE_EXONS,
         Change("TTTCAG[AG>GA]GCTG"),
         {
-            **MISSENSE_ROW,
+            **MISSENSE_PAIR,
             "ref": per_strand("AG", "CT"),
             "alt": per_strand("GA", "TC"),
             "start": per_strand(44, 53),

@@ -1,8 +1,8 @@
 """
-Conformance cases of the stop codon: the stop codon classification (alt_has_ptc, stop_loss and
-annotated_stop_distance), the readthrough after a stop loss, the nonstop, indels in and next to the stop codon, rows that
-keep the flags from the CDS, transcripts without stop_codon rows, the scan columns of the alt transcript, and codons
-split over an exon junction ("Technical Notes.md", section "Stop codon classification").
+Conformance cases of the stop codon: the stop codon classification (alt_has_ptc, stop_loss and annotated_stop_distance),
+the readthrough after a stop loss, the nonstop, indels in and next to the stop codon, variant-transcript pairs that keep
+the flags from the CDS, transcripts without stop_codon records, the scan columns of the alt transcript, and codons split
+over an exon junction ("Technical Notes.md", section "Stop codon classification").
 
 Most layouts are variants of one transcript of two exons: a 5'UTR of 13 nt, a CDS of 27 nt with the stop codon TAA at
 t40, and a 3'UTR of 32 nt. Its 3'UTR holds an in-frame TAG at t52. A 1 nt deletion upstream shifts the frame onto
@@ -16,7 +16,7 @@ line puts a character under bases, and `<-- label -->` spans a length. The ruler
 counted from 0 at the 5' end. Marks and spans on the alt line, and the prose "alt tx", count positions in
 `alt_transcript_seq`. `*` marks the PTC, `s` the annotated stop codon at its position in `alt_transcript_seq`, and
 `f` a first in-frame stop codon. A few cases mark more: `u` an in-frame stop codon of the ref CDS upstream of the
-annotated one, `x` stop_codon rows on a sense codon, and `e` the last base of the alt CDS. A codon mark stands under
+annotated one, `x` stop_codon records on a sense codon, and `e` the last base of the alt CDS. A codon mark stands under
 the first base of the codon only where the drawing splits the codon: by a gap, an exon junction or the codon spacing
 of another frame.
 """
@@ -225,8 +225,8 @@ INTERNAL_TGA = Layout(
         "transcript_seq": REF_UTR5 + "ATGGCCGCCGCCCTGTGAGCCGCCGCCTAA" + REF_UTR3,
     },
 )
-# The stop_codon rows lie on the sense codon TCA
-TCA_ROWS = Layout(
+# The stop_codon records lie on the sense codon TCA
+TCA_RECORDS = Layout(
     Transcript((EXON_1, "CTGACCGCCGCCGCC" + "TCA" + UTR3)),
     {
         **STOP_REF,
@@ -242,9 +242,9 @@ TCA_ROWS = Layout(
         "likely_misannotated": True,
     },
 )
-# The CDS has 31 nt. Its stop_codon rows lie on AAC, its last 3 nt. Its in-frame TAA at t40 starts 1 nt before them,
+# The CDS has 31 nt. Its stop_codon records lie on AAC, its last 3 nt. Its in-frame TAA at t40 starts 1 nt before them,
 # so ref_has_ptc is True
-TAA_C_ROWS = Layout(
+TAA_C_RECORDS = Layout(
     Transcript((EXON_1, "CTGACCGCCGCCGCC" + "TAAC" + UTR3)),
     {
         **STOP_REF,
@@ -264,8 +264,8 @@ TAA_C_ROWS = Layout(
         "likely_misannotated": True,
     },
 )
-# The CDS starts 1 nt after the ATG, with phase 0 and without start_codon rows: the annotated stop codon at t40 is out
-# of frame, and the frame of the CDS reads TGA at t26
+# The CDS starts 1 nt after the ATG, with phase 0 and without start_codon records: the annotated stop codon at t40 is
+# out of frame, and the frame of the CDS reads TGA at t26
 OUT_OF_FRAME = Layout(
     Transcript((UTR5 + "a" + "TGGCCGCCGCC", "CTGACCGCCGCCGCC" + "TAA" + UTR3), start_codon=False),
     {
@@ -286,8 +286,8 @@ OUT_OF_FRAME = Layout(
         "likely_misannotated": True,
     },
 )
-# No stop_codon rows: the CDS ends with GCC at t39, and the TAA at t40 lies in the 3'UTR
-NO_STOP_ROWS_REF = {
+# No stop_codon records: the CDS ends with GCC at t39, and the TAA at t40 lies in the 3'UTR
+NO_STOP_RECORDS_REF = {
     **STOP_REF,
     "cds_end": per_strand(70, 92),
     "cds_start": per_strand(23, 45),
@@ -306,12 +306,12 @@ NO_STOP_ROWS_REF = {
     "utr3_length": None,
     "likely_misannotated": True,
 }
-NO_STOP_ROWS = Layout(Transcript((EXON_1, "CTGACCGCCGCCGCC" + "taa" + UTR3), stop_codon=False), NO_STOP_ROWS_REF)
-# No stop_codon rows: the CDS ends with TGG at t37, and the TAA at t40 right after it lies in the 3'UTR
-NO_STOP_ROWS_TGG = Layout(
+NO_STOP_RECORDS = Layout(Transcript((EXON_1, "CTGACCGCCGCCGCC" + "taa" + UTR3), stop_codon=False), NO_STOP_RECORDS_REF)
+# No stop_codon records: the CDS ends with TGG at t37, and the TAA at t40 right after it lies in the 3'UTR
+NO_STOP_RECORDS_TGG = Layout(
     Transcript((EXON_1, "CTGACCGCCGCCTGG" + "taa" + "actg" + "c" * 20), stop_codon=False),
     {
-        **NO_STOP_ROWS_REF,
+        **NO_STOP_RECORDS_REF,
         "cds_start": per_strand(23, 37),
         "cds_end": per_strand(70, 84),
         "ref_cds_seq": "ATGGCCGCCGCCCTGACCGCCGCCTGG",
@@ -2099,7 +2099,7 @@ CASES = [
                                                         <-------------> annotated_stop_distance = 12
                                                         <-----------------------------------------> ptc_to_exon_end = 47, to the transcript end
             T>C turns the stop codon TAA into CAA. The ref CDS reads the in-frame TGA at tx 28 upstream of it, so the
-            row keeps the flags from the CDS.
+            variant-transcript pair keeps the flags from the CDS.
             """
         ),
         INTERNAL_TGA,
@@ -2176,7 +2176,7 @@ CASES = [
                                                         <-------------> annotated_stop_distance = 12
                                                         <-------------------------------> ptc_to_exon_end = 47, to the transcript end
             C>T at tx 39 is synonymous: GCC>GCT. The ref CDS reads the in-frame TGA at tx 28 upstream of the annotated
-            stop codon, so the row keeps the flags from the CDS.
+            stop codon, so the variant-transcript pair keeps the flags from the CDS.
             """
         ),
         INTERNAL_TGA,
@@ -2234,20 +2234,20 @@ CASES = [
         ruler=Ruler((0, 13, 25, 28, 40)),
     ),
     Case(
-        "missense_snv_with_stop_codon_rows_on_a_sense_codon_keeps_the_flags_from_the_cds",
+        "missense_snv_with_stop_codon_records_on_a_sense_codon_keeps_the_flags_from_the_cds",
         (
             """
             tx      0             13       20       25                  40           52
             ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TCA cccctgacctagccc..14..ccc] 3'
             alt 5' [ccgccgccaccgc ATG GCC GAC GCC]|[CTG ACC GCC GCC GCC TCA cccctgacctagccc..14..ccc] 3'
                                            ^ C>A
-                                                                        xxx stop_codon rows on the sense codon TCA
+                                                                        xxx stop_codon records on the sense codon TCA
                                                                                      fff first in-frame stop codon of transcript_seq
-            C>A at tx 20 is a missense SNV: GCC>GAC. The stop_codon rows lie on the sense codon TCA, so the row keeps
-            the flags from the CDS.
+            C>A at tx 20 is a missense SNV: GCC>GAC. The stop_codon records lie on the sense codon TCA, so the
+            variant-transcript pair keeps the flags from the CDS.
             """
         ),
-        TCA_ROWS,
+        TCA_RECORDS,
         Change("ATGGCCG[C>A]CGCC"),
         {
             "variant_id": "var1",
@@ -2283,16 +2283,16 @@ CASES = [
             "stop_classification": "alt_cds",
         },
         marks=(
-            Mark("ref", 40, 43, "x", "stop_codon rows on the sense codon TCA"),
+            Mark("ref", 40, 43, "x", "stop_codon records on the sense codon TCA"),
             Mark("ref", 52, 55, "f", "first in-frame stop codon of transcript_seq"),
         ),
         ruler=Ruler((0, 13, 20, 25, 40, 52)),
     ),
-    # Pins the threshold of ref_has_ptc, "Whether the first in-frame stop codon starts before the last 3 nt of the
-    # CDS", with the first in-frame stop codon 1 nt before them. The stop_codon rows lie on AAC, which "is no stop
-    # codon", so the row keeps the flags from the CDS. alt_has_ptc is then "as ref_has_ptc, for the alt CDS":
-    # True, a PTC row. The CDS of the closest case has no in-frame stop codon:
-    # missense_snv_with_stop_codon_rows_on_a_sense_codon_keeps_the_flags_from_the_cds.
+    # Pins the threshold of ref_has_ptc, "Whether the first in-frame stop codon starts before the last 3 nt of the CDS",
+    # with the first in-frame stop codon 1 nt before them. The stop_codon records lie on AAC, which "is no stop codon",
+    # so the variant-transcript pair keeps the flags from the CDS. alt_has_ptc is then "as ref_has_ptc, for the alt
+    # CDS": True, a PTC variant. The CDS of the closest case has no in-frame stop codon:
+    # missense_snv_with_stop_codon_records_on_a_sense_codon_keeps_the_flags_from_the_cds.
     Case(
         "missense_in_a_cds_whose_in_frame_taa_starts_1_nt_before_its_last_3_nt_keeps_the_ptc_from_the_cds",
         """
@@ -2301,16 +2301,16 @@ CASES = [
         alt 5' [ccgccgccaccgc ATG GCC GAC GCC]|[CTG ACC GCC GCC GCC TAA C cc..26..cccc] 3'
                                        ^ C>A
                                                                     uuu in-frame TAA of the ref CDS
-                                                                     x stop_codon rows on AAC, the last 3 nt of the CDS
+                                                                     x stop_codon records on AAC, the last 3 nt of the CDS
                                                                     *** PTC
                                                                     <> annotated_stop_distance = 1
                                                                     <----------------> ptc_to_exon_end = 36, to the transcript end
         C>A at tx 20 is a missense SNV: GCC>GAC. The CDS has 31 nt. Its in-frame TAA at tx 40 starts 1 nt before its
-        last 3 nt, so ref_has_ptc is True. The stop_codon rows lie on AAC, which is no stop codon, so the row
-        keeps the flags from the CDS: alt_has_ptc is True, as ref_has_ptc for the alt CDS.
+        last 3 nt, so ref_has_ptc is True. The stop_codon records lie on AAC, which is no stop codon, so the
+        variant-transcript pair keeps the flags from the CDS: alt_has_ptc is True, as ref_has_ptc for the alt CDS.
         The PTC lies in the last exon, so ptc_to_exon_end counts to the transcript end.
         """,
-        TAA_C_ROWS,
+        TAA_C_RECORDS,
         Change("ATGGCCG[C>A]CGCC"),
         {
             "variant_id": "var1",
@@ -2357,7 +2357,7 @@ CASES = [
         },
         marks=(
             Mark("ref", 40, 43, "u", "in-frame TAA of the ref CDS"),
-            Mark("ref", 41, 42, "x", "stop_codon rows on AAC, the last 3 nt of the CDS"),
+            Mark("ref", 41, 42, "x", "stop_codon records on AAC, the last 3 nt of the CDS"),
             Mark("alt", 40, 43, "*", "PTC"),
             Span("alt", 40, 41, "annotated_stop_distance = 1"),
             Span("alt", 40, 76, "ptc_to_exon_end = 36, to the transcript end"),
@@ -2378,7 +2378,7 @@ CASES = [
                                                       <----------------> annotated_stop_distance = 14
                                                       <---------------------------------------> ptc_to_exon_end = 49, to the transcript end
             T>C at tx 40 hits the annotated stop codon TAA, which is out of frame. The CDS starts 1 nt after the ATG,
-            and its frame reads the TGA at tx 26 first. So the row keeps the flags from the CDS.
+            and its frame reads the TGA at tx 26 first. So the variant-transcript pair keeps the flags from the CDS.
             """
         ),
         OUT_OF_FRAME,
@@ -2442,7 +2442,7 @@ CASES = [
         ruler=Ruler((0, 14, 26, 40, 47)),
     ),
     Case(
-        "frameshift_whose_first_stop_codon_lies_inside_the_cds_without_stop_codon_rows_is_a_ptc",
+        "frameshift_whose_first_stop_codon_lies_inside_the_cds_without_stop_codon_records_is_a_ptc",
         (
             """
             tx      0             13    18          25                  40
@@ -2452,12 +2452,12 @@ CASES = [
                                                      * PTC TGA, in the alt frame
                                                                       e last base of the alt CDS
                                                      <-------------------------------> ptc_to_exon_end = 49, to the transcript end
-            C>- at tx 18 shifts the frame: the alt CDS reads ATG GCG CCG CCC TGA. Without stop_codon rows, the CDS ends
-            with GCC at tx 39, and a first stop codon inside the alt CDS is a PTC.
+            C>- at tx 18 shifts the frame: the alt CDS reads ATG GCG CCG CCC TGA. Without stop_codon records, the CDS
+            ends with GCC at tx 39, and a first stop codon inside the alt CDS is a PTC.
             The PTC lies in the last exon, so ptc_to_exon_end counts to the transcript end.
             """
         ),
-        NO_STOP_ROWS,
+        NO_STOP_RECORDS,
         Change("ATGGC[C>]GCCGCC"),
         {
             "variant_id": "var1",
@@ -2511,7 +2511,7 @@ CASES = [
         ruler=Ruler((0, 13, 18, 25, 40)),
     ),
     Case(
-        "frameshift_whose_first_stop_codon_lies_past_the_cds_end_without_stop_codon_rows_is_neither",
+        "frameshift_whose_first_stop_codon_lies_past_the_cds_end_without_stop_codon_records_is_neither",
         (
             """
             tx      0             13                25        33        40
@@ -2520,11 +2520,11 @@ CASES = [
                                                               ^ C>-
                                                                       e last base of the alt CDS
                                                                                fff first in-frame stop codon
-            C>- at tx 33 shifts the frame. Without stop_codon rows, the CDS ends with GCC at tx 39. The first in-frame
-            stop codon lies past the end of the alt CDS, so it is neither a PTC nor a stop loss.
+            C>- at tx 33 shifts the frame. Without stop_codon records, the CDS ends with GCC at tx 39. The first
+            in-frame stop codon lies past the end of the alt CDS, so it is neither a PTC nor a stop loss.
             """
         ),
-        NO_STOP_ROWS,
+        NO_STOP_RECORDS,
         Change("ACCGC[C>]GCCGCCTAA"),
         {
             "variant_id": "var1",
@@ -2567,7 +2567,7 @@ CASES = [
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
     Case(
-        "frameshift_without_an_in_frame_stop_codon_without_stop_codon_rows_is_neither",
+        "frameshift_without_an_in_frame_stop_codon_without_stop_codon_records_is_neither",
         (
             """
             tx      0             13                25         33        40
@@ -2575,10 +2575,10 @@ CASES = [
             alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCGC GCC GCC taac..28..ccc] 3'
                                                               ^ ->G
             G inserted after tx 32 shifts the frame. No in-frame stop codon follows up to the transcript end. Without
-            stop_codon rows, that is neither a PTC nor a stop loss.
+            stop_codon records, that is neither a PTC nor a stop loss.
             """
         ),
-        NO_STOP_ROWS,
+        NO_STOP_RECORDS,
         Change("ACCGC[>G]CGCCGCCTAA"),
         {
             "variant_id": "var1",
@@ -2616,7 +2616,7 @@ CASES = [
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
     Case(
-        "stop_gained_in_the_last_codon_without_stop_codon_rows_ends_at_the_cds_end_and_is_a_ptc",
+        "stop_gained_in_the_last_codon_without_stop_codon_records_ends_at_the_cds_end_and_is_a_ptc",
         (
             """
             tx      0             13                25              37  40
@@ -2626,12 +2626,12 @@ CASES = [
                                                                     *** PTC
                                                                       e last base of the alt CDS
                                                                     <-----------------> ptc_to_exon_end = 30, to the transcript end
-            G>A at tx 38 turns the last sense codon TGG into TAG. Without stop_codon rows, the CDS ends with this codon,
-            so the TAG ends at the CDS end and is a PTC.
+            G>A at tx 38 turns the last sense codon TGG into TAG. Without stop_codon records, the CDS ends with this
+            codon, so the TAG ends at the CDS end and is a PTC.
             The PTC lies in the last exon, so ptc_to_exon_end counts to the transcript end.
             """
         ),
-        NO_STOP_ROWS_TGG,
+        NO_STOP_RECORDS_TGG,
         Change("GCCT[G>A]GTAAACTG"),
         {
             "variant_id": "var1",
@@ -2684,7 +2684,7 @@ CASES = [
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
     Case(
-        "missense_in_the_last_codon_without_stop_codon_rows_stops_right_after_the_cds_end_and_is_neither",
+        "missense_in_the_last_codon_without_stop_codon_records_stops_right_after_the_cds_end_and_is_neither",
         (
             """
             tx      0             13                25              37  40
@@ -2693,11 +2693,12 @@ CASES = [
                                                                       ^ G>C
                                                                       e last base of the alt CDS
                                                                         fff first in-frame stop codon
-            G>C at tx 39 turns the last sense codon TGG into TGC. Without stop_codon rows, the CDS ends with this codon.
-            The first in-frame stop codon is the TAA right after the CDS end, so it is neither a PTC nor a stop loss.
+            G>C at tx 39 turns the last sense codon TGG into TGC. Without stop_codon records, the CDS ends with this
+            codon. The first in-frame stop codon is the TAA right after the CDS end, so it is neither a PTC nor a stop
+            loss.
             """
         ),
-        NO_STOP_ROWS_TGG,
+        NO_STOP_RECORDS_TGG,
         Change("GCCTG[G>C]TAAACTG"),
         {
             "variant_id": "var1",
@@ -2965,7 +2966,7 @@ CASES = [
         ruler=Ruler((0, 13, 15, 20, 40)),
     ),
     Case(
-        "split_stop_codon_taa_to_tag_in_its_one_base_cds_row_is_neither_ptc_nor_stop_loss",
+        "split_stop_codon_taa_to_tag_in_its_one_base_cds_record_is_neither_ptc_nor_stop_loss",
         (
             """
             tx      0             13                25                  40   42         52

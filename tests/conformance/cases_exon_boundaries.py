@@ -1,7 +1,7 @@
 """
 Conformance cases of variant placement and exon boundaries. They cover SNVs in and next to the splice
 dinucleotides, the reach of a variant into a splice site, indels and delins at an exon edge, the transcript start,
-and the rows with unknown_reason ("Technical Notes.md", section "Variants at exon boundaries").
+and the variant-transcript pairs with unknown_reason ("Technical Notes.md", section "Variants at exon boundaries").
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
@@ -22,7 +22,7 @@ from .runner import (
     Case,
     Change,
     Layout,
-    NoRow,
+    NoResult,
     Ruler,
     Transcript,
     per_strand,
@@ -82,7 +82,8 @@ MAIN_AFTER_A = Layout(
     MAIN_REF,
 )
 
-# The alt columns of a known row whose alt CDS keeps 33 nt and its only in-frame stop codon, the annotated one
+# The alt columns of a variant-transcript pair with a known alt transcript. Its alt CDS keeps 33 nt and its only
+# in-frame stop codon, the annotated one
 KEEPS_THE_STOP_CODON = {
     "alt_cds_length": 33,
     "alt_cds_exons": [
@@ -108,8 +109,9 @@ KEEPS_THE_STOP_CODON = {
     "annotated_stop_distance": 0,
     **NO_RULE,
 }
-# The alt columns of a known row after a frameshift in the CDS of MAIN: the alt CDS ends in ...GCG TTA A, out of
-# frame, and the alt transcript reads on through ...TTA AAA AGC TGC C without a stop codon (nonstop)
+# The alt columns of a variant-transcript pair with a known alt transcript after a frameshift in the CDS of MAIN: the
+# alt CDS ends in ...GCG TTA A, out of frame, and the alt transcript reads on through ...TTA AAA AGC TGC C without a
+# stop codon (nonstop)
 FRAMESHIFT_NONSTOP = {
     "alt_last_codon": "TAA",
     "alt_valid_stop": True,
@@ -362,13 +364,13 @@ CASES = [
         ref 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gtaagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
         alt 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gtcagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
                                                      ^ A>C
-        A>C at donor +3, outside the splice dinucleotide: no row
+        A>C at donor +3, outside the splice dinucleotide: no result
         """,
         MAIN,
         Change("GAAGCGT[A>C]AGTCC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
     ),
-    # An insertion inside the donor dinucleotide reaches the coding row
+    # An insertion inside the donor dinucleotide reaches the coding interval
     Case(
         "insertion_between_donor_plus_1_and_plus_2_destroys_the_splice_site",
         """
@@ -388,18 +390,18 @@ CASES = [
         },
         equivalent=(Change("GGAAGCG[T>AT]AAGTCC"),),
     ),
-    # An insertion right after the donor dinucleotide changes neither it nor the coding row
+    # An insertion right after the donor dinucleotide changes neither it nor the coding interval
     Case(
         "insertion_between_donor_plus_2_and_plus_3_touches_no_coding_region",
         """
         ref 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gt-aagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
         alt 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gtcaagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
                                                      ^ ->C
-        C inserted between donor +2 and +3: GT stays, no row
+        C inserted between donor +2 and +3: GT stays, no result
         """,
         MAIN,
         Change("GGAAGCGT[>C]AAGTCC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
     ),
     Case(
         "deletion_from_the_last_exon_base_to_donor_plus_5_destroys_the_splice_site",
@@ -1022,7 +1024,7 @@ CASES = [
         cATGTAAg > 15 T (8 nt > 15 nt, 7 nt longer; the coding region ATGTAA has 6 nt)
         no splice site is near, so both matchings are valid. Neither puts an ATG at the start codon edge, so that
         edge takes the matching from the right: layout 13 > 20. The stop codon edge takes the matching from the
-        left: layout 19 > 19. The coding row would end before it starts: splice_site_destroyed
+        left: layout 19 > 19. The coding interval would end before it starts: splice_site_destroyed
         """,
         SHORT_CDS,
         Change("GC[CATGTAAG>TTTTTTTTTTTTTTT]CC"),
@@ -1100,10 +1102,10 @@ CASES = [
     # Pins "A placement is valid if the reference splice dinucleotide stays next to each of its positions. If all
     # valid placements agree, the exon edges lie there." for a deletion from coding exon 2 across intron 2 into
     # coding exon 3. Both exon edges map to its start. The AG of exon 2 stays before that position and the GT of
-    # exon 3 after it, so the alt transcript is known, and the alt bases come from two coding rows. The closest
+    # exon 3 after it, so the alt transcript is known, and the alt bases come from two coding intervals. The closest
     # cases delete a whole intron and lose both splice sites
     # (deletion_of_a_whole_intron_between_two_coding_exons_destroys_the_splice_site in cases_coding_region_edges),
-    # or delete a whole exon, which joins no two coding rows
+    # or delete a whole exon, which joins no two coding intervals
     # (deletion_of_a_whole_short_coding_exon_that_keeps_both_splice_sites_empties_the_exon there).
     Case(
         "deletion_across_an_intron_that_keeps_ag_and_gt_joins_two_coding_exons",

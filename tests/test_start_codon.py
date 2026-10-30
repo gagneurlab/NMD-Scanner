@@ -19,8 +19,8 @@ class SyntheticTranscript:
     A transcript on its own synthetic chromosome, for runs of annotate() on both strands.
 
     The transcript is given in transcript orientation (5' to 3'). Its exons are separated by introns, and the
-    chromosome holds them on the given strand. The annotation is a GENCODE GFF3: its CDS rows include the stop codon,
-    and start_codon and stop_codon rows mark the two codons. A transcript without an annotated start codon is tagged
+    chromosome holds them on the given strand. The annotation is a GENCODE GFF3: its CDS records include the stop codon,
+    and start_codon and stop_codon records mark the two codons. A transcript without an annotated start codon is tagged
     cds_start_NF.
     """
 
@@ -35,7 +35,7 @@ class SyntheticTranscript:
         :param exons: exon sequences in transcript order
         :param cds_start: transcript position of the first CDS base
         :param stop_codon: transcript position of the first base of the stop codon, which ends the CDS
-        :param frame: phase of the 5'-most CDS row: the number of bases before the first complete codon
+        :param frame: phase of the 5'-most CDS record: the number of bases before the first complete codon
         :param start_codon: whether the first 3 CDS bases are annotated as start codon
         """
         self.tmp_path = tmp_path
@@ -79,7 +79,7 @@ class SyntheticTranscript:
                 )
                 self.lines.append(self._line(feature, start, end, phase if feature == "CDS" else ".", attributes + tag))
                 if feature == "CDS":
-                    # phase of the next CDS row: the bases that its first codon still needs
+                    # phase of the next CDS record: the bases that its first codon still needs
                     phase = (3 - (end - start - phase) % 3) % 3
             exon_start = exon_end
 
@@ -113,11 +113,16 @@ class SyntheticTranscript:
         return start + 1, ref, alt
 
     def run(self, position, ref, alt):
-        """Run annotate() on this transcript and the variant (see ``variant``); return the single result row."""
+        """
+        Run annotate() on this transcript and the variant (see ``variant``); return the single variant-transcript pair
+        of the result.
+        """
         return self.run_record(*self.variant(position, ref, alt))
 
     def run_record(self, pos, vcf_ref, vcf_alt):
-        """Run annotate() on this transcript and the VCF record; return the single result row."""
+        """
+        Run annotate() on this transcript and the VCF record; return the single variant-transcript pair of the result.
+        """
         (self.tmp_path / "genome.fa").write_text(f">{self.chrom}\n{self.genome}\n")
         (self.tmp_path / "tx.gff3").write_text("##gff-version 3\n" + "\n".join(self.lines) + "\n")
         (self.tmp_path / "variant.vcf").write_text(
@@ -131,10 +136,10 @@ class SyntheticTranscript:
         return results.iloc[0]
 
 
-def _assert_values(row, expected):
+def _assert_values(pair, expected):
     """Assert the expected value of each column; None means null."""
     actual = {
-        column: None if pd.api.types.is_scalar(row[column]) and pd.isna(row[column]) else row[column]
+        column: None if pd.api.types.is_scalar(pair[column]) and pd.isna(pair[column]) else pair[column]
         for column in expected
     }
     assert actual == expected
@@ -158,10 +163,10 @@ def test_a_stop_codon_as_annotated_start_codon_gives_no_ptc_distance(tmp_path, s
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GGG" + "TAGGCCAAGCTG" + "TAA" + "GGGGG"], 3, 15)
 
-    row = tx.run(7, "C", "A")
+    pair = tx.run(7, "C", "A")
 
     _assert_values(
-        row,
+        pair,
         {
             "alt_first_stop_pos": 0,
             "alt_has_ptc": True,
@@ -190,10 +195,10 @@ def test_stop_loss_scan_starts_at_the_annotated_start_codon(tmp_path, strand, st
     exons = ["GG" + cds[:5], cds[5:] + "TAA" + "GGGTAGCC"]
     tx = SyntheticTranscript(tmp_path, strand, exons, 2, 14, start_codon=start_codon)
 
-    row = tx.run(14, "T", "C")
+    pair = tx.run(14, "T", "C")
 
     _assert_values(
-        row,
+        pair,
         {
             "start_loss": False,
             "stop_loss": True,
@@ -222,10 +227,10 @@ def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_al
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
 
-    row = tx.run(5, "T", "")
+    pair = tx.run(5, "T", "")
 
     _assert_values(
-        row,
+        pair,
         {
             "start_loss": True,
             "stop_loss": False,
@@ -253,17 +258,18 @@ def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_al
     )
 
 
-def test_a_scanned_start_loss_row_with_a_ptc_has_the_status_start_loss_and_no_prediction(tmp_path, strand):
+def test_a_scanned_start_loss_variant_with_a_ptc_has_the_status_start_loss_and_no_prediction(tmp_path, strand):
     """
     The deletion of the T of the start codon ATG at t5 is a start loss. The scan finds the ATG at t7 and a PTC at t10,
-    and every model input is set. The model has no training data for a start loss, so the row gets no prediction.
+    and every model input is set. The model has no training data for a start loss, so the variant-transcript pair gets
+    no prediction.
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
 
-    row = tx.run(5, "T", "")
+    pair = tx.run(5, "T", "")
 
     _assert_values(
-        row,
+        pair,
         {
             "start_loss": True,
             "alt_has_ptc": True,
@@ -288,10 +294,10 @@ def test_scan_after_a_deletion_of_5utr_and_start_codon_bases_takes_the_alt_exon_
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
 
-    row = tx.run(3, "CAT", "")
+    pair = tx.run(3, "CAT", "")
 
     _assert_values(
-        row,
+        pair,
         {
             "start_loss": True,
             "alt_has_ptc": True,
@@ -330,10 +336,10 @@ def test_scan_after_a_deletion_of_the_stop_codon_and_3utr_bases_takes_the_alt_ex
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GACCATGAAG", "TAACCAC", "CATGACC"], 4, 10)
 
-    row = tx.run(10, "TAACCA", "")
+    pair = tx.run(10, "TAACCA", "")
 
     _assert_values(
-        row,
+        pair,
         {
             "stop_loss": True,
             "alt_has_ptc": False,
@@ -375,10 +381,10 @@ def test_ptc_features_take_the_3utr_length_change_in_the_ptc_exon(tmp_path, stra
     exons = ["GACC" + "ATG" + "GCA" * 50, "GCACCCGGGTTTGCCTAACCA" + "CCCA" * 8, "CCACCACCAC"]
     tx = SyntheticTranscript(tmp_path, strand, exons, 4, 172)
 
-    row = tx.run(160, "CCCGGGTTTGCCTAACCA", "TGAGGGTTTGCCTAACCTTC")
+    pair = tx.run(160, "CCCGGGTTTGCCTAACCA", "TGAGGGTTTGCCTAACCTTC")
 
     _assert_values(
-        row,
+        pair,
         {
             "start_loss": False,
             "stop_loss": False,
@@ -432,10 +438,10 @@ def test_a_deleted_exon_is_no_upstream_exon_of_the_ptc(tmp_path, strand):
     start = tx.layout_positions[9] + 1 + 5
     end = tx.layout_positions[17] - len(tx.intron) + 4
 
-    row = tx.run_record(*tx.layout_variant(start, tx.layout[start:end], ""))
+    pair = tx.run_record(*tx.layout_variant(start, tx.layout[start:end], ""))
 
     _assert_values(
-        row,
+        pair,
         {
             "start_loss": False,
             "stop_loss": False,
@@ -494,10 +500,10 @@ def test_long_exon_rule_takes_the_length_of_the_ptc_exon_in_the_alt_transcript(t
     exons = ["GACC" + "ATG" + "GCA" * 49, "GCAGTAAGC" + "GCA" * 133, "GCATAACCACC"]
     tx = SyntheticTranscript(tmp_path, strand, exons, 4, 565)
 
-    row = tx.run(157, "G", "")
+    pair = tx.run(157, "G", "")
 
     _assert_values(
-        row,
+        pair,
         {
             "start_loss": False,
             "stop_loss": False,

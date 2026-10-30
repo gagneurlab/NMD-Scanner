@@ -274,15 +274,15 @@ def test_add_features_and_rules_equals_the_row_functions_applied_one_by_one(run_
     pd.testing.assert_frame_equal(add_features_and_rules(ptc_table), expected)
 
 
-def schema_row(**values):
-    """Return one row of the result table with ``values`` set and every other column missing."""
+def schema_pair(**values):
+    """Return a variant-transcript pair of the result table. ``values`` are set, and every other column is missing."""
 
     table = pd.DataFrame([values]).reindex(columns=list(OUTPUT_COLUMN_KINDS))
     return apply_schema(table, OUTPUT_COLUMN_KINDS).iloc[0]
 
 
-def none_row(**values):
-    """Return ``values`` as a dict row with None for every other output column."""
+def none_pair(**values):
+    """Return a variant-transcript pair as a dict: ``values``, and None for every other output column."""
 
     return {**dict.fromkeys(OUTPUT_COLUMN_KINDS), **values}
 
@@ -304,17 +304,17 @@ def none_row(**values):
     ],
 )
 def test_features_and_rules_treat_pd_na_like_none(values):
-    features = add_nmd_features(schema_row(**values))
+    features = add_nmd_features(schema_pair(**values))
 
-    assert features == add_nmd_features(none_row(**values))
-    assert evaluate_nmd_escape_rules(schema_row(**values, **features)) == evaluate_nmd_escape_rules(
-        none_row(**values, **features)
+    assert features == add_nmd_features(none_pair(**values))
+    assert evaluate_nmd_escape_rules(schema_pair(**values, **features)) == evaluate_nmd_escape_rules(
+        none_pair(**values, **features)
     )
 
 
 def test_likely_misannotated_reads_numpy_bools():
     # .iloc gives numpy.bool_ values, and `numpy.False_ is False` is False
-    row = schema_row(cds_in_transcript=False, has_start_codon=True, ref_cds_seq="ATGAAATAA", ref_valid_stop=True)
-    assert isinstance(row["cds_in_transcript"], np.bool_)
+    pair = schema_pair(cds_in_transcript=False, has_start_codon=True, ref_cds_seq="ATGAAATAA", ref_valid_stop=True)
+    assert isinstance(pair["cds_in_transcript"], np.bool_)
 
-    assert add_nmd_features(row)["likely_misannotated"] is True
+    assert add_nmd_features(pair)["likely_misannotated"] is True

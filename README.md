@@ -69,13 +69,13 @@ The chromosome names must match in the VCF, the GFF3 and the FASTA, e.g. all `ch
 
 Output:
 
-- The file specified by `--output`, containing:
-  - `transcript_type` and `transcript_tags`: the type and the tags of the transcript, to filter the rows by transcript
+- The file specified by `--output`, with one row per variant-transcript pair, containing:
+  - `transcript_type` and `transcript_tags`: the type and the tags of the transcript, to filter by transcript
   - reconstructed reference / alternative CDS and transcript sequences (+ metadata); `--no-sequences` leaves out the sequences
   - PTC detection and start / stop-loss flags
   - NMD escape rules
   - extra features such as UTR lengths, exon counts, distances, etc.
-  - `nmd_efficiency_prediction_status` and `nmd_efficiency_prediction`: whether the NMD efficiency model can predict the row, and the NMD efficiency it predicts (see [NMD efficiency prediction](#nmd-efficiency-prediction))
+  - `nmd_efficiency_prediction_status` and `nmd_efficiency_prediction`: whether the NMD efficiency model can predict the variant-transcript pair, and the NMD efficiency it predicts (see [NMD efficiency prediction](#nmd-efficiency-prediction))
 
 [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.
 

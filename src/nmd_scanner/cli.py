@@ -65,7 +65,7 @@ def annotate(
     logger.info("Reading FASTA file: %s", fasta_path)
     fasta = Fasta(fasta_path)
 
-    # read gene annotation file (GFF3) into exon rows and coding regions (CDS rows with has_start_codon and
+    # read gene annotation file (GFF3) into exon records and coding regions (CDS records with has_start_codon and
     # has_stop_codon).
     # reassign_exons recomputes the exon numbers (recommended for hg19).
     logger.info("Reading annotation file: %s", annotation_path)
@@ -89,7 +89,7 @@ def annotate_variants(
     It takes the tables that ``annotate`` reads, so one annotation serves many VCF tables. It does not change them.
 
     Steps:
-    1. Split the annotation into the coding regions (CDS rows) and the exon rows
+    1. Split the annotation into the coding regions (CDS records) and the exon records
     2. Extract premature termination codons (PTCs)
     3. Add the NMD features and the NMD escape rules (e.g. 3' & 5'UTR length, downstream & upstream exon counts)
     4. Add the NMD efficiency prediction
