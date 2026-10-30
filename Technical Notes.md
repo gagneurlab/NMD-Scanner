@@ -291,7 +291,7 @@ nmd_start_proximal_rule: the rule measures from the annotated start codon, and w
 
 ### NMDEff
 
-The TCGA table of NMDEff (Kim et al. 2024) has a column for each of its 4 rules and one for their combination. On the training variants of the NMD efficiency model, `nmd_escape` equals the combined column in 99.4% of the variants.
+The TCGA table of NMDEff (Kim et al. 2024) has a column for each of its 4 rules and one for their combination. On the TCGA variant-sample pairs that train the NMD efficiency model, `nmd_escape` equals the combined column in 99.4% of the pairs.
 
 The long exon rule agrees less often than the other rules, because NMDEff measures the PTC exon differently. NMDEff counts only the part of the exon in the CDS, stop codon included. `ptc_exon_length` is the full exon, UTR included, as in the Geuvadis study (Iha et al. 2025). So the two lengths differ in exons that hold UTR. Most of these exons are last exons, which escape NMD by the last exon rule anyway. So the difference rarely changes `nmd_escape`.
 
