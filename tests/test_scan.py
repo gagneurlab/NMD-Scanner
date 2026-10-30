@@ -100,12 +100,13 @@ def test_read_vcf_keeps_text_fields_as_written(tmp_path, ids):
     assert df["end"].tolist() == [100, 200]
 
 
-def test_read_vcf_keeps_a_dot_in_id_and_alt(tmp_path):
-    """polars-bio gives "" for "."; read_vcf turns it back into "."."""
+def test_read_vcf_reads_a_dot_id_as_null_and_keeps_a_dot_alt(tmp_path):
+    """polars-bio gives "" for "."; read_vcf turns it into null in variant_id and back into "." in alt."""
     vcf = tmp_path / "dots.vcf"
     vcf.write_text(VCF_HEADER + "chr1\t100\t.\tA\t.\t.\t.\t.\nchr1\t200\tv2\tC\tG\t.\t.\t.\n")
     df = nmd_scanner.scan.read_vcf(str(vcf))
-    assert df["variant_id"].tolist() == [".", "v2"]
+    assert df["variant_id"].isna().tolist() == [True, False]
+    assert df["variant_id"][1] == "v2"
     assert df["alt"].tolist() == [".", "G"]
 
 

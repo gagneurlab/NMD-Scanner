@@ -37,9 +37,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    coding region of the transcript starts with an annotated start codon and ends in an annotated stop
                    codon. ``scan.read_annotation`` returns the coding regions as its CDS rows.
     :param vcf: Variants (DataFrame) with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
-                returns them. A record without variant_id has the ID ".". A record with a symbolic ALT allele or a
-                breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with ALT "." or "*" (see
-                ``drop_missing_alleles``).
+                returns them. Without the variant_id column, each record has a null ID. A record with a symbolic
+                ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with ALT "."
+                or "*" (see ``drop_missing_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon rows of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
@@ -66,7 +66,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # The steps below take the variant columns by the names of VCF_COLUMNS
     vcf = vcf.rename(columns=VCF_COLUMNS)
     if "ID" not in vcf.columns:
-        vcf = vcf.assign(ID=".")
+        vcf = vcf.assign(ID=None)
 
     cds_df_adj = cds_df.copy()
     # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_exons)
@@ -589,10 +589,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
             # Variant-identifying fields come straight from the group key;
             # ID and gene_id are constant within the group, so read them once.
             chromosome, variant_start, variant_end, ref_allele, alt_allele = variant[:5]
-            # A record without ID has "." there, and its variant_id is null
+            # A null ID is NaN, None or pd.NA, by the dtype of the column. apply_schema makes it pd.NA.
             variant_id = columns["ID"][positions[0]]
-            if variant_id == ".":
-                variant_id = None
             gene_id = columns["gene_id"][positions[0]]
 
             # An unknown alt transcript gives a row without alt CDS
