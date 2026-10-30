@@ -44,7 +44,7 @@
 #    correlations of step 5, without CIs. The per-tissue numbers leave out the EXCLUDED_TISSUES, which have too few
 #    samples.
 # 7. For MMRF-TARGET, compute the numbers of step 5 also for the variant-sample pairs on transcripts of the TCGA
-#    training data, and for the other variant-sample pairs.
+#    training variant-sample pairs, and for the other variant-sample pairs.
 # 8. Per cohort, split the r2_score of scikit-learn for the predictions into the squared Pearson correlation, minus a
 #    term for the offset of the means, minus a term for the mismatch of the spreads.
 
@@ -102,8 +102,8 @@ GAIN = [("gain", "", BLUE, 0.0)]
 # The keys of the MMRF-TARGET variant-sample pairs by transcript in validation.json, and their names in the log and the
 # figure
 TRANSCRIPT_GROUPS = {
-    "in_tcga_training": "Transcript in the TCGA training data",
-    "not_in_tcga_training": "Transcript not in the TCGA training data",
+    "in_tcga_training": "Transcript in the TCGA training variant-sample pairs",
+    "not_in_tcga_training": "Transcript not in the TCGA training variant-sample pairs",
 }
 # The name of the measurements of each cohort in the figures and the log. A measurement of the GTEx cohort is the mean
 # of one variant over the tissues.
@@ -343,7 +343,10 @@ curves_df = pl.concat(
                 "color": color,
             }
         )
-        for scores, label, color in ((train_scores, "Training set", MUTED_INK), (test_scores, "Held-out fold", BLUE))
+        for scores, label, color in (
+            (train_scores, "Training\nvariant-sample pairs", MUTED_INK),
+            (test_scores, "Held-out fold", BLUE),
+        )
     ]
 )
 plot = (
@@ -361,7 +364,7 @@ plot = (
     )
     + pn.scale_color_identity()
     + pn.scale_fill_identity()
-    + pn.scale_x_continuous(expand=(0.05, 0, 0.2, 0))
+    + pn.scale_x_continuous(expand=(0.05, 0, 0.35, 0))
     + pn.labs(title="Learning curve of the final hyperparameters", x="Training variant-sample pairs", y="R2")
 )
 save_figure(plot, OUT_DIR, "learning_curve", 6, 4)
@@ -714,8 +717,8 @@ save_figure(plot, OUT_DIR, "gtex_tissue_spearman", 6.5, 6.5)
 
 # %% [markdown]
 # The dots show the Spearman correlations and the gain of the model over the rules in MMRF-TARGET, for the
-# variant-sample pairs whose transcript is in the TCGA training data of TRAIN_DIR and for the other variant-sample
-# pairs, with 95% bootstrap CIs. The numbers are `mmrf_target_by_transcript` in validation.json.
+# variant-sample pairs whose transcript is in the TCGA training variant-sample pairs of TRAIN_DIR and for the other
+# variant-sample pairs, with 95% bootstrap CIs. The numbers are `mmrf_target_by_transcript` in validation.json.
 
 # %%
 transcript_split = validation["mmrf_target_by_transcript"]

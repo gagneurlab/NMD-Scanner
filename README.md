@@ -111,7 +111,7 @@ The table gives the Spearman correlation of the prediction with the measured NMD
 | GTEx v8 (Kim et al. 2024), 54 tissues, mean per variant                                | germline           | 2,287 variants             | 0.48 (0.45 to 0.52) | 0.44 (0.40 to 0.48) |
 | MMRF-TARGET (Kim et al. 2024)                                                          | somatic, in tumors | 509 variant-sample pairs   | 0.46 (0.38 to 0.53) | 0.38 (0.30 to 0.46) |
 
-The model ranks the measurements better than the rules in every cohort, by 0.04 to 0.08, with paired 95% CIs above 0. 219 of the 509 MMRF-TARGET variant-sample pairs lie on transcripts of the TCGA training data. The gain is 0.16 (0.10 to 0.23) on these pairs and 0.05 (-0.01 to 0.11) on the other 290.
+The model ranks the measurements better than the rules in every cohort, by 0.04 to 0.08, with paired 95% CIs above 0. 219 of the 509 MMRF-TARGET variant-sample pairs lie on transcripts of the TCGA training variant-sample pairs. The gain is 0.16 (0.10 to 0.23) on these pairs and 0.05 (-0.01 to 0.11) on the other 290.
 
 The level of the measured efficiency differs between cohorts and tissues. Before you compare the predictions with another cohort's measurements, recalibrate them with a linear fit.
 
