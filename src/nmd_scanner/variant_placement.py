@@ -319,7 +319,7 @@ def _stop_codon_position(placements, edge, strand, exon_edge):
     return position if exon_edge is None else max(position, exon_edge)
 
 
-def place_in_transcript(placements, coding_rows, exons, reference, strand, coding_region, boundaries=None):
+def place_in_transcript(placements, coding_intervals, exons, reference, strand, coding_region, boundaries=None):
     """
     Effect of a variant on the coding region of one transcript.
 
@@ -348,7 +348,7 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
 
     :param placements: equivalent placements of the variant (equivalent_placements)
-    :param coding_rows: (start, end) of the coding intervals (CDS plus stop codon, one per exon) near the variant
+    :param coding_intervals: (start, end) of the coding intervals (CDS plus stop codon, one per exon) near the variant
     :param exons: (start, end) of every exon of the transcript
     :param reference: ReferenceSequence of the chromosome
     :param strand: strand of the transcript, "+" or "-"
@@ -372,7 +372,7 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     # coding region: there its bases go into the UTR. At the start codon they can be coding, but only through another
     # placement inside the coding interval.
     targets = []
-    for start, end in coding_rows:
+    for start, end in coding_intervals:
         targets.append(
             (start, end, start in exon_starts and start != coding_start, end in exon_ends and end != coding_end)
         )
@@ -418,7 +418,7 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     ]
     left = ("", "")
     right = ("", "")
-    for start, end in coding_rows:
+    for start, end in coding_intervals:
         exon_start = resolved.get((start, False))
         exon_end = resolved.get((end, True))
         if start == coding_start:

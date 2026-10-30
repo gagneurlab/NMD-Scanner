@@ -102,14 +102,14 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         return empty_table(PTC_COLUMN_KINDS)
 
     # Filter out Variants with a reference mismatch
-    mismatched_rows = intersection_cds_vcf[~intersection_cds_vcf["Ref_matches"]].drop_duplicates(
+    mismatched_pairs = intersection_cds_vcf[~intersection_cds_vcf["Ref_matches"]].drop_duplicates(
         ["transcript_id", "variant_row"]
     )
-    if not mismatched_rows.empty:
-        logger.warning("Skipping %d variant-transcript pairs due to reference mismatches.", len(mismatched_rows))
+    if not mismatched_pairs.empty:
+        logger.warning("Skipping %d variant-transcript pairs due to reference mismatches.", len(mismatched_pairs))
         logger.warning(
             "Reference-mismatched variants:\n%s",
-            mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
+            mismatched_pairs[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
                 index=False
             ),
         )
@@ -351,9 +351,9 @@ def join_variants_to_cds(cds_df, vcf):
     row_variant = pairs["row_variant"].to_numpy()
     # the copies of the rows below take the most memory, so the pairs go first
     del pairs
-    cds_rows = cds_df.iloc[row_cds].reset_index(drop=True)
-    variant_rows = vcf.drop(columns="Chromosome").iloc[row_variant].reset_index(drop=True)
-    return cds_rows.join(variant_rows, rsuffix="_variant")
+    cds_records = cds_df.iloc[row_cds].reset_index(drop=True)
+    variant_records = vcf.drop(columns="Chromosome").iloc[row_variant].reset_index(drop=True)
+    return cds_records.join(variant_records, rsuffix="_variant")
 
 
 def place_variants(vcf, chromosomes, reference):
@@ -471,14 +471,14 @@ def apply_variants(intersection_cds_vcf, placements, cds_df, exons_df, reference
     for (transcript_id, variant_row), positions in df.groupby(
         ["transcript_id", "variant_row"], observed=True
     ).indices.items():
-        coding_rows = [(int(starts[i]), int(ends[i])) for i in positions]
+        coding_intervals = [(int(starts[i]), int(ends[i])) for i in positions]
         exons = exons_by_transcript.get(transcript_id, [])
         chromosome_reference = reference(chromosomes[positions[0]])
         if transcript_id not in boundaries:
             boundaries[transcript_id] = exon_boundaries(exons, chromosome_reference)
         effect = place_in_transcript(
             placements[variant_row],
-            coding_rows,
+            coding_intervals,
             exons,
             chromosome_reference,
             strands[positions[0]],
@@ -488,12 +488,12 @@ def apply_variants(intersection_cds_vcf, placements, cds_df, exons_df, reference
         if effect is None:
             continue
         alt_lengths = dict(zip(exon_numbers.get(transcript_id, []), effect.alt_exon_lengths))
-        for i, coding_row in zip(positions, coding_rows):
+        for i, coding_interval in zip(positions, coding_intervals):
             keep[i] = True
             if effect.unknown_reason is not None:
                 unknown_reasons[i] = effect.unknown_reason
             else:
-                alt_coding[i] = effect.alt_coding[coding_row]
+                alt_coding[i] = effect.alt_coding[coding_interval]
                 utr5[i] = effect.utr5
                 utr3[i] = effect.utr3
                 alt_exon_lengths[i] = alt_lengths
@@ -553,8 +553,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     starts = columns["Start"]
 
     # The reference CDS records of each transcript with a variant
-    ref_rows = cds_df_test[cds_df_test["transcript_id"].isin(list(variants_by_transcript))]
-    ref_exons_by_transcript = dict(list(ref_rows.groupby("transcript_id", observed=True)))
+    ref_cds_records = cds_df_test[cds_df_test["transcript_id"].isin(list(variants_by_transcript))]
+    ref_exons_by_transcript = dict(list(ref_cds_records.groupby("transcript_id", observed=True)))
 
     results = []
     for transcript_id, variants in variants_by_transcript.items():

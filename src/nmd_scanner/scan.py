@@ -154,7 +154,7 @@ def read_gff3(gff3_path, fasta):
     ``rules.extract_ptc`` takes.
 
     Two GFF3 flavors are supported. The flavor is detected from the attributes of the records that
-    ``_read_gff3_rows`` reads, so gene_type and transcript_type (GENCODE) or biotype (Ensembl) must
+    ``_read_gff3_records`` reads, so gene_type and transcript_type (GENCODE) or biotype (Ensembl) must
     be on the transcript records, not only on the gene records:
 
     - GENCODE: every record carries ``gene_id``/``transcript_id`` directly, and they are kept
@@ -182,7 +182,7 @@ def read_gff3(gff3_path, fasta):
       first 3 CDS bases in ``fasta`` (``_has_start_codon_from_sequence``), and has_stop_codon from
       the last 3 (``_has_stop_codon_from_sequence``).
 
-    The file is read with polars-bio (see ``_read_gff3_rows``), plain or gzip-compressed. Only the
+    The file is read with polars-bio (see ``_read_gff3_records``), plain or gzip-compressed. Only the
     attributes in ``GFF3_ATTRIBUTES`` are read.
 
     :param gff3_path: Path to the GFF3 file
@@ -203,7 +203,7 @@ def read_gff3(gff3_path, fasta):
     with open(gff3_path, "rb"):
         pass
 
-    df = _read_gff3_rows(gff3_path)
+    df = _read_gff3_records(gff3_path)
     columns = set(df.columns)
     if not {"ID", "Parent"} & columns:
         # polars-bio reads a GTF as GFF3 records without attributes
@@ -271,8 +271,8 @@ def _check_strand_and_phase(df, gff3_path):
     :raises ValueError: for such a record
     """
     path = os.fspath(gff3_path)
-    rows = df[df["Feature"].isin(["exon", "CDS"])]
-    unstranded = rows[~rows["Strand"].isin(["+", "-"])]
+    exon_and_cds = df[df["Feature"].isin(["exon", "CDS"])]
+    unstranded = exon_and_cds[~exon_and_cds["Strand"].isin(["+", "-"])]
     if not unstranded.empty:
         first = unstranded.iloc[0]
         raise ValueError(
@@ -280,7 +280,7 @@ def _check_strand_and_phase(df, gff3_path):
             f"first is {_where(first)}, with strand {first['Strand']!r}. NMD-Scanner needs strand + or - on each "
             "exon and CDS record."
         )
-    cds = rows[rows["Feature"] == "CDS"]
+    cds = exon_and_cds[exon_and_cds["Feature"] == "CDS"]
     unphased = cds[~cds["Frame"].isin(["0", "1", "2"])]
     if not unphased.empty:
         first = unphased.iloc[0]
@@ -327,11 +327,11 @@ def _check_cds_in_exons(df, gff3_path):
         )
 
 
-def _where(row):
+def _where(record):
     """The type, transcript and location (1-based, as in the GFF3) of a record, for an error message."""
     return (
-        f"the {row['Feature']} record of transcript {row['transcript_id']} at "
-        f"{row['Chromosome']}:{row['Start'] + 1}-{row['End']}"
+        f"the {record['Feature']} record of transcript {record['transcript_id']} at "
+        f"{record['Chromosome']}:{record['Start'] + 1}-{record['End']}"
     )
 
 
@@ -354,7 +354,7 @@ GFF3_ATTRIBUTES = (
 GFF3_FEATURES = ("transcript", "exon", "CDS", "start_codon", "stop_codon")
 
 
-def _read_gff3_rows(gff3_path):
+def _read_gff3_records(gff3_path):
     """
     Reads the records of a GFF3 file that ``read_gff3`` uses, with polars-bio: the records of a
     type in ``GFF3_FEATURES`` and the records whose Parent is a gene.
@@ -377,7 +377,7 @@ def _read_gff3_rows(gff3_path):
             data_lines = executor.submit(_count_gff3_data_lines, gff3_path)
             # All rows are collected and filtered afterwards: polars-bio filters this predicate in
             # Python, which takes longer, and the row count shows the lines that polars-bio skipped.
-            rows = (
+            records = (
                 pb.scan_gff(os.fspath(gff3_path), attr_fields=list(GFF3_ATTRIBUTES), use_zero_based=True)
                 # polars-bio's GFF frame takes the columns of select as one list
                 .select(
@@ -400,25 +400,25 @@ def _read_gff3_rows(gff3_path):
     except Exception as error:
         raise ValueError(f"Cannot read {os.fspath(gff3_path)!r} as GFF3 ({error}).") from error
     # polars-bio skips a line that it cannot parse, and logs it at DEBUG only
-    if rows.height < data_lines.result():
+    if records.height < data_lines.result():
         raise ValueError(
-            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: polars-bio read {rows.height} of its "
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: polars-bio read {records.height} of its "
             f"{data_lines.result()} data lines. It skips a line that it cannot parse, e.g. a line whose Start or "
             "Score is not a number or whose columns are not separated by tabs."
         )
-    rows = rows.filter(pl.col("Feature").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
+    records = records.filter(pl.col("Feature").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
     # polars-bio gives Start as a 32-bit integer without sign, so a start of 0 wraps to the largest value
-    reversed_rows = rows.filter(pl.col("Start") >= pl.col("End"))
-    if reversed_rows.height:
-        first = reversed_rows.row(0, named=True)
+    reversed_records = records.filter(pl.col("Start") >= pl.col("End"))
+    if reversed_records.height:
+        first = reversed_records.row(0, named=True)
         raise ValueError(
-            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: {reversed_rows.height} record(s) have a start after "
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: {reversed_records.height} record(s) have a start after "
             f"their end, e.g. the {first['Feature']} record at "
             f"{first['Chromosome']}:{first['Start'] + 1}-{first['End']}. polars-bio reads a start of 0 as 4294967296."
         )
     # polars-bio gives an attribute that no record has as a column without values
-    absent = [name for name in GFF3_ATTRIBUTES if rows[name].null_count() == rows.height]
-    return rows.drop(absent).to_pandas()
+    absent = [name for name in GFF3_ATTRIBUTES if records[name].null_count() == records.height]
+    return records.drop(absent).to_pandas()
 
 
 def _count_gff3_data_lines(gff3_path):
@@ -567,7 +567,7 @@ def _first_codons(cds, fasta):
     cds = cds.assign(_from_5_prime=cds["Start"].where(plus, -cds["End"])).sort_values(
         ["transcript_id", "_from_5_prime"]
     )
-    rows = zip(
+    cds_records = zip(
         cds["transcript_id"],
         cds["Chromosome"],
         cds["Strand"],
@@ -577,15 +577,15 @@ def _first_codons(cds, fasta):
     )
 
     codons = []
-    for transcript_id, transcript_rows in itertools.groupby(rows, key=lambda row: row[0]):
-        transcript_rows = list(transcript_rows)
-        _, chrom, strand, _, _, phase = transcript_rows[0]
+    for transcript_id, transcript_cds in itertools.groupby(cds_records, key=lambda record: record[0]):
+        transcript_cds = list(transcript_cds)
+        _, chrom, strand, _, _, phase = transcript_cds[0]
         if chrom not in fasta:
             continue
         # the first 3 bases, from the 5' end
         codon = ""
         missing = 3
-        for _, _, _, start, end, _ in transcript_rows:
+        for _, _, _, start, end, _ in transcript_cds:
             take = min(missing, end - start)
             if strand == "+":
                 codon += str(fasta[chrom][start : start + take]).upper()
@@ -622,7 +622,7 @@ def _last_codons(cds, fasta):
     cds = cds.assign(_from_3_prime=(-cds["End"]).where(plus, cds["Start"])).sort_values(
         ["transcript_id", "_from_3_prime"]
     )
-    rows = zip(
+    cds_records = zip(
         cds.index,
         cds["transcript_id"],
         cds["Chromosome"],
@@ -634,14 +634,14 @@ def _last_codons(cds, fasta):
 
     codons = []
     skipped = 0
-    for transcript_id, transcript_rows in itertools.groupby(rows, key=lambda row: row[1]):
-        transcript_rows = list(transcript_rows)
-        last_cds_index, _, chrom, strand, last_start, last_end, phase = transcript_rows[0]
+    for transcript_id, transcript_cds in itertools.groupby(cds_records, key=lambda record: record[1]):
+        transcript_cds = list(transcript_cds)
+        last_cds_index, _, chrom, strand, last_start, last_end, phase = transcript_cds[0]
 
         # the last 3 bases, from the 3' end: (cds_index, Start, End)
         parts = []
         missing = 3
-        for cds_index, _, _, _, start, end, _ in transcript_rows:
+        for cds_index, _, _, _, start, end, _ in transcript_cds:
             take = min(missing, end - start)
             parts.append((cds_index, end - take, end) if strand == "+" else (cds_index, start, start + take))
             missing -= take
@@ -703,14 +703,14 @@ def _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=False):
     ids = strip_prefix(df["ID"])
     parents = strip_prefix(df["Parent"])
 
-    tx_rows = transcript_mask & ids.notna() & parents.notna()
-    tx_to_gene = pd.Series(parents[tx_rows].to_numpy(), index=ids[tx_rows].to_numpy())
+    tx_records = transcript_mask & ids.notna() & parents.notna()
+    tx_to_gene = pd.Series(parents[tx_records].to_numpy(), index=ids[tx_records].to_numpy())
 
     transcript_id = pd.Series(pd.NA, index=df.index, dtype="object")
     gene_id = pd.Series(pd.NA, index=df.index, dtype="object")
 
-    transcript_id[tx_rows] = ids[tx_rows]
-    gene_id[tx_rows] = parents[tx_rows]
+    transcript_id[tx_records] = ids[tx_records]
+    gene_id[tx_records] = parents[tx_records]
 
     is_child = parents.isin(tx_to_gene.index)
     transcript_id[is_child] = parents[is_child]
