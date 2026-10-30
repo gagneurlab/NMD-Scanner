@@ -526,8 +526,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
                         includes: transcript_id, exon_number, Start, End, Strand, Frame, Exon_CDS_seq, has_start_codon,
                         has_stop_codon
-    :return: DataFrame with one row per VCF record and transcript (without variant_row: per variant and transcript),
-             containing full reference and alternative CDS + lengths,
+    :return: DataFrame with one row per VCF record and transcript (without variant_row: one row per distinct variant
+             and transcript), containing full reference and alternative CDS + lengths,
              exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_start_codon, has_stop_codon,
              cds_frame (the Frame of the 5'-most CDS record: the number of bases before the first complete codon),
              utr5_change and utr3_change (tuples (ref, alt), see TranscriptEffect), alt_exon_lengths

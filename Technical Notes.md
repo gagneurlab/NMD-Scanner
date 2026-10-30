@@ -205,7 +205,7 @@ The model is a random forest trained on TCGA variant-sample pairs. It predicts o
 
 | Column           | Kind  | Meaning                                                                                                                      | Null when                      |
 | ---------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `nmd_efficiency_prediction` | float | The NMD efficiency that the model predicts: -log2(VAF_RNA / VAF_DNA), on the scale of the TCGA training data. 0 means no NMD | `nmd_efficiency_prediction_status` is not `ok` |
+| `nmd_efficiency_prediction` | float | The NMD efficiency that the model predicts: -log2(VAF_RNA / VAF_DNA), on the scale of the NMD efficiency measured in TCGA. 0 means no NMD | `nmd_efficiency_prediction_status` is not `ok` |
 
 ## Figures of the features and the NMD rules
 
