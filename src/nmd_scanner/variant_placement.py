@@ -145,7 +145,7 @@ class TranscriptEffect:
     Effect of a variant on the coding region of one transcript.
 
     ``unknown_reason`` is SPLICE_SITE_DESTROYED or EXON_BOUNDARY_AMBIGUOUS if the alt transcript is unknown,
-    else None. ``alt_coding`` maps each given coding row (start, end) to its alt bases, if the alt is known.
+    else None. ``alt_coding`` maps each given coding interval (start, end) to its alt bases, if the alt is known.
     ``utr5`` and ``utr3`` give the change of the UTR next to the coding region as (ref, alt), in transcript
     orientation: the ref bases right before the coding region (5'UTR) or right after it (3'UTR), and the alt bases
     that replace them. If the variant leaves that UTR unchanged, ref equals alt, and both are mostly empty.
@@ -323,8 +323,8 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     """
     Effect of a variant on the coding region of one transcript.
 
-    The window of the variant is the union of its placements. If the window touches a coding row, or the splice
-    dinucleotide at an exon edge of a coding row (not at a transcript end), the variant has an effect.
+    The window of the variant is the union of its placements. If the window touches a coding interval, or the splice
+    dinucleotide at an exon edge of a coding interval (not at a transcript end), the variant has an effect.
 
     Each placement maps each nearby exon boundary to an alt position (ExonBoundary.alt_position), and a position is
     valid if the reference splice dinucleotide stays next to it. A placement is valid if all its positions are valid.
@@ -335,28 +335,28 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     is valid there: valid placements that put a transcript end at different alt positions make the boundary
     ambiguous.
 
-    The exon boundaries decide which bases the mRNA holds. A coding row edge at an exon boundary takes the boundary's
-    alt position, except at the two edges of the whole coding region, where the exon can hold UTR bases next to the
-    coding region. At the stop codon, the edge takes the position of the valid placement shifted farthest into the
-    3'UTR, so an indel that fits into the UTR leaves the coding region unchanged. At the start codon, it takes the
+    The exon boundaries decide which bases the mRNA holds. A coding interval edge at an exon boundary takes the
+    boundary's alt position, except at the two edges of the whole coding region, where the exon can hold UTR bases next
+    to the coding region. At the stop codon, the edge takes the position of the valid placement shifted farthest into
+    the 3'UTR, so an indel that fits into the UTR leaves the coding region unchanged. At the start codon, it takes the
     5'-most position, over all valid placements, where an ATG starts in the alt, because a scanning ribosome starts at
     the first ATG. Without such a position, it takes the position of the valid placement shifted farthest into the
-    5'UTR. Of the two placements of a delins, the one with its length change at the UTR end counts as shifted into
-    the UTR. If such an edge is also an exon edge, its position stays on the exon side of the exon boundary's alt
-    position. So for an insertion at that exon boundary, the splice site decides whether its bases enter the mRNA, and
-    the coding region edge rule decides whether they are coding. The alt bases that these rules leave outside the
-    coding region, and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
+    5'UTR. Of the two placements of a delins, the one with its length change at the UTR end counts as shifted into the
+    UTR. If such an edge is also an exon edge, its position stays on the exon side of the exon boundary's alt position.
+    So for an insertion at that exon boundary, the splice site decides whether its bases enter the mRNA, and the coding
+    region edge rule decides whether they are coding. The alt bases that these rules leave outside the coding region,
+    and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
 
     :param placements: equivalent placements of the variant (equivalent_placements)
-    :param coding_rows: (start, end) of the coding rows (CDS plus stop codon, one per exon) near the variant
+    :param coding_rows: (start, end) of the coding intervals (CDS plus stop codon, one per exon) near the variant
     :param exons: (start, end) of every exon of the transcript
     :param reference: ReferenceSequence of the chromosome
     :param strand: strand of the transcript, "+" or "-"
-    :param coding_region: (start, end) of the transcript's whole coding region: the smallest coding row start and the
-        largest coding row end
+    :param coding_region: (start, end) of the transcript's whole coding region: the smallest start and the largest end
+        of the coding intervals
     :param boundaries: exon_boundaries(exons, reference), or None to compute it here. It is the same for every variant
         of the transcript, so a caller with many variants computes it once.
-    :return: TranscriptEffect, or None if the variant touches no coding row and no splice dinucleotide
+    :return: TranscriptEffect, or None if the variant touches no coding interval and no splice dinucleotide
     """
     if not placements:
         return None
@@ -368,9 +368,9 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     splice_sites = {(b.position, b.exon_on_left) for b in boundaries if b.dinucleotide is not None}
     coding_start, coding_end = coding_region
 
-    # An insertion at an exon edge of a coding row goes into the coding row, but not at an edge of the whole coding
-    # region: there its bases go into the UTR. At the start codon they can be coding, but only through another
-    # placement inside the coding row.
+    # An insertion at an exon edge of a coding interval goes into the coding interval, but not at an edge of the whole
+    # coding region: there its bases go into the UTR. At the start codon they can be coding, but only through another
+    # placement inside the coding interval.
     targets = []
     for start, end in coding_rows:
         targets.append(
@@ -438,7 +438,7 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
         else:
             alt_end = exon_end if exon_end is not None else rightmost.map_boundary(end, insert_left=False)
         # Guard: exon edges come from one placement and keep their order, but the coding region edge rules can take
-        # the two edges of a row from different placements
+        # the two edges of a coding interval from different placements
         if alt_end < alt_start:
             return TranscriptEffect(unknown_reason=SPLICE_SITE_DESTROYED)
         bases_start = min(start, window_start)

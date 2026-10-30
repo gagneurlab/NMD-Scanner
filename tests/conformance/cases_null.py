@@ -1351,7 +1351,8 @@ CASES = [
         Raises(
             ValueError,
             match=per_strand(
-                names("CDS row of transcript tx1 at chr1:15-20"), names("CDS row of transcript tx1 at chr1:72-77")
+                names("CDS record of transcript tx1 at chr1:15-20"),
+                names("CDS record of transcript tx1 at chr1:72-77"),
             ),
         ),
         marks=(Span("ref", 4, 10, "the CDS row of exon 1"), Span("ref", 5, 10, "the exon row of exon 1 in the GFF3")),
@@ -1374,7 +1375,8 @@ CASES = [
         Raises(
             ValueError,
             match=per_strand(
-                names("CDS row of transcript tx1 at chr1:38-49"), names("CDS row of transcript tx1 at chr1:43-54")
+                names("CDS record of transcript tx1 at chr1:38-49"),
+                names("CDS record of transcript tx1 at chr1:43-54"),
             ),
         ),
     ),

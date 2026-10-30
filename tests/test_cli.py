@@ -835,8 +835,8 @@ def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_r
         annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", str(fasta))
 
     assert str(error.value) == (
-        "The FASTA has no sequence for 1 chromosome(s) with variants and CDS rows: chr18. Each chromosome with "
-        "variants and CDS rows needs a sequence of the same name in the FASTA."
+        "The FASTA has no sequence for 1 chromosome(s) with variants and CDS records: chr18. Each chromosome with "
+        "variants and CDS records needs a sequence of the same name in the FASTA."
     )
 
 

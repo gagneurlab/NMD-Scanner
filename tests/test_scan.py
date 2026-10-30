@@ -886,7 +886,8 @@ def test_read_gff3_raises_for_a_start_after_the_end(tmp_path, start, end, shown)
     line = _CDS_LINE.replace("\t1051\t1200\t", f"\t{start}\t{end}\t")
     gff3_path = _write(tmp_path, "reversed.gff3", _GENCODE_GFF3.replace(_CDS_LINE, line))
     with pytest.raises(
-        ValueError, match=rf"reversed\.gff3.*1 row\(s\) have a start after their end, e.g. the CDS row at {shown}"
+        ValueError,
+        match=rf"reversed\.gff3.*1 record\(s\) have a start after their end, e.g. the CDS record at {shown}",
     ):
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
 
@@ -920,9 +921,9 @@ def test_read_gff3_raises_for_a_cds_row_with_strand_dot(tmp_path, gff3, line, tr
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
 
     assert str(error.value) == (
-        f"Cannot use {gff3_path!r}: 1 exon or CDS row(s) have a strand other than + or -. The first is the CDS row "
-        f"of transcript {transcript} at {location}, with strand '.'. NMD-Scanner needs strand + or - on each exon "
-        "and CDS row."
+        f"Cannot use {gff3_path!r}: 1 exon or CDS record(s) have a strand other than + or -. The first is the CDS "
+        f"record of transcript {transcript} at {location}, with strand '.'. NMD-Scanner needs strand + or - on each "
+        "exon and CDS record."
     )
 
 
@@ -934,8 +935,8 @@ def test_read_gff3_raises_for_a_cds_row_with_phase_dot(tmp_path, gff3, line, tra
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
 
     assert str(error.value) == (
-        f"Cannot use {gff3_path!r}: 1 CDS row(s) have a phase other than 0, 1 or 2. The first is the CDS row of "
-        f"transcript {transcript} at {location}, with phase '.'. GFF3 requires a phase on each CDS row."
+        f"Cannot use {gff3_path!r}: 1 CDS record(s) have a phase other than 0, 1 or 2. The first is the CDS record "
+        f"of transcript {transcript} at {location}, with phase '.'. GFF3 requires a phase on each CDS record."
     )
 
 
@@ -1007,9 +1008,9 @@ def _assert_raises_for_a_cds_row_outside_the_exons(tmp_path, gff3, line, column,
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
 
     assert str(error.value) == (
-        f"Cannot use {gff3_path!r}: 1 CDS row(s) do not lie inside an exon row of their transcript. The first is the "
-        f"CDS row of transcript {transcript} at {location}. NMD-Scanner needs each CDS row inside an exon row of its "
-        "transcript."
+        f"Cannot use {gff3_path!r}: 1 CDS record(s) do not lie inside an exon record of their transcript. The first "
+        f"is the CDS record of transcript {transcript} at {location}. NMD-Scanner needs each CDS record inside an "
+        "exon record of its transcript."
     )
 
 
@@ -1186,13 +1187,13 @@ def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_rows(tmp_path, capl
     fasta = _fasta(tmp_path)
     with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
         annotation = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_stop.gff3", without_stop_codons), fasta)
-    assert "No stop_codon rows found next to the CDS rows" in caplog.text
+    assert "No stop_codon records found next to the CDS records" in caplog.text
     assert not annotation["has_stop_codon"].any()
 
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
         nmd_scanner.scan.read_gff3(_write(tmp_path, "stop.gff3", _GENCODE_GFF3), fasta)
-    assert "No stop_codon rows" not in caplog.text
+    assert "No stop_codon records" not in caplog.text
 
 
 def test_read_gff3_has_start_codon_from_gencode_start_codon_rows(tmp_path, caplog):
@@ -1221,13 +1222,13 @@ def test_read_gff3_has_start_codon_from_gencode_start_codon_rows(tmp_path, caplo
     assert df.loc[df["Feature"] == "exon", "has_start_codon"].isna().all()
     cds = df[df["Feature"] == "CDS"]
     assert set(cds.loc[cds["has_start_codon"].astype(bool), "transcript_id"]) == {"ENST001.1", "ENST002.1"}
-    assert "No start_codon rows" not in caplog.text
+    assert "No start_codon records" not in caplog.text
 
     # Without start_codon rows, no transcript has a start codon
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="nmd_scanner.scan"):
         df = nmd_scanner.scan.read_gff3(_write(tmp_path, "no_start.gff3", _GENCODE_GFF3), fasta)
-    assert "No start_codon rows found next to the CDS rows" in caplog.text
+    assert "No start_codon records found next to the CDS records" in caplog.text
     assert not df["has_start_codon"].any()
 
 
@@ -1496,7 +1497,7 @@ def test_a_gtf_with_a_gff3_name_raises_an_error_naming_the_file(tmp_path):
     path = _write(tmp_path, "really_a_gtf.gff3", _GTF_ROWS)
     with pytest.raises(
         ValueError,
-        match=r"really_a_gtf\.gff3.*as GFF3: no row has an ID or Parent attribute, e\.g\. because it is a GTF",
+        match=r"really_a_gtf\.gff3.*as GFF3: no record has an ID or Parent attribute, e\.g\. because it is a GTF",
     ):
         nmd_scanner.scan.read_annotation(path, _fasta(tmp_path))
 

@@ -635,7 +635,7 @@ CASES = [
         + "that names the chromosome chr1.\n",
         Layout(Transcript(THREE_EXONS.transcript.exons, fasta_contig="chr2"), THREE_EXONS.ref),
         MISSENSE,
-        Raises(ValueError, match=r"\bchromosome\(s\) with variants and CDS rows: chr1\b"),
+        Raises(ValueError, match=r"\bchromosome\(s\) with variants and CDS records: chr1\b"),
     ),
     Case(
         "cds_row_that_reaches_past_its_exon_end_is_an_error_that_names_the_transcript_and_the_cds_row",
@@ -655,7 +655,8 @@ CASES = [
         Raises(
             ValueError,
             match=per_strand(
-                names("CDS row of transcript tx1 at chr1:19-24"), names("CDS row of transcript tx1 at chr1:76-81")
+                names("CDS record of transcript tx1 at chr1:19-24"),
+                names("CDS record of transcript tx1 at chr1:76-81"),
             ),
         ),
         marks=(Mark("ref", 12, 14, "x", "past the end of the exon 1 row"),),

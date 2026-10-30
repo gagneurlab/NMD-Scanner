@@ -15,7 +15,8 @@ import pyarrow as pa
 
 from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
-# The values of nmd_efficiency_prediction_status, in the order they are checked. A row gets the first value whose condition holds:
+# The values of nmd_efficiency_prediction_status, in the order they are checked. A variant-transcript pair gets the
+# first value whose condition holds:
 # - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 15 of the 19 model
 #   inputs are null. unknown_reason says why.
 # - no_ptc: alt_has_ptc is not True, so there is no PTC to predict.
@@ -24,7 +25,8 @@ from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_D
 # - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
 #   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).
 # - start_loss: start_loss is True. The training data hold no start-loss variant, and translation after a start loss
-#   can begin at several sites, so the model does not predict the row. The row keeps its NMD features and rules.
+#   can begin at several sites, so the model does not predict the variant-transcript pair. The pair keeps its NMD
+#   features and rules.
 # - missing_input: another model input is null.
 # - ok: the variant creates the PTC, and no model input is null.
 # no_annotated_stop and no_annotated_start hold for every variant of the transcript. So they go before the values
@@ -42,7 +44,8 @@ PREDICTION_STATUSES = (
 
 # The values of stop_classification: the path of rules.analyze_transcript that set alt_has_ptc, stop_loss and
 # annotated_stop_distance. alt_transcript: the first in-frame stop codon of the alt transcript. start_loss_scan: the
-# rescued ORF after a start loss. alt_cds: the codon scan of the alt CDS, for a row that keeps the flags from the CDS.
+# rescued ORF after a start loss. alt_cds: the codon scan of the alt CDS, for a variant-transcript pair that keeps the
+# flags from the CDS.
 STOP_CLASSIFICATIONS = ("alt_transcript", "start_loss_scan", "alt_cds")
 
 # The categories of each categorical kind: the closed value set of the column whose name the kind has. A categorical
@@ -183,7 +186,7 @@ NMD_RULE_COLUMN_KINDS = {
 }
 
 # Kind of the column that add_features_and_rules adds after the rules. It says whether the NMD efficiency model
-# can predict the row (see PREDICTION_STATUSES).
+# can predict the variant-transcript pair (see PREDICTION_STATUSES).
 PREDICTION_STATUS_COLUMN_KINDS = {"nmd_efficiency_prediction_status": "nmd_efficiency_prediction_status"}
 
 # Kind of every column that add_features_and_rules returns, in output order. annotate returns them too, and by
@@ -208,7 +211,7 @@ PREDICTION_COLUMN_KINDS = {"nmd_efficiency_prediction": "float"}
 SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
 
 # The 19 inputs of the NMD efficiency model (see nmd_scanner.model and scripts/train_model.py), in the order that
-# the model takes them. The model cannot predict a row in which one of them is null.
+# the model takes them. The model cannot predict a variant-transcript pair in which one of them is null.
 MODEL_INPUTS = [
     "start_loss",
     "stop_loss",

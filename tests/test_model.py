@@ -92,4 +92,4 @@ def test_add_nmd_efficiency_prediction_logs_the_rows_per_nmd_efficiency_predicti
 
     counts = results["nmd_efficiency_prediction_status"].value_counts()
     for status, count in counts[counts > 0].items():
-        assert f"{count} rows with nmd_efficiency_prediction_status {status}" in caplog.text
+        assert f"{count} variant-transcript pairs with nmd_efficiency_prediction_status {status}" in caplog.text

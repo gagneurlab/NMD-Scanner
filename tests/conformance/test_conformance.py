@@ -302,9 +302,9 @@ UNKNOWN = "`unknown_reason` is set"
 NO_START_CODON = "`has_start_codon` is False"
 SHORT_CDS = "the CDS has fewer than 3 nt"
 NO_IN_FRAME_STOP = "no in-frame stop codon"
-NO_EXON_ROWS = "the transcript has no exon rows"
+NO_EXON_ROWS = "the transcript has no exon records"
 NOT_SCANNED = "not scanned"
-NOT_A_PTC_ROW = "not a PTC row"
+NOT_A_PTC_ROW = "not a PTC variant"
 NO_ALT_EXONS = "`alt_transcript_exons` is null"
 CDS_START_IS_NULL = "`cds_start_in_transcript` is null"
 # The 5 NMD rules, which nmd_escape combines
@@ -320,14 +320,14 @@ NULL_CASES = [
     ("variant_id", "the ID of the VCF record is `.`", lambda row: True),
     # transcript_type and transcript_tags come from the transcript row. If one of them is set, the transcript has a
     # transcript row.
-    ("transcript_type", "the GENCODE transcript has no transcript row", lambda row: row["transcript_tags"] is None),
+    ("transcript_type", "the GENCODE transcript has no transcript record", lambda row: row["transcript_tags"] is None),
     (
         "transcript_type",
-        "the transcript row has no `transcript_type` (GENCODE) or `biotype` (Ensembl)",
+        "the transcript record has no `transcript_type` (GENCODE) or `biotype` (Ensembl)",
         lambda row: row["transcript_tags"] is not None,
     ),
     ("transcript_tags", "the transcript has no tag", lambda row: row["transcript_type"] is not None),
-    ("transcript_tags", "the GENCODE transcript has no transcript row", lambda row: row["transcript_type"] is None),
+    ("transcript_tags", "the GENCODE transcript has no transcript record", lambda row: row["transcript_type"] is None),
     *[
         (column, UNKNOWN, lambda row: not _known(row))
         for column in (
@@ -368,7 +368,7 @@ NULL_CASES = [
     ],
     (
         "alt_has_ptc",
-        "the row keeps the flags from the CDS, and the alt CDS has fewer than 3 nt",
+        "the variant-transcript pair keeps the flags from the CDS, and the alt CDS has fewer than 3 nt",
         lambda row: _keeps_the_flags_from_the_cds(row) and row["alt_cds_length"] < 3,
     ),
     # A transcript without exon rows gives a row with null transcript columns
@@ -489,7 +489,7 @@ NULL_CASES = [
     ),
     (
         "ptc_to_start_codon",
-        "after a start loss: the row has no `alt_transcript_seq`",
+        "after a start loss: the variant-transcript pair has no `alt_transcript_seq`",
         lambda row: _ptc_row(row) and row["start_loss"] and row["alt_transcript_seq"] is None,
     ),
     *[
@@ -542,14 +542,16 @@ NULL_CASES = [
     ),
     (
         "annotated_stop_distance",
-        "on a row that keeps the flags from the CDS, the alt CDS has no in-frame stop codon",
+        "on a variant-transcript pair that keeps the flags from the CDS, the alt CDS has no in-frame stop codon",
         lambda row: (
             _keeps_the_flags_from_the_cds(row) and row["has_stop_codon"] and row["alt_stop_codon_count"] in (0, None)
         ),
     ),
 ]
 # The clauses that annotate() cannot reach, as (column, clause, reason)
-CDS_ROW_OUTSIDE_ITS_EXONS = "read_gff3() raises a ValueError for a CDS row outside the exon rows of its transcript"
+CDS_ROW_OUTSIDE_ITS_EXONS = (
+    "read_gff3() raises a ValueError for a CDS record outside the exon records of its transcript"
+)
 UNREACHABLE_NULL_CASES = [
     ("cds_start_in_transcript", "the 5' CDS base lies outside the exons", CDS_ROW_OUTSIDE_ITS_EXONS),
     ("cds_end_in_transcript", "the 5' CDS base lies outside the exons", CDS_ROW_OUTSIDE_ITS_EXONS),
