@@ -283,12 +283,12 @@ def test_create_reference_cds():
     ref_seq = "AAACCCGGGTTTAAA"
     ref_len = len(ref_seq)
 
-    for _, row in result.iterrows():
-        assert row["ref_cds_seq"] == ref_seq
-        assert row["ref_cds_length"] == ref_len
+    for _, pair in result.iterrows():
+        assert pair["ref_cds_seq"] == ref_seq
+        assert pair["ref_cds_length"] == ref_len
 
-    alt_seqs = {row["variant_id"]: row["alt_cds_seq"] for _, row in result.iterrows()}
-    alt_lens = {row["variant_id"]: row["alt_cds_length"] for _, row in result.iterrows()}
+    alt_seqs = {pair["variant_id"]: pair["alt_cds_seq"] for _, pair in result.iterrows()}
+    alt_lens = {pair["variant_id"]: pair["alt_cds_length"] for _, pair in result.iterrows()}
 
     # Variant-specific checks
     assert alt_seqs["var_snp"] == "AAACCTGGGTTTAAA"
@@ -605,16 +605,16 @@ def test_start_codon_pos_is_the_annotated_start_codon():
 
     result = analyze_sequence(df)
 
-    rows = records(result, StartCodonRow)
-    assert [starts_with_annotated_start_codon(row, "ref") for row in rows] == [True, True, False, False]
+    pairs = records(result, StartCodonRow)
+    assert [starts_with_annotated_start_codon(pair, "ref") for pair in pairs] == [True, True, False, False]
     assert result["start_codon_exon_number"].tolist() == [1, 1, None, None]
     # ATG>ACG changes the annotated start codon, so the alt CDS has none
-    assert [starts_with_annotated_start_codon(row, "alt") for row in rows] == [True, False, False, False]
+    assert [starts_with_annotated_start_codon(pair, "alt") for pair in pairs] == [True, False, False, False]
 
 
 def test_splice_alt_cds_into_transcript():
     # Single exon transcripts; the variant lies inside the CDS
-    row = SpliceRow(
+    pair = SpliceRow(
         transcript_seq="TTTAAAGGGCCCGGG",
         ref_cds_seq="AAAGGGCCC",
         alt_cds_seq="AAATTTCCC",
@@ -624,11 +624,11 @@ def test_splice_alt_cds_into_transcript():
         utr3_change=("", ""),
     )
 
-    result = splice_alt_cds_into_transcript(row)
+    result = splice_alt_cds_into_transcript(pair)
     assert result == "TTTAAATTTCCCGGG"
 
     # The 5'UTR repeats the CDS sequence: splice at the CDS position, not at the first match
-    row = SpliceRow(
+    pair = SpliceRow(
         transcript_seq="ATGAAATAACCATGAAATAAGG",
         ref_cds_seq="ATGAAATAA",
         alt_cds_seq="ATGTAATAA",
@@ -637,23 +637,23 @@ def test_splice_alt_cds_into_transcript():
         utr5_change=("", ""),
         utr3_change=("", ""),
     )
-    result = splice_alt_cds_into_transcript(row)
+    result = splice_alt_cds_into_transcript(pair)
     assert result == "ATGAAATAACCATGTAATAAGG"
 
     # The transcript does not hold the CDS sequence at the CDS position
-    assert splice_alt_cds_into_transcript(replace(row, cds_start_in_transcript=10)) is None
+    assert splice_alt_cds_into_transcript(replace(pair, cds_start_in_transcript=10)) is None
     # The CDS position is unknown
-    unknown = replace(row, cds_start_in_transcript=None, cds_end_in_transcript=None)
+    unknown = replace(pair, cds_start_in_transcript=None, cds_end_in_transcript=None)
     assert splice_alt_cds_into_transcript(unknown) is None
 
     # A deletion of TAAG at t17 reaches 1 nt past the stop codon into the 3'UTR, which loses that nt too
-    deletion = replace(row, alt_cds_seq="ATGAAA", utr3_change=("G", ""))
+    deletion = replace(pair, alt_cds_seq="ATGAAA", utr3_change=("G", ""))
     assert splice_alt_cds_into_transcript(deletion) == "ATGAAATAACCATGAAAG"
     # The transcript does not hold the ref 3'UTR bases
     assert splice_alt_cds_into_transcript(replace(deletion, utr3_change=("C", ""))) is None
 
     # An indel at the start codon edge changes the 5'UTR: here CC before the start codon becomes GGG
-    utr5 = replace(row, utr5_change=("CC", "GGG"))
+    utr5 = replace(pair, utr5_change=("CC", "GGG"))
     assert splice_alt_cds_into_transcript(utr5) == "ATGAAATAAGGGATGTAATAAGG"
     # The transcript does not hold the ref 5'UTR bases
     assert splice_alt_cds_into_transcript(replace(utr5, utr5_change=("AC", ""))) is None

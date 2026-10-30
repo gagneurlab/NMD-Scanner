@@ -24,7 +24,7 @@ from nmd_scanner.schema import (
 
 @dataclass(frozen=True, slots=True)
 class FeatureRow:
-    """The columns of a row of extract_ptc that add_nmd_features reads, see schema.records."""
+    """A variant-transcript pair with the columns of extract_ptc that add_nmd_features reads, see schema.records."""
 
     unknown_reason: str | None
     has_start_codon: bool
@@ -52,8 +52,8 @@ class FeatureRow:
 @dataclass(frozen=True, slots=True)
 class RuleRow:
     """
-    The columns of a row of extract_ptc that evaluate_nmd_escape_rules reads, and 3 columns that add_nmd_features adds,
-    see schema.records.
+    A variant-transcript pair with the columns of extract_ptc that evaluate_nmd_escape_rules reads, and 3 columns that
+    add_nmd_features adds, see schema.records.
     """
 
     has_start_codon: bool
@@ -129,8 +129,8 @@ def add_nmd_features(row):
     inspired by benchmark datasets from nmd_eff. These features include UTR lengths, exon structure and positional information
     of the premature termination codon (PTC).
 
-    :param row: A row of the result of extract_ptc: a FeatureRow, or a pandas Series or a dict with a value for each
-                field of FeatureRow
+    :param row: A variant-transcript pair of extract_ptc: a FeatureRow, or a pandas Series or a dict with a value for
+                each field of FeatureRow
     :return: A dictionary with additional NMD related features.
     """
 
@@ -380,11 +380,11 @@ def evaluate_nmd_escape_rules(row):
     it does not apply there. For a PTC variant, a rule is None if one of its inputs is None, because its value is
     unknown then. nmd_escape is True if one rule is True, None if no rule is True and one is None, and False otherwise.
 
-    :param row: A row of the result of extract_ptc with the features of add_nmd_features: a RuleRow, or a pandas
-                Series or a dict with a value for each field of RuleRow. These are alt_has_ptc (bool), the columns that
-                ptc_in_alt_transcript reads (the PTC position and alt_transcript_exons), total_exon_count,
-                downstream_exon_count and ptc_exon_length (see add_nmd_features), and the columns that
-                calculate_ptc_to_start_distance reads.
+    :param row: A variant-transcript pair of extract_ptc with the features of add_nmd_features: a RuleRow, or a
+                pandas Series or a dict with a value for each field of RuleRow. These are alt_has_ptc (bool), the
+                columns that ptc_in_alt_transcript reads (the PTC position and alt_transcript_exons),
+                total_exon_count, downstream_exon_count and ptc_exon_length (see add_nmd_features), and the columns
+                that calculate_ptc_to_start_distance reads.
     :return: A dictionary with a flag or None for each rule and for the overall NMD escape
     """
 
@@ -490,9 +490,9 @@ def add_features_and_rules(results):
     """
     Add the NMD features and the NMD escape rules to a result of ``extract_ptc``.
 
-    This runs ``add_nmd_features`` on the FeatureRow of each row, then ``evaluate_nmd_escape_rules`` on the RuleRow of
-    each row (it reads columns that the features add). Then it adds the column nmd_efficiency_prediction_status (see
-    ``nmd_efficiency_prediction_status``) and applies the output schema.
+    This runs ``add_nmd_features`` on the FeatureRow of each variant-transcript pair, then ``evaluate_nmd_escape_rules``
+    on the RuleRow of each pair (it reads columns that the features add). Then it adds the column
+    nmd_efficiency_prediction_status (see ``nmd_efficiency_prediction_status``) and applies the output schema.
     The result has the columns, column order and dtypes of OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero
     rows. ``results`` is not changed.
 

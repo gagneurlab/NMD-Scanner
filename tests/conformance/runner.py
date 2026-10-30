@@ -304,11 +304,11 @@ class Transcript:
                 if not part:
                     continue
                 if ensembl:
-                    feature_attributes = "ID=CDS:p1;Parent=transcript:tx1;protein_id=p1"
+                    record_attributes = "ID=CDS:p1;Parent=transcript:tx1;protein_id=p1"
                 else:
-                    feature_attributes = f"ID={feature}:tx1:{number};" + attributes
+                    record_attributes = f"ID={feature}:tx1:{number};" + attributes
                 records.append(
-                    record(feature, part[0], part[-1] + 1, phase if feature == "CDS" else ".", feature_attributes)
+                    record(feature, part[0], part[-1] + 1, phase if feature == "CDS" else ".", record_attributes)
                 )
                 if feature == "CDS":
                     # the phase of the next CDS record: the bases that its first codon still needs
@@ -624,7 +624,7 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
     ]
     assert not wrong_dtypes, f"wrong dtypes: {wrong_dtypes}"
     if isinstance(case.expected, NoResult):
-        assert len(results) == 0, f"expected 0 rows, got {len(results)}"
+        assert len(results) == 0, f"expected 0 variant-transcript pairs, got {len(results)}"
         return
 
     expected_pairs = [expected_pair(case, strand, more) for more in ({}, *case.more_pairs)]
@@ -635,7 +635,9 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
         echo = {"ref": ref, "alt": alt, "start": pos - 1, "end": pos - 1 + len(ref)}
         for pair, more in zip(expected_pairs, ({}, *case.more_pairs)):
             pair.update({column: value for column, value in echo.items() if column not in more})
-    assert len(results) == len(expected_pairs), f"expected {len(expected_pairs)} rows, got {len(results)}"
+    assert len(results) == len(expected_pairs), (
+        f"expected {len(expected_pairs)} variant-transcript pairs, got {len(results)}"
+    )
 
     def key(pair):
         # variant_id is null for a record without ID

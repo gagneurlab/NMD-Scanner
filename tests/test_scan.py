@@ -342,7 +342,7 @@ def test_compute_exon_numbers_takes_a_dataframe_with_any_index():
 
 def test_compute_exon_numbers_with_str_exon_number_column():
     """
-    A caller can give exon_number as ``str``, with missing values on features that have no exon
+    A caller can give exon_number as ``str``, with missing values on records that have no exon
     number. Computed exon numbers must be ints, not written into the str column.
     """
 
@@ -748,7 +748,7 @@ def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected
     gff3_path = _write(tmp_path, "a.gff3", gff3)
     results = _main(vcf, gff3_path, fasta, str(tmp_path / "out.csv"))
     columns = ["variant_id", "transcript_id", "has_stop_codon", "ref_cds_length", "alt_cds_length", "ref_cds_exons"]
-    assert [tuple(row) for row in results[columns].itertuples(index=False)] == expected
+    assert [tuple(pair) for pair in results[columns].itertuples(index=False)] == expected
     reassigned = _main(vcf, gff3_path, fasta, str(tmp_path / "reassigned.csv"), reassign_exons=True)
     pd.testing.assert_frame_equal(reassigned, results)
 
@@ -758,7 +758,7 @@ def test_read_gff3_drops_id_and_parent_columns(tmp_path):
     GFF3's own ID/Parent columns must not leak into the returned frame: downstream code joins
     the CDS table against the VCF table (which has its own unrelated "ID" column, the variant
     ID), and a leftover GFF3 "ID" column would silently take priority in that join and replace
-    the variant ID with a GFF3 feature ID such as "CDS:ENST00000643195.1".
+    the variant ID with a GFF3 record ID such as "CDS:ENST00000643195.1".
     """
     gencode_path = _write(tmp_path, "gencode.gff3", _GENCODE_GFF3)
     ensembl_path = _write(tmp_path, "ensembl.gff3", _ENSEMBL_GFF3)
@@ -1441,7 +1441,8 @@ def _types_and_tags(annotation):
     """(transcript_id, Feature, transcript_type, transcript_tags) of each record, with None for a missing value."""
     columns = ["transcript_id", "Feature", "transcript_type", "transcript_tags"]
     return {
-        tuple(None if pd.isna(value) else value for value in row) for row in annotation[columns].itertuples(index=False)
+        tuple(None if pd.isna(value) else value for value in record)
+        for record in annotation[columns].itertuples(index=False)
     }
 
 

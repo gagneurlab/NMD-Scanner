@@ -84,7 +84,7 @@ class SyntheticTranscript:
             exon_start = exon_end
 
     def _line(self, feature, start, end, phase, attributes):
-        """GFF3 line of a feature at transcript positions start to end (0-based, half-open)."""
+        """GFF3 record of type ``feature`` at transcript positions start to end (0-based, half-open)."""
         genomic = self.positions[start:end]
         columns = [self.chrom, "test", feature, min(genomic) + 1, max(genomic) + 1, ".", self.strand, phase, attributes]
         return "\t".join(str(column) for column in columns)
@@ -261,8 +261,8 @@ def test_ptc_of_the_scan_after_a_start_codon_deletion_lies_in_the_exon_of_the_al
 def test_a_scanned_start_loss_variant_with_a_ptc_has_the_status_start_loss_and_no_prediction(tmp_path, strand):
     """
     The deletion of the T of the start codon ATG at t5 is a start loss. The scan finds the ATG at t7 and a PTC at t10,
-    and every model input is set. The model has no training data for a start loss, so the variant-transcript pair gets
-    no prediction.
+    and every model input is set. The TCGA training variant-sample pairs hold no start-loss variant, so the
+    variant-transcript pair gets no prediction.
     """
     tx = SyntheticTranscript(tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], 4, 16)
 

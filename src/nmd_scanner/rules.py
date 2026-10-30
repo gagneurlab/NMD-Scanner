@@ -36,10 +36,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    transcript_tags and the columns has_start_codon and has_stop_codon. The last two say whether the
                    coding region of the transcript starts with an annotated start codon and ends in an annotated stop
                    codon. ``scan.read_annotation`` returns the coding regions as its CDS records.
-    :param vcf: Variants (DataFrame) with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
-                returns them. Without the variant_id column, each record has a null ID. A record with a symbolic
-                ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with ALT "."
-                or "*" (see ``drop_missing_alleles``).
+    :param vcf: VCF records (DataFrame) with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
+                returns them. Without the variant_id column, each record has a null ID. A record with a symbolic ALT
+                allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with ALT "." or "*"
+                (see ``drop_missing_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon records of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
@@ -94,7 +94,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     variants, placements = place_variants(vcf, set(cds_df_adj["Chromosome"]), reference)
     intersection_cds_vcf = join_variant_windows(cds_df_adj, variants)
-    logger.info("Joining variants with cds entries: done.")
+    logger.info("Joining variants with CDS records: done.")
 
     # Nothing to analyze: the steps below need at least one row
     if intersection_cds_vcf.empty:
@@ -108,7 +108,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     if not mismatched_pairs.empty:
         logger.warning("Skipping %d variant-transcript pairs due to reference mismatches.", len(mismatched_pairs))
         logger.warning(
-            "Reference-mismatched variants:\n%s",
+            "Reference-mismatched variant-transcript pairs:\n%s",
             mismatched_pairs[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
                 index=False
             ),
@@ -131,7 +131,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
     cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
 
-    # Fetch reference sequence for all CDS entries per (relevant) transcripts
+    # Fetch reference sequence for all CDS records per (relevant) transcripts
     cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta)  # for faster access
 
     # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
@@ -254,7 +254,7 @@ def drop_symbolic_alleles(vcf):
     and logs a warning with their count. Such an ALT names a structural variant instead of giving its sequence. The
     variant application would insert its text into the sequence, e.g. "<DEL>" into the alt CDS.
 
-    :param vcf: Variants (DataFrame) with the column Alt
+    :param vcf: VCF records (DataFrame) with the column Alt
     :return: The records of ``vcf`` whose ALT is a sequence, in their order and with their index
     """
 
@@ -276,7 +276,7 @@ def drop_missing_alleles(vcf):
     variant-transcript pairs. The variant application would insert the character into the sequence, e.g. "*" into the
     alt CDS.
 
-    :param vcf: Variants (DataFrame) with the column Alt
+    :param vcf: VCF records (DataFrame) with the column Alt
     :return: The records of ``vcf`` whose ALT is not "." or "*", in their order and with their index
     """
 
@@ -299,7 +299,7 @@ def join_variants_to_cds(cds_df, vcf):
     its End, does not overlap it. Strand is ignored. polars-bio computes the overlaps.
 
     :param cds_df: CDS records (DataFrame) with Chromosome, Start and End
-    :param vcf: Variants (DataFrame) with Chromosome, Start and End
+    :param vcf: VCF records (DataFrame) with Chromosome, Start and End
     :return: DataFrame with one row per overlapping CDS record and variant, and a RangeIndex. It has the
         columns of cds_df, then the columns of vcf except Chromosome, also if no variant overlaps a
         CDS record. A column of vcf that cds_df has too gets the suffix "_variant", e.g. Start_variant
@@ -361,7 +361,7 @@ def place_variants(vcf, chromosomes, reference):
     Finds the equivalent placements of each variant on the given chromosomes, and checks its whole REF against the
     reference genome.
 
-    :param vcf: Variants (DataFrame) with Chromosome, Start, End, Ref and Alt, the names of VCF_COLUMNS
+    :param vcf: VCF records (DataFrame) with Chromosome, Start, End, Ref and Alt, the names of VCF_COLUMNS
     :param chromosomes: Chromosomes to keep, e.g. those with a coding region
     :param reference: Function that returns the ReferenceSequence of a chromosome
     :return: Tuple (variants, placements). variants holds the kept records plus variant_row (a key into placements),
@@ -397,7 +397,7 @@ def join_variant_windows(cds_df, variants):
     that a variant can change, also through a splice dinucleotide or an insertion next to it.
 
     :param cds_df: Coding regions (DataFrame): CDS records that include the stop codon
-    :param variants: Variants with Window_Start and Window_End (place_variants)
+    :param variants: VCF records with Window_Start and Window_End (place_variants)
     :return: DataFrame with one row per CDS record and variant, as ``join_variants_to_cds`` returns it: the CDS
              record columns, then the variant columns. Start_variant and End_variant hold the VCF interval of the
              variant.
@@ -526,8 +526,8 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
                         includes: transcript_id, exon_number, Start, End, Strand, Frame, Exon_CDS_seq, has_start_codon,
                         has_stop_codon
-    :return: DataFrame with one row per VCF record and transcript (without variant_row: per variant and transcript),
-             containing full reference and alternative CDS + lengths,
+    :return: DataFrame with one row per VCF record and transcript (without variant_row: one row per distinct variant
+             and transcript), containing full reference and alternative CDS + lengths,
              exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_start_codon, has_stop_codon,
              cds_frame (the Frame of the 5'-most CDS record: the number of bases before the first complete codon),
              utr5_change and utr3_change (tuples (ref, alt), see TranscriptEffect), alt_exon_lengths
@@ -863,7 +863,10 @@ def get_exon(cds_pos, exon_info):
 
 @dataclass(frozen=True, slots=True)
 class CodonScanRow:
-    """The columns of a row of create_reference_cds that analyze_sequence reads, see schema.records."""
+    """
+    A variant-transcript pair with the columns of create_reference_cds that analyze_sequence reads, see
+    schema.records.
+    """
 
     has_start_codon: bool
     has_stop_codon: bool
@@ -878,10 +881,11 @@ def analyze_sequence(results_df):
     """
     Analyzes reference and alternative CDS for start and stop codons, their positions, and potential premature termination codons (PTCs)
 
-    :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative sequences, per variant,
-                       has_start_codon (whether the CDS starts with an annotated start codon), has_stop_codon (whether
-                       the coding region ends in an annotated stop codon) and cds_frame (the number of bases before the
-                       first complete codon). All codon scans start at the first complete codon.
+    :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative
+                       sequences, per variant-transcript pair, has_start_codon (whether the CDS starts with an annotated
+                       start codon), has_stop_codon (whether the coding region ends in an annotated stop codon) and
+                       cds_frame (the number of bases before the first complete codon). All codon scans start at the
+                       first complete codon.
     :return: DataFrame with added annotation columns for reference and alternative sequence separately:
              such as position / exon of the annotated start codon (None if there is none or the variant changed it),
              last codon and its validity as stop codon, first in-frame stop codon + position,
@@ -977,7 +981,7 @@ def starts_with_annotated_start_codon(row, label):
 
 @dataclass(frozen=True, slots=True)
 class StartCodonRow:
-    """The columns of a row of analyze_sequence that start_stop_loss reads, see schema.records."""
+    """A variant-transcript pair with the columns of analyze_sequence that start_stop_loss reads, see schema.records."""
 
     has_start_codon: bool
     ref_cds_seq: str
@@ -1017,7 +1021,10 @@ def start_stop_loss(df):
 
 @dataclass(frozen=True, slots=True)
 class SpliceRow:
-    """The columns of a row of extract_ptc that splice_alt_cds_into_transcript reads, see schema.records."""
+    """
+    A variant-transcript pair with the columns of extract_ptc that splice_alt_cds_into_transcript reads, see
+    schema.records.
+    """
 
     transcript_seq: str | None
     ref_cds_seq: str
@@ -1245,7 +1252,7 @@ def classify_rescued_orf(row, start, first_stop):
 
 @dataclass(frozen=True, slots=True)
 class TranscriptScanRow:
-    """The columns of a row of extract_ptc that analyze_transcript reads, see schema.records."""
+    """A variant-transcript pair with the columns of extract_ptc that analyze_transcript reads, see schema.records."""
 
     unknown_reason: str | None
     has_start_codon: bool
