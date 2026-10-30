@@ -68,7 +68,7 @@ import numpy as np
 import plotnine as pn
 import polars as pl
 from pyfaidx import Fasta
-from scipy.stats import norm, rankdata, spearmanr
+from scipy.stats import norm, rankdata
 from sklearn.metrics import r2_score
 
 from nmd_scanner import annotate_variants, read_annotation
@@ -93,8 +93,8 @@ SEED = 0
 N_RESAMPLES = 2000
 # The tissues to drop, because GTEx v8 has too few samples of them (see the AbExp paper)
 EXCLUDED_TISSUES = ["Bladder", "Cervix - Ectocervix", "Cervix - Endocervix", "Fallopian Tube", "Kidney - Medulla"]
-# The scores of interval_plot and of the Spearman bars: the key in a result of correlations, the direct label, the color,
-# and the offset from the position of the result
+# The scores of the Spearman bars and of the MMRF-TARGET intervals: the key in a result of correlations, the direct
+# label, the color, and the offset from the position of the result
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", ORANGE, -0.15)]
 GAIN = [("gain", "", BLUE, 0.0)]
 # The keys of the MMRF-TARGET rows by transcript in validation.json, and their names in the log and the figure
@@ -109,8 +109,6 @@ R2_TERMS = [
     ("spread_mismatch", -1, "Minus spread mismatch"),
     ("r2_score", 1, "= R2"),
 ]
-# The digits of the exponent of a P value, as superscripts
-SUPERSCRIPTS = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -125,9 +123,7 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
     """
     Spearman correlation of the prediction and of the rules with NMD_efficiency, and their difference, with bootstrap
     CIs. The rules score is (not nmd_escape), so that both scores rank high NMD efficiency first. Each resample draws
-    the genes of the column gene with replacement, and it takes all rows of each drawn gene. The P value of the
-    difference is two-sided, from a z-test with the standard deviation of the resampled differences as the standard
-    error.
+    the genes of the column gene with replacement, and it takes all rows of each drawn gene.
     """
     y = cohort_df["NMD_efficiency"].to_numpy()
     model = cohort_df["prediction"].to_numpy()
@@ -165,13 +161,7 @@ def mean_nmd_triggering(cohort_df: pl.DataFrame) -> float:
 
 
 def r2_terms(cohort_df: pl.DataFrame) -> dict[str, float]:
-    """
-    The r2_score of scikit-learn for the prediction of NMD_efficiency, split as r_squared - mean_offset -
-    spread_mismatch. r_squared is the squared Pearson correlation r. mean_offset is the squared difference of the means,
-    and spread_mismatch is the squared difference of the standard deviation of the prediction and r times that of
-    NMD_efficiency. Both are divided by the variance of NMD_efficiency. With standard deviations over n, not n - 1, the
-    terms add up to r2_score exactly.
-    """
+    """r2_score = r_squared - mean_offset - spread_mismatch, as the R2 figure explains. ddof=0 makes the sum exact."""
     r, offset, sd_prediction, sd_measured = cohort_df.select(
         r=pl.corr("prediction", "NMD_efficiency"),
         offset=pl.col("prediction").mean() - pl.col("NMD_efficiency").mean(),
@@ -198,7 +188,7 @@ def p_value(p: float) -> str:
     if p >= 0.001:
         return f"P = {p:.2g}"
     mantissa, exponent = f"{p:.1e}".split("e")
-    return f"P = {mantissa}×10{str(int(exponent)).translate(SUPERSCRIPTS)}"
+    return f"P = {mantissa}×10{str(int(exponent)).translate(str.maketrans('-0123456789', '⁻⁰¹²³⁴⁵⁶⁷⁸⁹'))}"
 
 
 def facet_frame(panels: dict[str, pl.DataFrame]) -> pl.DataFrame:
@@ -212,9 +202,8 @@ def facet_frame(panels: dict[str, pl.DataFrame]) -> pl.DataFrame:
 
 def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) -> pl.DataFrame:
     """
-    One row per result and score for interval_plot, with the value of the score and its 95% CI as low and high. Result
-    i has the position -i plus the offset of the score. The rows of the last result, at the bottom, have the direct
-    labels.
+    One row per result and score, with the value of the score and its 95% CI as low and high. Result i has the
+    position -i plus the offset of the score. The rows of the last result, at the bottom, have the direct labels.
     """
     return pl.DataFrame(
         [
@@ -229,22 +218,6 @@ def intervals(results: list[dict], scores: list[tuple[str, str, str, float]]) ->
             for i, result in enumerate(results)
             for score, label, color, offset in scores
         ]
-    )
-
-
-def interval_plot(intervals_df: pl.DataFrame, labels: list[str]) -> pn.ggplot:
-    """
-    A dot at each value of the intervals in intervals_df, with a line from low to high, and the direct label right of
-    high. The y axis shows labels from the top, one per result.
-    """
-    return (
-        pn.ggplot(intervals_df, pn.aes(y="position", color="color"))
-        + pn.geom_segment(pn.aes(x="low", xend="high", yend="position"), size=1)
-        + pn.geom_point(pn.aes(x="value"), size=2.5)
-        + pn.geom_text(pn.aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
-        + pn.scale_color_identity()
-        + pn.scale_y_continuous(breaks=-np.arange(len(labels)), labels=labels, expand=(0, 0.4))
-        + pn.theme(axis_title_y=pn.element_blank(), panel_grid_major_y=pn.element_blank())
     )
 
 
@@ -280,7 +253,7 @@ save_figure(plot, OUT_DIR, "target_histogram", 6, 3.5)
 
 # %%
 oof_measured = oof_df["NMD_efficiency"].to_numpy()
-oof_spearman = spearmanr(oof_df["prediction"].to_numpy(), oof_measured).statistic
+oof_spearman = spearman(oof_df["prediction"].to_numpy(), oof_measured)
 oof_r2 = r2_score(oof_measured, oof_df["prediction"].to_numpy())
 plot = (
     pn.ggplot(oof_df, pn.aes("prediction", "NMD_efficiency"))
@@ -460,33 +433,24 @@ for cohort, cohort_df in cohorts.items():
         result["mean_nmd_triggering"],
     )
     validation[cohort] = result
-tissue_means = dict(
-    gtex_df.group_by("tissue")
-    .agg(pl.len().alias("n"), pl.col("NMD_efficiency").filter(~pl.col("nmd_escape")).mean().alias("mean"))
-    .filter(~pl.col("tissue").is_in(EXCLUDED_TISSUES))
-    .sort("mean", "tissue")
-    .select("tissue", "mean")
-    .iter_rows()
-)
-# The Spearman correlation of the prediction and of the rules with NMD_efficiency in each tissue, from the lowest
-# correlation of the prediction to the highest
-tissue_spearman_df = (
+tissues_df = (
     gtex_df.filter(~pl.col("tissue").is_in(EXCLUDED_TISSUES))
     .group_by("tissue")
     .agg(
         n=pl.len(),
+        mean=pl.col("NMD_efficiency").filter(~pl.col("nmd_escape")).mean(),
         model=pl.corr("prediction", "NMD_efficiency", method="spearman"),
         rules=pl.corr(~pl.col("nmd_escape"), "NMD_efficiency", method="spearman"),
     )
-    .sort("model", "tissue")
 )
+tissue_means = dict(tissues_df.sort("mean", "tissue").select("tissue", "mean").iter_rows())
+tissue_spearman_df = tissues_df.drop("mean").sort("model", "tissue")
 validation["gtex_variant_tissue_rows"] = {
     "n": len(gtex_df),
     "tissues": gtex_df["tissue"].n_unique(),
     "mean_nmd_triggering": mean_nmd_triggering(gtex_df),
     "excluded_tissues": EXCLUDED_TISSUES,
     "mean_nmd_triggering_per_tissue": tissue_means,
-    "spearman_per_tissue": tissue_spearman_df.rows_by_key("tissue", named=True, unique=True),
 }
 mmrf_df = cohorts["mmrf_target"]
 seen = mmrf_df["transcript"].is_in(cohorts["tcga"]["transcript"].implode())
@@ -515,11 +479,6 @@ logger.info(
     max(tissue_means.values()),
     len(tissue_means),
     len(EXCLUDED_TISSUES),
-)
-logger.info(
-    "gtex, Spearman per tissue: the model correlates higher than the rules in %d of the %d tissues",
-    len(tissue_spearman_df.filter(pl.col("model") > pl.col("rules"))),
-    len(tissue_spearman_df),
 )
 
 # %% [markdown]
@@ -591,41 +550,24 @@ save_figure(plot, OUT_DIR, "efficiency_by_nmd_escape", 9.5, 3.5)
 # %%
 bars_df = intervals([validation[cohort] for cohort in cohorts], MODEL_AND_RULES)
 # The bracket of each cohort spans the centers of its two bars, just right of their CIs
-bracket_ends = [offset for _, _, _, offset in MODEL_AND_RULES]
 brackets_df = pl.DataFrame(
     {
         "position": -np.arange(len(cohorts), dtype=float),
-        "rho": [
-            max(validation[cohort][f"{score}_ci"][1] for score, _, _, _ in MODEL_AND_RULES) + 0.03 for cohort in cohorts
-        ],
+        "rho": [max(validation[cohort]["model_ci"][1], validation[cohort]["rules_ci"][1]) + 0.03 for cohort in cohorts],
         "label": [p_value(validation[cohort]["gain_p"]) for cohort in cohorts],
     }
 )
-# The vertical line of each bracket, and a short tick at each end that points to the bars
+top, bottom = (offset for *_, offset in MODEL_AND_RULES)
+# The line of each bracket, and a short tick at each end that points to the bars
 bracket_lines_df = pl.concat(
-    [
-        brackets_df.select(
-            position=pl.col("position") + bracket_ends[0],
-            position_end=pl.col("position") + bracket_ends[1],
-            rho="rho",
-            rho_end="rho",
-        ),
-        *(
-            brackets_df.select(
-                position=pl.col("position") + end,
-                position_end=pl.col("position") + end,
-                rho=pl.col("rho") - 0.015,
-                rho_end="rho",
-            )
-            for end in bracket_ends
-        ),
-    ]
+    brackets_df.select(x=pl.col("position") + start, xend=pl.col("position") + end, y=pl.col("rho") - tick, yend="rho")
+    for start, end, tick in [(top, bottom, 0.0), (top, top, 0.015), (bottom, bottom, 0.015)]
 )
 plot = (
     pn.ggplot(bars_df, pn.aes("position", "value"))
     + pn.geom_col(pn.aes(fill="color"), width=0.27)
     + pn.geom_errorbar(pn.aes(ymin="low", ymax="high"), width=0.12, color=SECONDARY_INK)
-    + pn.geom_segment(pn.aes(xend="position_end", y="rho", yend="rho_end"), data=bracket_lines_df, color=SECONDARY_INK)
+    + pn.geom_segment(pn.aes("x", "y", xend="xend", yend="yend"), data=bracket_lines_df, color=SECONDARY_INK)
     + pn.geom_text(
         pn.aes(y="rho", label="label"), data=brackets_df, ha="left", nudge_y=0.012, color=SECONDARY_INK, size=9
     )
@@ -661,8 +603,7 @@ for cohort, cohort_df in cohorts.items():
         {"term": [name for _, _, name in R2_TERMS], "value": values, "label": [f"{value:+.2f}" for value in values]}
     )
 positive = pl.col("value") >= 0
-# coord_flip draws the first term at the bottom, so the terms go in reverse order. The label of a bar sits just beyond
-# its end.
+# coord_flip draws the first term at the bottom, so the terms go in reverse order.
 r2_df = (
     facet_frame(r2_panels)
     .cast({"term": pl.Enum([name for _, _, name in reversed(R2_TERMS)])})
@@ -726,8 +667,7 @@ save_figure(plot, OUT_DIR, "gtex_tissues", 8, 9)
 # tissues with the highest and the 3 with the lowest correlation of the model.
 
 # %%
-# The labels of the highest tissues go left of their points, and those of the lowest go right. The label of the lowest
-# tissue hangs below its point, so that it clears the label of the next one.
+# The label of the lowest tissue hangs below its point, so that it clears the label of the next one.
 tissue_labels_df = pl.concat(
     [
         tissue_spearman_df.tail(3).with_columns(x=pl.col("rules") - 0.008, ha=pl.lit("right"), va=pl.lit("center")),
@@ -766,12 +706,19 @@ transcript_intervals_df = facet_frame(
 )
 zero_df = pl.DataFrame({"panel": [gain_panel], "x": [0.0]}).cast({"panel": transcript_intervals_df["panel"].dtype})
 plot = (
-    interval_plot(
-        transcript_intervals_df,
-        [f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} rows" for group, result in transcript_split.items()],
-    )
+    pn.ggplot(transcript_intervals_df, pn.aes(y="position", color="color"))
+    + pn.geom_segment(pn.aes(x="low", xend="high", yend="position"), size=1)
+    + pn.geom_point(pn.aes(x="value"), size=2.5)
+    + pn.geom_text(pn.aes(x="high", label="label"), ha="left", nudge_x=0.01, color=SECONDARY_INK, size=9)
     + pn.geom_vline(pn.aes(xintercept="x"), data=zero_df, color=AXIS)
+    + pn.scale_color_identity()
+    + pn.scale_y_continuous(
+        breaks=-np.arange(len(results)),
+        labels=[f"{TRANSCRIPT_GROUPS[group]}\n{result['n']:,} rows" for group, result in transcript_split.items()],
+        expand=(0, 0.4),
+    )
     + pn.facet_wrap("panel", scales="free_x")
     + pn.labs(title="MMRF-TARGET by transcript, 95% CIs", x="")
+    + pn.theme(axis_title_y=pn.element_blank(), panel_grid_major_y=pn.element_blank())
 )
 save_figure(plot, OUT_DIR, "mmrf_target_by_transcript", 9, 3)
