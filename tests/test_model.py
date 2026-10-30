@@ -10,14 +10,17 @@ import nmd_scanner
 import nmd_scanner.model as model_module
 from nmd_scanner.cli import annotate
 from nmd_scanner.model import MODEL_PATH, add_nmd_efficiency_prediction
-from nmd_scanner.schema import MODEL_INPUTS, empty_table, output_column_kinds, to_arrow
+from nmd_scanner.schema import MODEL_INPUTS, OUTPUT_COLUMN_KINDS, empty_table, output_column_kinds, to_arrow
 
 ARGS = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
 
 @pytest.fixture(scope="module")
 def results():
-    """The annotate result of the chr18 test variants, without the prediction. Some rows have nmd_efficiency_prediction_status ok."""
+    """
+    The annotate result of the chr18 test variants, without the prediction. Some variant-transcript pairs have
+    nmd_efficiency_prediction_status ok.
+    """
     return annotate(*ARGS, prediction=False)
 
 
@@ -30,7 +33,7 @@ def test_add_nmd_efficiency_prediction_is_exported_from_the_package():
     assert nmd_scanner.add_nmd_efficiency_prediction is add_nmd_efficiency_prediction
 
 
-def test_the_prediction_is_finite_exactly_in_the_rows_with_nmd_efficiency_prediction_status_ok(results):
+def test_the_prediction_is_finite_exactly_in_the_pairs_with_nmd_efficiency_prediction_status_ok(results):
     predicted = add_nmd_efficiency_prediction(results)
 
     ok = (results["nmd_efficiency_prediction_status"] == "ok").to_numpy()
@@ -53,16 +56,16 @@ def test_the_prediction_follows_nmd_efficiency_prediction_status_and_the_other_c
 
 
 @pytest.mark.parametrize("has_rows", [False, True])
-def test_without_a_row_to_prediction_the_prediction_is_float64_and_the_model_does_not_run(
-    monkeypatch, results, has_rows
-):
+def test_without_a_pair_to_predict_the_prediction_is_float64_and_the_model_does_not_run(monkeypatch, results, has_rows):
     import onnxruntime
 
     def run(*args, **kwargs):
         raise AssertionError("the model ran")
 
     monkeypatch.setattr(onnxruntime.InferenceSession, "run", run)
-    table = results[results["nmd_efficiency_prediction_status"] != "ok"] if has_rows else empty_table()
+    table = (
+        results[results["nmd_efficiency_prediction_status"] != "ok"] if has_rows else empty_table(OUTPUT_COLUMN_KINDS)
+    )
 
     predicted = add_nmd_efficiency_prediction(table)
 
@@ -84,10 +87,10 @@ def test_annotate_adds_the_prediction_unless_prediction_is_false(results):
     pd.testing.assert_frame_equal(annotate(*ARGS), add_nmd_efficiency_prediction(results))
 
 
-def test_add_nmd_efficiency_prediction_logs_the_rows_per_nmd_efficiency_prediction_status(results, caplog):
+def test_add_nmd_efficiency_prediction_logs_the_pairs_per_nmd_efficiency_prediction_status(results, caplog):
     with caplog.at_level(logging.INFO, logger="nmd_scanner.model"):
         add_nmd_efficiency_prediction(results)
 
     counts = results["nmd_efficiency_prediction_status"].value_counts()
     for status, count in counts[counts > 0].items():
-        assert f"{count} rows with nmd_efficiency_prediction_status {status}" in caplog.text
+        assert f"{count} variant-transcript pairs with nmd_efficiency_prediction_status {status}" in caplog.text

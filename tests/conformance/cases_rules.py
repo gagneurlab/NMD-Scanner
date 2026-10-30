@@ -48,7 +48,7 @@ A_REF = {
     "has_stop_codon": True,
     "cds_frame": 0,
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -189,7 +189,7 @@ U_REF = {
     "cds_frame": 0,
     "ref_cds_exons": [{"exon_number": 1, "length": 180}, {"exon_number": 2, "length": 30}],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -263,7 +263,7 @@ C_REF = {
     "cds_frame": 0,
     "ref_cds_exons": [{"exon_number": 1, "length": 165}],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -344,7 +344,7 @@ L_REF = {
     "cds_frame": 0,
     "ref_cds_exons": [{"exon_number": 1, "length": 403}, {"exon_number": 2, "length": 20}],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -423,7 +423,7 @@ M_REF = {
     "cds_frame": 0,
     "ref_cds_exons": [{"exon_number": 1, "length": 63}, {"exon_number": 2, "length": 426}],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -447,15 +447,17 @@ M_REF = {
 M = Layout(Transcript(M_EXONS), M_REF)
 
 
-def number_the_cds_of_exon_2_as_exon_9(rows, strand):
-    """Give the CDS and stop_codon rows of exon 2 the exon_number 9, which no exon row has."""
+def number_the_cds_of_exon_2_as_exon_9(records, strand):
+    """Give the CDS and stop_codon records of exon 2 the exon_number 9, which no exon record has."""
     return [
-        [*row[:8], row[8].replace("exon_number=2", "exon_number=9")] if row[2] in ("CDS", "stop_codon") else row
-        for row in rows
+        [*record[:8], record[8].replace("exon_number=2", "exon_number=9")]
+        if record[2] in ("CDS", "stop_codon")
+        else record
+        for record in records
     ]
 
 
-# Layout M9: layout M, but the CDS rows of exon 2 have the exon_number 9
+# Layout M9: layout M, but the CDS records of exon 2 have the exon_number 9
 M9 = Layout(
     Transcript(M_EXONS, edit_gff3=number_the_cds_of_exon_2_as_exon_9),
     {
@@ -507,7 +509,7 @@ SL = Layout(
             {"exon_number": 3, "length": 30},
         ],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -544,6 +546,7 @@ NF = Layout(
     ),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(10, 16),
         "cds_end": per_strand(221, 227),
         "ref_cds_seq": NF_CDS,
@@ -557,7 +560,7 @@ NF = Layout(
             {"exon_number": 3, "length": 18},
         ],
         "cds_in_transcript": True,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -987,7 +990,7 @@ CASES = [
         ruler=Ruler((-4, 0, 30, 63, 201, 258, 267), "CDS"),
     ),
     Case(
-        "snv_in_the_splice_donor_gives_an_unknown_row_with_null_rules",
+        "snv_in_the_splice_donor_has_an_unknown_alt_transcript_and_null_rules",
         """
         CDS     -4   0                                           63
         ref 5' [gacc ATG GCC ..51.. GCC GAG]gtaagtcccccccctttcag[GCC GCC ..129.. GCC]|[GCC ..54.. TAA gccgcc] 3'
@@ -1061,9 +1064,10 @@ CASES = [
         marks=(Mark("alt", 154, 157, "*", "PTC"), Span("alt", 154, 271, "ptc_to_exon_end = 117")),
         ruler=Ruler((-4, 0, 147, 150, 258, 267), "CDS"),
     ),
-    # A row that is not a PTC row has every rule null, also the single exon rule of a single exon transcript
+    # A variant-transcript pair that is not a PTC variant has every rule null, also the single exon rule of a single
+    # exon transcript
     Case(
-        "missense_snv_in_a_single_exon_transcript_is_no_ptc_row_and_every_rule_is_null",
+        "missense_snv_in_a_single_exon_transcript_is_no_ptc_variant_and_every_rule_is_null",
         """
         CDS     -4   0                       147                    258       267
         ref 5' [gacc ATG GCC ..135.. GCC GCC CAG TTG AGC ..99.. GCC TAA gccgcc] 3'
@@ -1434,11 +1438,11 @@ CASES = [
         ),
         ruler=Ruler((-4, 0, 63, 93, 486, 495), "CDS"),
     ),
-    # The CDS rows of exon 2 say exon_number 9, which no exon row has. The exon features find the PTC exon by
+    # The CDS records of exon 2 say exon_number 9, which no exon record has. The exon features find the PTC exon by
     # its position in alt_transcript_exons: exon 2, the last exon, of 432 nt. So the last exon rule and the long
     # exon rule fire.
     Case(
-        "ptc_in_an_exon_whose_cds_rows_have_another_exon_number_fires_the_last_exon_and_long_exon_rules",
+        "ptc_in_an_exon_whose_cds_records_have_another_exon_number_fires_the_last_exon_and_long_exon_rules",
         """
         CDS     -4   0                    63                      300                     486       495
         ref 5' [gacc ATG GCC ..54.. GCC]|[GCC GCC ..225.. GCC GCC TGG GCC GCC ..174.. GCC TAA gccgcc] 3'
@@ -1448,7 +1452,7 @@ CASES = [
                                                                   <---- ptc_to_exon_end = 195 ----->
                                           <---------------- ptc_exon_length = 432 ----------------->
         exon 1: 67 nt, exon 2: 432 nt
-        The CDS rows of exon 2 say exon_number 9. The PTC TGA at CDS 300 lies in exon 2 of alt_transcript_exons,
+        The CDS records of exon 2 say exon_number 9. The PTC TGA at CDS 300 lies in exon 2 of alt_transcript_exons,
         the last exon.
         """,
         M9,
@@ -1544,7 +1548,7 @@ CASES = [
             "alt_transcript_length": 241,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": 104,
-            "alt_scan_start_codon_exon": 2,
+            "alt_scan_start_codon_exon_number": 2,
             "alt_scan_first_stop_codon": "TGA",
             "alt_scan_first_stop_pos": 164,
             "alt_scan_stop_codon_count": 1,
@@ -1563,7 +1567,7 @@ CASES = [
             "nmd_start_proximal_rule": True,
             "nmd_escape": True,
             "alt_transcript_exons": SAME_EXONS,
-            "nmd_efficiency_prediction_status": "ok",
+            "nmd_efficiency_prediction_status": "start_loss",
             "ptc_pos_in_alt_transcript": 164,
             "ptc_exon_number": 2,
             "stop_classification": "start_loss_scan",

@@ -1,12 +1,12 @@
 """
-Conformance cases of transcripts without start_codon or stop_codon rows, the GENCODE tags
+Conformance cases of transcripts without start_codon or stop_codon records, the GENCODE tags
 cds_start_NF and cds_end_NF, the Ensembl flavor with its codons from the FASTA, the mitochondrial stop codons, and the
 code paths that differ between the strands. A transcript with the strand "." is an error.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
 and `-` fills a gap. `[...]` is an exon and `|` is an exon junction. Upper case is the coding region, in codons of the
-annotated frame; lower case is UTR. The coding region is the CDS with its stop codon, as the GFF3 CDS rows hold it.
+annotated frame; lower case is UTR. The coding region is the CDS with its stop codon, as the GFF3 CDS records hold it.
 `..N..` leaves out N bases. `^` marks the change as ref>alt. A mark line puts a character under bases, e.g. `***`
 under the PTC, and `<-- label -->` spans a length. A ruler gives tx or CDS positions, as labelled. The comments
 above the layouts use the same notation.
@@ -32,42 +32,43 @@ from .runner import (
 
 CDS_START_NF = ("cds_start_NF",)
 CDS_END_NF = ("cds_end_NF",)
-# The columns of a row that is neither a PTC nor a stop loss, and that has no scan of the alt transcript
+# The columns of a variant-transcript pair that is neither a PTC nor a stop loss, and that has no scan of the alt
+# transcript
 NO_FLAGS = {"start_loss": False, "stop_loss": False, **NOT_SCANNED, "unknown_reason": None}
 
 
-def _set_ensembl_end_phases(rows, phases):
-    """Adds ensembl_end_phase to each exon row; ``phases`` maps the exon rank to the phase."""
-    for row in rows:
-        if row[2] == "exon":
-            rank = int(row[8].split("rank=")[1])
-            row[8] += f";ensembl_end_phase={phases[rank]}"
-    return rows
+def _set_ensembl_end_phases(records, phases):
+    """Adds ensembl_end_phase to each exon record; ``phases`` maps the exon rank to the phase."""
+    for record in records:
+        if record[2] == "exon":
+            rank = int(record[8].split("rank=")[1])
+            record[8] += f";ensembl_end_phase={phases[rank]}"
+    return records
 
 
-def exon_1_ends_mid_codon(rows, strand):
+def exon_1_ends_mid_codon(records, strand):
     """Ensembl end phases: exon 1 ends mid-codon (2), exon 2 holds the 3' UTR (-1)."""
-    return _set_ensembl_end_phases(rows, {1: 2, 2: -1})
+    return _set_ensembl_end_phases(records, {1: 2, 2: -1})
 
 
-def both_exons_end_mid_codon(rows, strand):
+def both_exons_end_mid_codon(records, strand):
     """Ensembl end phases: exon 1 ends mid-codon (2), and so does exon 2, the last coding exon (1)."""
-    return _set_ensembl_end_phases(rows, {1: 2, 2: 1})
+    return _set_ensembl_end_phases(records, {1: 2, 2: 1})
 
 
-def without_rank(rows, strand):
-    """Removes the rank attribute of the Ensembl exon rows, so that the exon numbers come from the genomic order."""
-    for row in rows:
-        row[8] = ";".join(part for part in row[8].split(";") if not part.startswith("rank="))
-    return rows
+def without_rank(records, strand):
+    """Removes the rank attribute of the Ensembl exon records, so that the exon numbers come from the genomic order."""
+    for record in records:
+        record[8] = ";".join(part for part in record[8].split(";") if not part.startswith("rank="))
+    return records
 
 
-def strand_dot(rows, strand):
-    """Set the strand of every GFF3 row to ".", which GFF3 uses for a feature without a strand."""
-    return [[*row[:6], ".", *row[7:]] for row in rows]
+def strand_dot(records, strand):
+    """Set the strand of every GFF3 record to ".", which GFF3 uses for a record without a strand."""
+    return [[*record[:6], ".", *record[7:]] for record in records]
 
 
-# cds_start_NF: the CDS starts with ATG by chance, and the GFF3 has no start_codon rows
+# cds_start_NF: the CDS starts with ATG by chance, and the GFF3 has no start_codon records
 #
 # tx      0   3        8             18   23
 # ref 5' [ggg ATG AA]|[A CCC GAC TAA ggggg] 3'
@@ -75,6 +76,7 @@ NF_ATG = Layout(
     Transcript(("gggATGAA", "ACCCGACTAAggggg"), start_codon=False, tags=CDS_START_NF),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(13, 15),
         "cds_end": per_strand(48, 50),
         "ref_cds_seq": "ATGAAACCCGACTAA",
@@ -84,7 +86,7 @@ NF_ATG = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 5}, {"exon_number": 2, "length": 10}],
         "cds_in_transcript": True,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -118,6 +120,7 @@ NF_CTG = Layout(
     Transcript((NF_CTG_EXON_1, "CCCGACTAAggctagcc"), start_codon=False, tags=CDS_START_NF),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF",
         "cds_start": per_strand(13, 18),
         "cds_end": per_strand(105, 110),
         "ref_cds_seq": "CTGATGAAGTGGGAC" + "AAG" * 16 + "CCCGACTAA",
@@ -127,7 +130,7 @@ NF_CTG = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 63}, {"exon_number": 2, "length": 9}],
         "cds_in_transcript": True,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -150,7 +153,7 @@ NF_CTG = Layout(
     },
 )
 
-# cds_end_NF: the GFF3 has no stop_codon rows, and the CDS ends in the sense codon TGG at the transcript end
+# cds_end_NF: the GFF3 has no stop_codon records, and the CDS ends in the sense codon TGG at the transcript end
 #
 # tx      0   3             12         21
 # ref 5' [gcc ATG GCC AAG]|[CTG GAC TGG] 3'
@@ -159,6 +162,7 @@ CDS_END_NF_SENSE = Layout(
     Transcript(("gccATGGCCAAG", "CTGGACTGG"), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 10),
         "cds_end": per_strand(51, 48),
         "ref_cds_seq": "ATGGCCAAGCTGGACTGG",
@@ -168,7 +172,7 @@ CDS_END_NF_SENSE = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 9}, {"exon_number": 2, "length": 9}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TGG",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -209,7 +213,7 @@ TAA_KEPT = {
     "cds_frame": 0,
     "ref_cds_exons": [{"exon_number": 1, "length": 9}, {"exon_number": 2, "length": 9}],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -230,11 +234,12 @@ TAA_KEPT = {
     "total_exon_count": 2,
     "likely_misannotated": False,
 }
-# cds_end_NF without stop_codon rows: the TAA leaves the coding region and becomes 3' UTR
+# cds_end_NF without stop_codon records: the TAA leaves the coding region and becomes 3' UTR
 CDS_END_NF_TRIMMED = Layout(
     Transcript(TAA_EXONS, stop_codon=False, tags=CDS_END_NF),
     {
         **TAA_KEPT,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 17),
         "cds_end": per_strand(48, 52),
         "ref_cds_seq": "ATGGCCAAGCTGGAC",
@@ -253,10 +258,12 @@ CDS_END_NF_TRIMMED = Layout(
         "likely_misannotated": True,
     },
 )
-# cds_end_NF with stop_codon rows: the TAA stays the annotated stop codon
-CDS_END_NF_WITH_STOP_CODON_ROWS = Layout(Transcript(TAA_EXONS, tags=CDS_END_NF), TAA_KEPT)
-# No tag attribute in the GFF3 and no stop_codon rows: the TAA stays in the CDS, but it is no annotated stop codon
-NO_TAG_NO_STOP_CODON_ROWS = Layout(
+# cds_end_NF with stop_codon records: the TAA stays the annotated stop codon
+CDS_END_NF_WITH_STOP_CODON_RECORDS = Layout(
+    Transcript(TAA_EXONS, tags=CDS_END_NF), {**TAA_KEPT, "transcript_tags": "cds_end_NF"}
+)
+# No tag attribute in the GFF3 and no stop_codon records: the TAA stays in the CDS, but it is no annotated stop codon
+NO_TAG_NO_STOP_CODON_RECORDS = Layout(
     Transcript(TAA_EXONS, stop_codon=False),
     {
         **TAA_KEPT,
@@ -267,11 +274,14 @@ NO_TAG_NO_STOP_CODON_ROWS = Layout(
         "likely_misannotated": True,
     },
 )
-# Ensembl, tagged cds_start_NF and cds_end_NF on the mRNA row: the codons come from the FASTA, not from the tags
-ENSEMBL_NF_TAGS = Layout(Transcript(TAA_EXONS, tags=CDS_START_NF + CDS_END_NF, flavor="ensembl"), TAA_KEPT)
+# Ensembl, tagged cds_start_NF and cds_end_NF on the mRNA record: the codons come from the FASTA, not from the tags
+ENSEMBL_NF_TAGS = Layout(
+    Transcript(TAA_EXONS, tags=CDS_START_NF + CDS_END_NF, flavor="ensembl"),
+    {**TAA_KEPT, "transcript_tags": "cds_start_NF,cds_end_NF"},
+)
 
-# cds_end_NF without stop_codon rows: the stop codon TA|A is split across the intron. Its A in exon 2 is the only
-# coding base of exon 2. Trimming removes the whole stop codon, and with it the CDS row of exon 2.
+# cds_end_NF without stop_codon records: the stop codon TA|A is split across the intron. Its A in exon 2 is the only
+# coding base of exon 2. Trimming removes the whole stop codon, and with it the CDS record of exon 2.
 #
 # tx      0   3               15   17    22
 # ref 5' [gcc ATG GCC AAG CTG TA]|[A gccg] 3'
@@ -279,6 +289,7 @@ CDS_END_NF_SPLIT_STOP = Layout(
     Transcript(("gccATGGCCAAGCTGTA", "Agccg"), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 37),
         "cds_end": per_strand(25, 49),
         "ref_cds_seq": "ATGGCCAAGCTG",
@@ -288,7 +299,7 @@ CDS_END_NF_SPLIT_STOP = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 12}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "CTG",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -320,6 +331,7 @@ CDS_END_NF_TAA_OUT_OF_FRAME = Layout(
     Transcript(("gccATGGCCAAG", "CTGCTAA"), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(13, 10),
         "cds_end": per_strand(49, 46),
         "ref_cds_seq": "ATGGCCAAGCTGCTAA",
@@ -329,7 +341,7 @@ CDS_END_NF_TAA_OUT_OF_FRAME = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 9}, {"exon_number": 2, "length": 7}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -352,7 +364,7 @@ CDS_END_NF_TAA_OUT_OF_FRAME = Layout(
     },
 )
 
-# cds_end_NF: the GFF3 has no stop_codon rows, and the CDS of 8 nt ends in TA. The 3' UTR starts with a, so the
+# cds_end_NF: the GFF3 has no stop_codon records, and the CDS of 8 nt ends in TA. The 3' UTR starts with a, so the
 # in-frame TAA starts in the CDS and ends past it.
 #
 # tx      0    4   7   10 12
@@ -362,6 +374,7 @@ CDS_END_NF_TAA_ACROSS_THE_CDS_END = Layout(
     Transcript(("gaccATGGCCTAagccaggc",), stop_codon=False, tags=CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(14, 18),
         "cds_end": per_strand(22, 26),
         "ref_cds_seq": "ATGGCCTA",
@@ -371,7 +384,7 @@ CDS_END_NF_TAA_ACROSS_THE_CDS_END = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 8}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "CTA",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -395,7 +408,7 @@ CDS_END_NF_TAA_ACROSS_THE_CDS_END = Layout(
 )
 
 # cds_start_NF and cds_end_NF: the CDS covers the whole transcript. Its first base belongs to no complete codon
-# (phase 1), and its codons TGG AAG | CTG GAC AAG follow. The CDS row of exon 2 has phase 0.
+# (phase 1), and its codons TGG AAG | CTG GAC AAG follow. The CDS record of exon 2 has phase 0.
 #
 # tx      0 1         7          16
 # ref 5' [C TGG AAG]|[CTG GAC AAG] 3'
@@ -403,6 +416,7 @@ NF_BOTH = Layout(
     Transcript(("CTGGAAG", "CTGGACAAG"), start_codon=False, stop_codon=False, frame=1, tags=CDS_START_NF + CDS_END_NF),
     {
         **IDS,
+        "transcript_tags": "cds_start_NF,cds_end_NF",
         "cds_start": per_strand(10, 10),
         "cds_end": per_strand(46, 46),
         "ref_cds_seq": "CTGGAAGCTGGACAAG",
@@ -412,7 +426,7 @@ NF_BOTH = Layout(
         "cds_frame": 1,
         "ref_cds_exons": [{"exon_number": 1, "length": 7}, {"exon_number": 2, "length": 9}],
         "cds_in_transcript": True,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "ref_last_codon": "AAG",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -457,7 +471,7 @@ ONE_EXON = {
     "cds_frame": 0,
     "ref_cds_exons": [{"exon_number": 1, "length": 15}],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_valid_stop": False,
     "ref_first_stop_codon": None,
     "ref_first_stop_pos": None,
@@ -536,7 +550,7 @@ ENSEMBL_TGA_OUT_OF_FRAME = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 11}, {"exon_number": 2, "length": 5}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TGA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": None,
@@ -578,7 +592,7 @@ ENSEMBL_LAST_EXON_ENDS_MID_CODON = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 11}, {"exon_number": 2, "length": 8}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -623,7 +637,7 @@ ENSEMBL_WITHOUT_RANK = Layout(
             {"exon_number": 3, "length": 5},
         ],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -669,7 +683,7 @@ EDGES = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 9}, {"exon_number": 2, "length": 9}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -710,7 +724,7 @@ ENSEMBL_CDS_OF_2_NT = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 2}],
         "cds_in_transcript": True,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "ref_last_codon": None,
         "ref_valid_stop": None,
         "ref_first_stop_codon": None,
@@ -792,7 +806,7 @@ CASES = [
     Case(
         "atg_to_acg_at_the_start_of_a_cds_start_nf_cds_is_no_start_loss",
         """
-        cds_start_NF: the GFF3 has no start_codon rows, so the ATG at CDS 0 is no annotated start codon. ATG>ACG
+        cds_start_NF: the GFF3 has no start_codon records, so the ATG at CDS 0 is no annotated start codon. ATG>ACG
         changes it, but the transcript has no start codon to lose.
 
         tx      0   3        8             18   23
@@ -973,7 +987,7 @@ CASES = [
             "alt_transcript_length": 83,
             "alt_cds_start_in_transcript": 3,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": "TAG",
             "alt_scan_first_stop_pos": 78,
             "alt_scan_stop_codon_count": 1,
@@ -994,7 +1008,7 @@ CASES = [
     Case(
         "stop_gained_in_the_last_codon_of_a_cds_end_nf_cds_is_a_ptc",
         """
-        cds_end_NF: the GFF3 has no stop_codon rows, and the CDS ends in the sense codon TGG at the transcript end.
+        cds_end_NF: the GFF3 has no stop_codon records, and the CDS ends in the sense codon TGG at the transcript end.
         Without an annotated stop codon, a stop codon inside the alt CDS is a PTC: TGG>TAG in the last codon.
 
         tx      0   3             12      18 21
@@ -1051,12 +1065,12 @@ CASES = [
     # stop codon: whether it lies inside the alt CDS"). Its first 2 nt lie in the alt CDS and its last nt lies past
     # the end, so it does not lie inside the alt CDS and is no PTC. In the closest cases, the stop codon lies wholly
     # inside the alt CDS (case stop_gained_in_the_last_codon_of_a_cds_end_nf_cds_is_a_ptc, a PTC) or wholly past its
-    # end (case frameshift_whose_first_stop_codon_lies_past_the_cds_end_without_stop_codon_rows_is_neither in
+    # end (case frameshift_whose_first_stop_codon_lies_past_the_cds_end_without_stop_codon_records_is_neither in
     # cases_stop, neither).
     Case(
         "stop_codon_that_straddles_the_end_of_a_cds_end_nf_cds_is_no_ptc",
         """
-        cds_end_NF: the GFF3 has no stop_codon rows, so has_stop_codon is False. The CDS of 8 nt ends at tx 12 in
+        cds_end_NF: the GFF3 has no stop_codon records, so has_stop_codon is False. The CDS of 8 nt ends at tx 12 in
         TA, and the 3' UTR starts with a. C>A changes GCC to GAC. The first in-frame stop codon of the alt
         transcript is the TAA at tx 10 to 12 (`*`). Its first 2 nt lie in the alt CDS, and its last nt lies past
         the end. So it does not lie inside the alt CDS: alt_has_ptc is False, and stop_loss is False.
@@ -1105,7 +1119,7 @@ CASES = [
     Case(
         "missense_in_the_last_codon_of_a_cds_end_nf_cds_is_no_stop_loss",
         """
-        cds_end_NF: the GFF3 has no stop_codon rows, and the CDS ends in the sense codon TGG at the transcript end.
+        cds_end_NF: the GFF3 has no stop_codon records, and the CDS ends in the sense codon TGG at the transcript end.
         TGG>TGC changes the last codon. Without an annotated stop codon, there is no stop codon to lose.
 
         tx      0   3             12      18 21
@@ -1148,11 +1162,11 @@ CASES = [
         ruler=Ruler((0, 3, 12, 18, 21)),
     ),
     Case(
-        "cds_end_nf_coding_region_without_stop_codon_rows_loses_its_complete_stop_codon",
+        "cds_end_nf_coding_region_without_stop_codon_records_loses_its_complete_stop_codon",
         """
-        cds_end_NF: the GFF3 has no stop_codon rows, and its CDS rows end in the complete in-frame stop codon TAA.
-        These 3 nt leave the CDS and become 3' UTR. GCC>GAC is a missense. The TAA lies past the end of the alt CDS,
-        so it is neither a PTC nor the annotated stop codon.
+        cds_end_NF: the GFF3 has no stop_codon records, and its CDS records end in the complete in-frame stop codon TAA.
+        These 3 nt leave the CDS and become 3' UTR. GCC>GAC is a missense. The TAA lies past the end of the alt CDS, so
+        it is neither a PTC nor the annotated stop codon.
 
         tx      0   3             12      18  21  25
         ref 5' [gcc ATG GCC AAG]|[CTG GAC TAA gccg] 3'
@@ -1188,11 +1202,11 @@ CASES = [
         ruler=Ruler((0, 3, 12, 18, 21, 25)),
     ),
     Case(
-        "cds_end_nf_split_stop_codon_leaves_the_cds_with_the_cds_row_of_its_last_exon",
+        "cds_end_nf_split_stop_codon_leaves_the_cds_with_the_cds_record_of_its_last_exon",
         """
-        cds_end_NF: the GFF3 has no stop_codon rows, and its CDS rows end in the complete in-frame stop codon TA|A,
-        split across the intron. The A is the only coding base of exon 2. The stop codon leaves the CDS, so exon 2 has
-        no CDS row any more, and exon 1 loses TA. GCC>GAC is a missense.
+        cds_end_NF: the GFF3 has no stop_codon records, and its CDS records end in the complete in-frame stop codon
+        TA|A, split across the intron. The A is the only coding base of exon 2. The stop codon leaves the CDS, so exon 2
+        has no CDS record any more, and exon 1 loses TA. GCC>GAC is a missense.
 
         tx      0   3               15   17    22
         ref 5' [gcc ATG GCC AAG CTG TA]|[A gccg] 3'
@@ -1236,9 +1250,9 @@ CASES = [
     Case(
         "cds_end_nf_cds_that_ends_in_a_stop_codon_out_of_frame_keeps_it",
         """
-        cds_end_NF: the GFF3 has no stop_codon rows. The last 3 CDS bases read TAA, but out of frame: the CDS of 16 nt
-        holds 5 codons and one more base. So they stay in the CDS. The CDS runs to the transcript end. GCC>GAC is a
-        missense, and the alt transcript has no in-frame stop codon.
+        cds_end_NF: the GFF3 has no stop_codon records. The last 3 CDS bases read TAA, but out of frame: the CDS of
+        16 nt holds 5 codons and one more base. So they stay in the CDS. The CDS runs to the transcript end. GCC>GAC is
+        a missense, and the alt transcript has no in-frame stop codon.
 
         CDS         0             9    13  16
         ref 5' [gcc ATG GCC AAG]|[CTG CTA A] 3'
@@ -1280,16 +1294,16 @@ CASES = [
         ruler=Ruler((0, 9, 13, 16), "CDS"),
     ),
     Case(
-        "cds_end_nf_with_stop_codon_rows_keeps_its_stop_codon",
+        "cds_end_nf_with_stop_codon_records_keeps_its_stop_codon",
         """
-        cds_end_NF with stop_codon rows on the TAA: the TAA stays the annotated stop codon. GCC>GAC is a missense.
+        cds_end_NF with stop_codon records on the TAA: the TAA stays the annotated stop codon. GCC>GAC is a missense.
 
         tx      0   3             12      18  21  25
         ref 5' [gcc ATG GCC AAG]|[CTG GAC TAA gccg] 3'
         alt 5' [gcc ATG GAC AAG]|[CTG GAC TAA gccg] 3'
                          ^ C>A
         """,
-        CDS_END_NF_WITH_STOP_CODON_ROWS,
+        CDS_END_NF_WITH_STOP_CODON_RECORDS,
         Change("ATGG[C>A]CAAG"),
         {
             **TAA_EXONS_MISSENSE_RECORD,
@@ -1309,11 +1323,11 @@ CASES = [
         ruler=Ruler((0, 3, 12, 18, 21, 25)),
     ),
     Case(
-        "missense_without_stop_codon_rows_and_tags_is_a_ptc_at_the_last_codon",
+        "missense_without_stop_codon_records_and_tags_is_a_ptc_at_the_last_codon",
         """
-        The GFF3 has neither stop_codon rows nor a tag attribute, so the CDS keeps the TAA (`*`) at its end, and it is
-        no annotated stop codon. Without an annotated stop codon, every in-frame stop codon is premature, also this
-        TAA. So the missense GCC>GAC gives a PTC row: the TAA lies inside the alt CDS.
+        The GFF3 has neither stop_codon records nor a tag attribute, so the CDS keeps the TAA (`*`) at its end, and it
+        is no annotated stop codon. Without an annotated stop codon, every in-frame stop codon is premature, also this
+        TAA. So the missense GCC>GAC is a PTC variant: the TAA lies inside the alt CDS.
 
         tx      0   3             12      18  21  25
         ref 5' [gcc ATG GCC AAG]|[CTG GAC TAA gccg] 3'
@@ -1322,7 +1336,7 @@ CASES = [
                                           *** PTC
                                           <------> ptc_to_exon_end = 7
         """,
-        NO_TAG_NO_STOP_CODON_ROWS,
+        NO_TAG_NO_STOP_CODON_RECORDS,
         Change("ATGG[C>A]CAAG"),
         {
             **TAA_EXONS_MISSENSE_RECORD,
@@ -1353,10 +1367,10 @@ CASES = [
     Case(
         "ptc_in_a_cds_start_nf_and_cds_end_nf_cds_with_phase_1",
         """
-        cds_start_NF and cds_end_NF: the GFF3 has neither start_codon nor stop_codon rows, and the CDS covers the
-        whole transcript. Its first base belongs to no complete codon (phase 1 on the CDS row of exon 1; the CDS row
-        of exon 2 has phase 0). TGG>TAG at CDS 1 is an in-frame PTC, 6 nt upstream of the only exon junction. Read in
-        phase 0, there is no stop codon.
+        cds_start_NF and cds_end_NF: the GFF3 has neither start_codon nor stop_codon records, and the CDS covers the
+        whole transcript. Its first base belongs to no complete codon (phase 1 on the CDS record of exon 1; the CDS
+        record of exon 2 has phase 0). TGG>TAG at CDS 1 is an in-frame PTC, 6 nt upstream of the only exon junction.
+        Read in phase 0, there is no stop codon.
 
         tx      0 1         7          16
         ref 5' [C TGG AAG]|[CTG GAC AAG] 3'
@@ -1411,7 +1425,7 @@ CASES = [
     Case(
         "ensembl_cds_start_nf_and_cds_end_nf_tags_do_not_change_the_codons_from_the_fasta",
         """
-        Ensembl: the GFF3 has no start_codon or stop_codon rows, and the mRNA row has the tags cds_start_NF and
+        Ensembl: the GFF3 has no start_codon or stop_codon records, and the mRNA record has the tags cds_start_NF and
         cds_end_NF. The CDS starts with ATG in phase 0 and ends in TAA, so it has a start and a stop codon, and the
         TAA stays in the CDS. GCC>GAC is a missense.
 
@@ -1467,7 +1481,8 @@ CASES = [
         """
         Ensembl on MT: the last 3 CDS bases AGA are a stop codon of the mitochondrial code, so the CDS has an
         annotated stop codon. The codon scans know only TAA, TAG and TGA, so ref_valid_stop is False, the transcript
-        does not stop at the annotated stop codon, and the row keeps the flags from the CDS. GCC>GAC is a missense.
+        does not stop at the annotated stop codon, and the variant-transcript pair keeps the flags from the CDS.
+        GCC>GAC is a missense.
 
         tx      0   3               15  18  22
         ref 5' [gcc ATG GCC AAG CTG AGA gccg] 3'
@@ -1517,7 +1532,7 @@ CASES = [
         """
         Ensembl on MT: TGA is no stop codon of the mitochondrial code, so the CDS has no annotated stop codon. The
         codon scans know TGA as a stop codon, and without an annotated stop codon, every in-frame stop codon is
-        premature. So the missense GCC>GAC gives a PTC row: the TGA (`*`) lies inside the alt CDS.
+        premature. So the missense GCC>GAC is a PTC variant: the TGA (`*`) lies inside the alt CDS.
 
         tx      0   3               15  18  22
         ref 5' [gcc ATG GCC AAG CTG TGA gccg] 3'
@@ -1560,9 +1575,9 @@ CASES = [
         ruler=Ruler((0, 3, 15, 18, 22)),
     ),
     Case(
-        "gencode_cds_ending_in_aga_on_chrm_without_stop_codon_rows_has_no_stop_codon",
+        "gencode_cds_ending_in_aga_on_chrm_without_stop_codon_records_has_no_stop_codon",
         """
-        GENCODE on chrM without stop_codon rows: the CDS has no annotated stop codon, although its last 3 bases AGA
+        GENCODE on chrM without stop_codon records: the CDS has no annotated stop codon, although its last 3 bases AGA
         are a stop codon of the mitochondrial code. GCC>GAC is a missense.
 
         tx      0   3               15  18  22
@@ -1587,8 +1602,8 @@ CASES = [
         """
         Ensembl: the last 3 CDS bases read TGA, so the CDS has an annotated stop codon, although the CDS of 16 nt
         holds 5 codons and one more base. The frame is not checked. Exon 1 ends mid-codon (ensembl_end_phase 2), which
-        does not matter, since it is not the last coding exon. The transcript does not stop at the TGA, so the row
-        keeps the flags from the CDS. GCC>GAC is a missense.
+        does not matter, since it is not the last coding exon. The transcript does not stop at the TGA, so the
+        variant-transcript pair keeps the flags from the CDS. GCC>GAC is a missense.
 
         CDS         0                11 13   16
         ref 5' [gcc ATG GCC AAG CT]|[G CTG A gccg] 3'
@@ -1679,8 +1694,9 @@ CASES = [
         "ensembl_cds_of_2_nt_has_neither_start_nor_stop_codon",
         """
         Ensembl: the CDS has 2 nt, too few for a codon check, so it has neither a start nor a stop codon. The codon
-        columns of both CDS are null. AG>CG changes the first CDS base. Without an annotated stop codon, the row does
-        not keep the flags from the CDS, and the alt transcript has no in-frame stop codon.
+        columns of both CDS are null. AG>CG changes the first CDS base. Without an annotated stop codon, the
+        variant-transcript pair does not keep the flags from the CDS, and the alt transcript has no in-frame stop
+        codon.
 
         tx      0     5  7   11
         ref 5' [gccgc AG gccg] 3'
@@ -1915,7 +1931,7 @@ CASES = [
     Case(
         "transcript_with_strand_dot_is_an_error_that_names_the_transcript",
         """
-        Every GFF3 row of the transcript has the strand "." instead of + or -. annotate() rejects the GFF3 with a
+        Every GFF3 record of the transcript has the strand "." instead of + or -. annotate() rejects the GFF3 with a
         ValueError that names the transcript tx1.
 
         ref 5' [ggacca ATG GCC AAG]|[CTG CTG TAA aaagccg] 3'

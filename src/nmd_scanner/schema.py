@@ -15,7 +15,8 @@ import pyarrow as pa
 
 from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_DESTROYED
 
-# The values of nmd_efficiency_prediction_status, in the order they are checked. A row gets the first value whose condition holds:
+# The values of nmd_efficiency_prediction_status, in the order they are checked. A variant-transcript pair gets the
+# first value whose condition holds:
 # - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 15 of the 19 model
 #   inputs are null. unknown_reason says why.
 # - no_ptc: alt_has_ptc is not True, so there is no PTC to predict.
@@ -23,11 +24,9 @@ from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_D
 # - no_annotated_stop: has_stop_codon is False, which makes annotated_stop_distance and utr3_length null.
 # - no_annotated_start: has_start_codon is False, which makes ptc_to_start_codon null. The true start codon lies
 #   upstream of the CDS, at an unknown distance (e.g. cds_start_NF).
-# - start_loss: start_loss is True and ptc_to_start_codon is null. After a start loss, the scan of alt_transcript_seq
-#   takes the next ATG, and ptc_to_start_codon runs from it to the PTC. A scanned row is a PTC row only if the scan
-#   finds an ATG and a stop codon after it, so it always has a ptc_to_start_codon. Only a start-loss row without
-#   alt_transcript_seq gets this value, e.g. one of a transcript without exon rows. It is not scanned and keeps the
-#   PTC of the alt CDS.
+# - start_loss: start_loss is True. The TCGA training variant-sample pairs hold no start-loss variant, and translation
+#   after a start loss can begin at several sites, so the model does not predict the variant-transcript pair. The pair
+#   keeps its NMD features and rules.
 # - missing_input: another model input is null.
 # - ok: the variant creates the PTC, and no model input is null.
 # no_annotated_stop and no_annotated_start hold for every variant of the transcript. So they go before the values
@@ -45,7 +44,8 @@ PREDICTION_STATUSES = (
 
 # The values of stop_classification: the path of rules.analyze_transcript that set alt_has_ptc, stop_loss and
 # annotated_stop_distance. alt_transcript: the first in-frame stop codon of the alt transcript. start_loss_scan: the
-# rescued ORF after a start loss. alt_cds: the codon scan of the alt CDS, for a row that keeps the flags from the CDS.
+# rescued ORF after a start loss. alt_cds: the codon scan of the alt CDS, for a variant-transcript pair that keeps the
+# flags from the CDS.
 STOP_CLASSIFICATIONS = ("alt_transcript", "start_loss_scan", "alt_cds")
 
 # The categories of each categorical kind: the closed value set of the column whose name the kind has. A categorical
@@ -101,6 +101,8 @@ PTC_COLUMN_KINDS = {
     "alt": "string",
     "variant_id": "string",
     "transcript_id": "string",
+    "transcript_type": "string",
+    "transcript_tags": "string",
     "cds_start": "int",
     "cds_end": "int",
     "ref_cds_seq": "string",
@@ -115,7 +117,7 @@ PTC_COLUMN_KINDS = {
     "ref_cds_exons": "pair_list",
     "alt_cds_exons": "pair_list",
     "cds_in_transcript": "bool",
-    "start_codon_exon": "int",
+    "start_codon_exon_number": "int",
     "ref_last_codon": "string",
     "ref_valid_stop": "bool",
     "ref_first_stop_codon": "string",
@@ -147,7 +149,7 @@ PTC_COLUMN_KINDS = {
     "transcript_exons": "pair_list",
     "alt_transcript_exons": "pair_list",
     "alt_scan_start_codon_pos": "int",
-    "alt_scan_start_codon_exon": "int",
+    "alt_scan_start_codon_exon_number": "int",
     "alt_scan_first_stop_codon": "string",
     "alt_scan_first_stop_pos": "int",
     "alt_scan_stop_codon_count": "int",
@@ -184,7 +186,7 @@ NMD_RULE_COLUMN_KINDS = {
 }
 
 # Kind of the column that add_features_and_rules adds after the rules. It says whether the NMD efficiency model
-# can predict the row (see PREDICTION_STATUSES).
+# can predict the variant-transcript pair (see PREDICTION_STATUSES).
 PREDICTION_STATUS_COLUMN_KINDS = {"nmd_efficiency_prediction_status": "nmd_efficiency_prediction_status"}
 
 # Kind of every column that add_features_and_rules returns, in output order. annotate returns them too, and by
@@ -204,16 +206,12 @@ OUTPUT_COLUMN_KINDS = {
 # not part of OUTPUT_COLUMN_KINDS.
 PREDICTION_COLUMN_KINDS = {"nmd_efficiency_prediction": "float"}
 
-# The 4 columns that hold a sequence. They make up most of the table's size, in memory and on disk.
+# The columns that hold a sequence. They make up most of the table's size, in memory and on disk.
 # annotate(..., sequences=False) and the CLI flag --no-sequences leave them out (see output_column_kinds).
 SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
 
-# The columns of kind stop_codon_list. They hold lists of {"position": ..., "codon": ...} records, e.g.
-# {"position": 5442, "codon": "TGA"}.
-STOP_CODON_COLUMNS = ("ref_stop_codons", "alt_stop_codons", "alt_scan_stop_codons")
-
 # The 19 inputs of the NMD efficiency model (see nmd_scanner.model and scripts/train_model.py), in the order that
-# the model takes them. The model cannot predict a row in which one of them is null.
+# the model takes them. The model cannot predict a variant-transcript pair in which one of them is null.
 MODEL_INPUTS = [
     "start_loss",
     "stop_loss",
@@ -237,7 +235,7 @@ MODEL_INPUTS = [
 ]
 
 
-def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
+def apply_schema(table, column_kinds):
     """
     Return a copy of ``table`` with the columns of ``column_kinds``, in that order, and the dtype of each
     column's kind (see KIND_DTYPES). A missing value in an int, bool or string column becomes pd.NA, and one
@@ -271,13 +269,13 @@ def apply_schema(table, column_kinds=OUTPUT_COLUMN_KINDS):
     return table[list(column_kinds)].astype({column: KIND_DTYPES[kind] for column, kind in column_kinds.items()})
 
 
-def output_column_kinds(sequences=True, prediction=True):
+def output_column_kinds(*, sequences=True, prediction=True):
     """
     Return the kind of every column that ``annotate`` returns with the same arguments, in output order. By default,
-    these are the 80 columns of OUTPUT_COLUMN_KINDS and the column of PREDICTION_COLUMN_KINDS after nmd_efficiency_prediction_status. With
-    ``sequences=False``, the 4 columns of SEQUENCE_COLUMNS are left out. With ``prediction=False``, the column of
-    PREDICTION_COLUMN_KINDS is left out. The other columns keep their order. Pass the result to ``apply_schema`` or
-    ``empty_table``.
+    these are the columns of OUTPUT_COLUMN_KINDS and the column of PREDICTION_COLUMN_KINDS after
+    nmd_efficiency_prediction_status. With ``sequences=False``, the columns of SEQUENCE_COLUMNS are left out. With
+    ``prediction=False``, the column of PREDICTION_COLUMN_KINDS is left out. The other columns keep their order. Pass
+    the result to ``apply_schema`` or ``empty_table``.
 
     :param sequences: whether to keep the columns of SEQUENCE_COLUMNS
     :param prediction: whether to add the column of PREDICTION_COLUMN_KINDS
@@ -293,7 +291,7 @@ def output_column_kinds(sequences=True, prediction=True):
     return kinds
 
 
-def empty_table(column_kinds=OUTPUT_COLUMN_KINDS):
+def empty_table(column_kinds):
     """
     Return a DataFrame without rows, with the columns and dtypes of ``column_kinds``.
     """

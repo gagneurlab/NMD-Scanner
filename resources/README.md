@@ -35,7 +35,7 @@ The VCFs contain edge-case variants such as start and stop-loss mutations, frame
 
 ### `test_output_files/`
 
-Contains intermediate and final output files used for testing of the computation of NMD features (see `../tests/test_rules.py`).
+The input and the expected output of `rules.create_reference_cds`, for a test in `../tests/test_rules.py`.
 
 ---
 
@@ -49,7 +49,7 @@ These files are provided to allow testing on a small genomic region (chromosome 
 
 - **`chr18.fa.gz.gzi`** : FASTA gzip index.
 
-- **`chr18.gff3.gz`** : GFF3 annotation file for chromosome 18: the chr18 rows of `gencode.v40.annotation.gff3.gz` (GENCODE release 40), with the header lines `##gff-version`, `#description`, `#provider`, `#date` and the `##sequence-region` line of chr18.
+- **`chr18.gff3.gz`** : GFF3 annotation file for chromosome 18: the chr18 records of `gencode.v40.annotation.gff3.gz` (GENCODE release 40), with the header lines `##gff-version`, `#description`, `#provider`, `#date` and the `##sequence-region` line of chr18.
 
 - **`part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf`** : Example VCF file containing some variants from chromosome 18, used as a realistic input example for testing and demonstration.
 

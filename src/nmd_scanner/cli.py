@@ -25,6 +25,7 @@ def annotate(
     vcf_path: str | os.PathLike,
     annotation_path: str | os.PathLike,
     fasta_path: str | os.PathLike,
+    *,
     reassign_exons: bool = False,
     sequences: bool = True,
     prediction: bool = True,
@@ -38,50 +39,76 @@ def annotate(
     Steps:
     1. Read input files (VCF, FASTA, annotation)
     2. Assign exon numbers (optional, recommended for hg19)
-    3. Parse and preprocess gene annotations (coding regions, i.e. CDS plus stop codon, and exons)
-    4. Extract premature termination codons (PTCs) & Evaluate NMD escape rules
-    5. Add extra features to output (e.g. 3' & 5'UTR length, downstream & upstream exon counts, etc.)
-    6. Add the NMD efficiency prediction
+    3. Run annotate_variants on the tables
 
     :param vcf_path: path to the input VCF file
     :param annotation_path: path to the input gene annotation file (GFF3, optionally gzip-compressed)
     :param fasta_path: path to the reference FASTA file. It also shows whether a CDS ends in a stop codon, and for
                        an Ensembl GFF3 whether it starts with one.
     :param reassign_exons: recompute the exon numbers of the annotation (recommended for hg19; may be slow)
-    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS. With False, they are left out, which saves
+    :param sequences: keep the sequence columns of SEQUENCE_COLUMNS. With False, they are left out, which saves
                       most of the table's memory. The other columns stay the same.
-    :param prediction: add the column nmd_efficiency_prediction after nmd_efficiency_prediction_status (see nmd_scanner.model.add_nmd_efficiency_prediction).
-                  With False, it is left out, and the other columns stay the same.
-    :return: DataFrame summarizing all annotated variants, with the columns and dtypes of
-             output_column_kinds(sequences, prediction) (see nmd_scanner.schema). It has zero rows if no variant gives a
-             result.
+    :param prediction: add the column nmd_efficiency_prediction after nmd_efficiency_prediction_status (see
+                  nmd_scanner.model.add_nmd_efficiency_prediction). With False, it is left out, and the other
+                  columns stay the same.
+    :return: DataFrame of the variant-transcript pairs, with the columns and dtypes of
+             output_column_kinds(sequences=sequences, prediction=prediction) (see nmd_scanner.schema). It has
+             zero rows if no variant gives a result.
     """
 
     # read VCF file (variants)
     logger.info("Reading VCF file: %s", vcf_path)
-    vcf = read_vcf(vcf_path)
-    logger.info("VCF shape: %s", vcf.shape)
+    vcf_df = read_vcf(vcf_path)
+    logger.info("VCF shape: %s", vcf_df.shape)
 
     # read FASTA file (genome sequence)
     logger.info("Reading FASTA file: %s", fasta_path)
     fasta = Fasta(fasta_path)
 
-    # read gene annotation file (GFF3) into exon rows and coding regions (CDS rows with has_start_codon and
+    # read gene annotation file (GFF3) into exon records and coding regions (CDS records with has_start_codon and
     # has_stop_codon).
     # reassign_exons recomputes the exon numbers (recommended for hg19).
     logger.info("Reading annotation file: %s", annotation_path)
-    annotation = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
-    logger.info("Annotation file shape: %s", annotation.shape)
-    cds_df = annotation[annotation["Feature"] == "CDS"]
+    annotation_df = read_annotation(annotation_path, fasta, reassign_exons=reassign_exons)
+    logger.info("Annotation file shape: %s", annotation_df.shape)
 
-    # extract exon regions from the annotation and compute exon related metrics:
-    # exon length & number of exons contained in each transcript
-    exons_df = annotation[annotation["Feature"] == "exon"].copy()
-    exons_df["exon_length"] = exons_df["End"] - exons_df["Start"]
+    return annotate_variants(vcf_df, annotation_df, fasta, sequences=sequences, prediction=prediction)
+
+
+def annotate_variants(
+    vcf_df: pd.DataFrame,
+    annotation_df: pd.DataFrame,
+    fasta: Fasta,
+    *,
+    sequences: bool = True,
+    prediction: bool = True,
+) -> pd.DataFrame:
+    """
+    Annotate the variants of vcf_df with NMD features and return the result table of ``annotate``.
+
+    It takes the tables that ``annotate`` reads, so one annotation serves many VCF tables. It does not change them.
+
+    Steps:
+    1. Split the annotation into the coding regions (CDS records) and the exon records
+    2. Extract premature termination codons (PTCs)
+    3. Add the NMD features and the NMD escape rules (e.g. 3' & 5'UTR length, downstream & upstream exon counts)
+    4. Add the NMD efficiency prediction
+
+    :param vcf_df: VCF records with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
+        returns them (see rules.extract_ptc)
+    :param annotation_df: gene annotation, as ``scan.read_annotation`` returns it
+    :param fasta: reference genome (pyfaidx.Fasta), the one that ``read_annotation`` took
+    :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
+    :param prediction: add the column nmd_efficiency_prediction (see annotate())
+    :return: the table that annotate() returns
+    """
+
+    cds_df = annotation_df[annotation_df["Feature"] == "CDS"]
+    exons_df = annotation_df[annotation_df["Feature"] == "exon"]
 
     # Create reference and alternative CDS and transcript sequences (+ metadata) and analyze for start and stop codons & -loss
     logger.info("Creating sequences and analyzing...")
-    results = extract_ptc(cds_df, vcf, fasta, exons_df)
+    results = extract_ptc(cds_df, vcf_df, fasta, exons_df)
 
     # Add the NMD features (inspired by the NMD efficiency benchmark dataset) and the NMD escape rules
     results = add_features_and_rules(results)
@@ -97,7 +124,7 @@ def annotate(
     return results
 
 
-def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
+def _main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
     """
     Main function for NMD scanner: annotate the variants and write the results to a file
 
@@ -106,9 +133,9 @@ def main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, se
     :param fasta_path: path to the reference FASTA file
     :param output: path to the output file (.csv, .parquet, or .pq)
     :param reassign_exons: recompute the exon numbers of the annotation
-    :param sequences: keep the 4 sequence columns of SEQUENCE_COLUMNS (see annotate())
+    :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
     :param prediction: add the column nmd_efficiency_prediction (see annotate())
-    :return: DataFrame summarizing all annotated variants: the table that annotate() returns
+    :return: DataFrame of the variant-transcript pairs: the table that annotate() returns
     """
 
     results = annotate(
@@ -157,9 +184,9 @@ def _json_list(value):
     return json.dumps(list(value), default=lambda item: item.item())
 
 
-def is_valid_output_path(path):
+def _is_valid_output_path(path):
     """
-    Validate that ``path`` is a writable output file path.
+    Return whether ``path`` is a valid output file path. It does not test write permission.
 
     Rules:
     - Must not point at an existing directory (single-file output only).
@@ -196,7 +223,7 @@ def main_cli():
 
     _set_up_process()
 
-    parser = argparse.ArgumentParser(description="Run NMD pipeline")
+    parser = argparse.ArgumentParser(description="Run NMD pipeline", allow_abbrev=False)
     parser.add_argument("--vcf", required=True, help="Path to VCF file")
     parser.add_argument(
         "--annotation",
@@ -226,7 +253,10 @@ def main_cli():
 
     # If user adds flag, reassign exon numbers
     parser.add_argument(
-        "--reassign_exons", action="store_true", help="Recompute exon numbers (recommended for hg19; may be slow)"
+        "--reassign-exons",
+        dest="reassign_exons",
+        action="store_true",
+        help="Recompute exon numbers (recommended for hg19; may be slow)",
     )
     parser.add_argument(
         "--no-sequences",
@@ -255,16 +285,15 @@ def main_cli():
         parser.error(f"argument --annotation: {error}")
 
     # Check that the output path is valid
-    if not is_valid_output_path(args.output):
+    if not _is_valid_output_path(args.output):
         raise SystemExit(
             f"Invalid output path: {args.output!r}. "
-            f"Must be a non-existing or overwritable file with one of these extensions: "
-            f"{', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}, "
-            f"and its parent directory must exist."
+            f"It must not be a directory, its parent directory must exist, "
+            f"and its extension must be one of {', '.join(SUPPORTED_OUTPUT_EXTENSIONS)}."
         )
 
     # Run the main pipeline
-    main(
+    _main(
         args.vcf,
         args.annotation,
         args.fasta,

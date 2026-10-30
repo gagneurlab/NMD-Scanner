@@ -102,10 +102,10 @@ _GENOME = _Reference("CCATGGCTCTGTGTAAGCCCCCCTTTTCAGAGTGAACGTTGGCC")
 _EXONS = [(2, 10), (30, 40)]
 
 
-def _effect(variant_start, ref, alt, coding_rows=((2, 10), (30, 40)), exons=_EXONS):
+def _effect(variant_start, ref, alt, coding_intervals=((2, 10), (30, 40)), exons=_EXONS):
     placements = variant_placements(variant_start, ref, alt, _GENOME)
-    coding_region = (min(start for start, _ in coding_rows), max(end for _, end in coding_rows))
-    return place_in_transcript(placements, list(coding_rows), exons, _GENOME, "+", coding_region)
+    coding_region = (min(start for start, _ in coding_intervals), max(end for _, end in coding_intervals))
+    return place_in_transcript(placements, list(coding_intervals), exons, _GENOME, "+", coding_region)
 
 
 def test_place_in_transcript_changes_over_boundary_that_keep_the_donor():

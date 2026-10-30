@@ -110,7 +110,7 @@ def test_apply_schema_rejects_a_value_outside_the_categories():
 
 
 def test_empty_table_has_the_schema():
-    table = empty_table()
+    table = empty_table(OUTPUT_COLUMN_KINDS)
 
     assert len(table) == 0
     assert_schema(table, OUTPUT_COLUMN_KINDS)
@@ -120,9 +120,9 @@ def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_co
     full = output_column_kinds()
     reduced = output_column_kinds(sequences=False)
 
-    assert len(OUTPUT_COLUMN_KINDS) == 80
-    assert len(full) == 81
-    assert len(reduced) == 77
+    assert len(OUTPUT_COLUMN_KINDS) == 82
+    assert len(full) == 83
+    assert len(reduced) == 79
     assert {OUTPUT_COLUMN_KINDS[column] for column in SEQUENCE_COLUMNS} == {"string"}
     assert reduced == {column: kind for column, kind in full.items() if column not in SEQUENCE_COLUMNS}
     assert list(reduced) == [column for column in full if column not in SEQUENCE_COLUMNS]
@@ -130,11 +130,11 @@ def test_output_column_kinds_without_sequences_leaves_out_only_the_4_sequence_co
     assert output_column_kinds(prediction=False) is not OUTPUT_COLUMN_KINDS
 
 
-def test_empty_table_without_sequences_has_the_77_columns_and_their_dtypes():
+def test_empty_table_without_sequences_has_the_79_columns_and_their_dtypes():
     table = empty_table(output_column_kinds(sequences=False))
 
     assert len(table) == 0
-    assert len(table.columns) == 77
+    assert len(table.columns) == 79
     assert_schema(table, output_column_kinds(sequences=False))
 
 
@@ -142,10 +142,10 @@ def test_empty_table_without_sequences_has_the_77_columns_and_their_dtypes():
 def test_output_column_kinds_adds_nmd_efficiency_prediction_after_nmd_efficiency_prediction_status_unless_prediction_is_false(
     sequences,
 ):
-    kinds = output_column_kinds(sequences)
+    kinds = output_column_kinds(sequences=sequences)
 
-    assert list(kinds) == [*output_column_kinds(sequences, prediction=False), "nmd_efficiency_prediction"]
-    assert len(kinds) == (81 if sequences else 77)
+    assert list(kinds) == [*output_column_kinds(sequences=sequences, prediction=False), "nmd_efficiency_prediction"]
+    assert len(kinds) == (83 if sequences else 79)
     assert kinds["nmd_efficiency_prediction"] == "float"
     assert_schema(empty_table(kinds), kinds)
     assert empty_table(kinds)["nmd_efficiency_prediction"].dtype == np.float64
@@ -154,7 +154,7 @@ def test_output_column_kinds_adds_nmd_efficiency_prediction_after_nmd_efficiency
 @pytest.mark.parametrize("prediction", [False, True])
 @pytest.mark.parametrize("sequences", [True, False])
 def test_to_arrow_gives_each_column_the_arrow_type_of_its_kind_also_for_zero_rows(sequences, prediction):
-    kinds = output_column_kinds(sequences, prediction)
+    kinds = output_column_kinds(sequences=sequences, prediction=prediction)
 
     table = to_arrow(empty_table(kinds))
 
@@ -177,9 +177,9 @@ def test_to_arrow_is_exported_from_the_package():
 @pytest.fixture
 def run_main(tmp_path, monkeypatch):
     """
-    Return a function that runs main() on a VCF with the chr18 annotation. It returns the table that
-    extract_ptc returned to main() and the table that main() wrote. After each call, the attribute
-    ptc_table_before_main of the function holds a copy of the first table, taken before main() used it.
+    Return a function that runs _main() on a VCF with the chr18 annotation. It returns the table that
+    extract_ptc returned to _main() and the table that _main() wrote. After each call, the attribute
+    ptc_table_before_main of the function holds a copy of the first table, taken before _main() used it.
     """
 
     def run(vcf_path):
@@ -195,7 +195,7 @@ def run_main(tmp_path, monkeypatch):
 
         monkeypatch.setattr(cli, "extract_ptc", recording_extract_ptc)
         monkeypatch.setattr(cli, "write_results", recording_write_results)
-        cli.main(vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", str(tmp_path / "out.parquet"))
+        cli._main(vcf_path, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", str(tmp_path / "out.parquet"))
         return tables["extract_ptc"], tables["written"]
 
     return run
@@ -222,10 +222,10 @@ def test_empty_and_nonempty_results_have_the_same_schema(run_main, request, vcf,
 
 def test_feature_and_rule_columns_match_the_schema(run_main):
     _, written = run_main("resources/test_files/variants.vcf")
-    row = written.iloc[0]
+    pair = written.iloc[0]
 
-    assert list(add_nmd_features(row)) == list(NMD_FEATURE_COLUMN_KINDS)
-    assert list(evaluate_nmd_escape_rules(row)) == list(NMD_RULE_COLUMN_KINDS)
+    assert list(add_nmd_features(pair)) == list(NMD_FEATURE_COLUMN_KINDS)
+    assert list(evaluate_nmd_escape_rules(pair)) == list(NMD_RULE_COLUMN_KINDS)
 
 
 @pytest.mark.parametrize("vcf", ["resources/test_files/variants.vcf", "intergenic_vcf", "reference_mismatch_vcf"])
@@ -251,7 +251,7 @@ def test_add_features_and_rules_gives_the_same_dtypes_for_zero_and_many_rows(run
 
 def test_main_writes_the_result_of_add_features_and_rules_with_the_prediction(run_main):
     ptc_table, written = run_main("resources/test_files/test_variants.vcf")
-    # main() already passed ptc_table to add_features_and_rules, so a copy taken now could miss a change
+    # _main() already passed ptc_table to add_features_and_rules, so a copy taken now could miss a change
     unchanged = run_main.ptc_table_before_main
 
     result = add_features_and_rules(ptc_table)
@@ -274,15 +274,15 @@ def test_add_features_and_rules_equals_the_row_functions_applied_one_by_one(run_
     pd.testing.assert_frame_equal(add_features_and_rules(ptc_table), expected)
 
 
-def schema_row(**values):
-    """Return one row of the result table with ``values`` set and every other column missing."""
+def schema_pair(**values):
+    """Return a variant-transcript pair of the result table. ``values`` are set, and every other column is missing."""
 
     table = pd.DataFrame([values]).reindex(columns=list(OUTPUT_COLUMN_KINDS))
     return apply_schema(table, OUTPUT_COLUMN_KINDS).iloc[0]
 
 
-def none_row(**values):
-    """Return ``values`` as a dict row with None for every other output column."""
+def none_pair(**values):
+    """Return a variant-transcript pair as a dict: ``values``, and None for every other output column."""
 
     return {**dict.fromkeys(OUTPUT_COLUMN_KINDS), **values}
 
@@ -304,17 +304,17 @@ def none_row(**values):
     ],
 )
 def test_features_and_rules_treat_pd_na_like_none(values):
-    features = add_nmd_features(schema_row(**values))
+    features = add_nmd_features(schema_pair(**values))
 
-    assert features == add_nmd_features(none_row(**values))
-    assert evaluate_nmd_escape_rules(schema_row(**values, **features)) == evaluate_nmd_escape_rules(
-        none_row(**values, **features)
+    assert features == add_nmd_features(none_pair(**values))
+    assert evaluate_nmd_escape_rules(schema_pair(**values, **features)) == evaluate_nmd_escape_rules(
+        none_pair(**values, **features)
     )
 
 
 def test_likely_misannotated_reads_numpy_bools():
     # .iloc gives numpy.bool_ values, and `numpy.False_ is False` is False
-    row = schema_row(cds_in_transcript=False, has_start_codon=True, ref_cds_seq="ATGAAATAA", ref_valid_stop=True)
-    assert isinstance(row["cds_in_transcript"], np.bool_)
+    pair = schema_pair(cds_in_transcript=False, has_start_codon=True, ref_cds_seq="ATGAAATAA", ref_valid_stop=True)
+    assert isinstance(pair["cds_in_transcript"], np.bool_)
 
-    assert add_nmd_features(row)["likely_misannotated"] is True
+    assert add_nmd_features(pair)["likely_misannotated"] is True

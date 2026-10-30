@@ -24,7 +24,7 @@ from nmd_scanner.schema import (
 
 @dataclass(frozen=True, slots=True)
 class FeatureRow:
-    """The columns of a row of extract_ptc that add_nmd_features reads, see schema.records."""
+    """A variant-transcript pair with the columns of extract_ptc that add_nmd_features reads, see schema.records."""
 
     unknown_reason: str | None
     has_start_codon: bool
@@ -52,8 +52,8 @@ class FeatureRow:
 @dataclass(frozen=True, slots=True)
 class RuleRow:
     """
-    The columns of a row of extract_ptc that evaluate_nmd_escape_rules reads, and 3 columns that add_nmd_features adds,
-    see schema.records.
+    A variant-transcript pair with the columns of extract_ptc that evaluate_nmd_escape_rules reads, and 3 columns that
+    add_nmd_features adds, see schema.records.
     """
 
     has_start_codon: bool
@@ -80,7 +80,7 @@ def ptc_pos_in_alt_transcript(row):
     scan, and the PTC is the first in-frame stop codon after it, at alt_scan_first_stop_pos in the alt transcript.
 
     :param row: A FeatureRow or a RuleRow
-    :return: The position, or None if the row is not a PTC row or has no alt_transcript_seq
+    :return: The position, or None if the variant-transcript pair is not a PTC variant or has no alt_transcript_seq
     """
 
     if not row.alt_has_ptc:
@@ -103,8 +103,8 @@ def ptc_in_alt_transcript(row):
     :param row: A FeatureRow or a RuleRow
     :return: Tuple (position, exons, index): the position of the PTC in the alt transcript, (exon_number, start, end)
              of each exon of the alt transcript with bases, 5' to 3', in alt transcript positions (end is the position
-             after the last base), and the index of the PTC exon in this list. None if the row is not a PTC row, or if
-             the PTC position or alt_transcript_exons is null.
+             after the last base), and the index of the PTC exon in this list. None if the variant-transcript pair is
+             not a PTC variant, or if the PTC position or alt_transcript_exons is null.
     """
 
     position = ptc_pos_in_alt_transcript(row)
@@ -129,8 +129,8 @@ def add_nmd_features(row):
     inspired by benchmark datasets from nmd_eff. These features include UTR lengths, exon structure and positional information
     of the premature termination codon (PTC).
 
-    :param row: A row of the result of extract_ptc: a FeatureRow, or a pandas Series or a dict with a value for each
-                field of FeatureRow
+    :param row: A variant-transcript pair of extract_ptc: a FeatureRow, or a pandas Series or a dict with a value for
+                each field of FeatureRow
     :return: A dictionary with additional NMD related features.
     """
 
@@ -171,7 +171,8 @@ def add_nmd_features(row):
 
     # Distance between PTC to start codon
     ptc_to_start_codon = calculate_ptc_to_start_distance(row)
-    # PTC location < 150nt to start codon. Null without a distance, e.g. on a row that is not a PTC row.
+    # PTC location < 150nt to start codon. Null without a distance, e.g. for a variant-transcript pair that is not a
+    # PTC variant.
     ptc_less_than_150nt_to_start = None if ptc_to_start_codon is None else ptc_to_start_codon < 150
 
     # PTC exon length
@@ -231,8 +232,8 @@ def calculate_exon_features(row):
     Calculate exon-related features:
     - total_exon_count: the number of exons of the ref transcript (transcript_exons)
     - upstream_exon_count / downstream_exon_count: the number of exons of the alt transcript upstream and downstream of
-      the PTC exon, only on a PTC row (see ptc_in_alt_transcript). An exon that the variant deletes is not in the mRNA,
-      so it does not count there.
+      the PTC exon, only for a PTC variant (see ptc_in_alt_transcript). An exon that the variant deletes is not in the
+      mRNA, so it does not count there.
     """
 
     total_exons = len(row.transcript_exons or [])
@@ -260,7 +261,8 @@ def calculate_ptc_to_start_distance(row):
     cds_start_NF: the true start lies upstream of the CDS, at an unknown distance).
     After a start loss, translation starts at the ATG that the scan of the alt transcript found. So the distance runs
     from that ATG (alt_scan_start_codon_pos) to the first in-frame stop codon after it (alt_scan_first_stop_pos),
-    both alt transcript positions. Such a row is a PTC row only if the scan found both (see rules.classify_rescued_orf).
+    both alt transcript positions. Such a variant-transcript pair is a PTC variant only if the scan found both (see
+    rules.classify_rescued_orf).
     The distance is None, too, if the PTC is the annotated start codon itself, i.e. the annotated start codon is a stop
     codon such as TAG. Translation cannot start on a stop codon, so such a start codon is a misannotation.
     """
@@ -327,7 +329,8 @@ def calculate_stop_codon_dist(row):
     The reference stop codon is the annotated one. The first in-frame stop of the reference is not used, because it
     can be an internal one, e.g. a selenocysteine TGA. With an alt transcript, the distance is the one by which
     analyze_transcript classifies the first in-frame stop codon of the alt transcript (see annotated_stop_distance).
-    A row that keeps the flags from the CDS there takes alt_first_stop_pos, the first stop codon of the alt CDS.
+    A variant-transcript pair that keeps the flags from the CDS there takes alt_first_stop_pos, the first stop codon
+    of the alt CDS.
     Without an alt transcript or alt_cds_start_in_transcript, both positions are in alt CDS coordinates, and the reference
     stop codon is the last codon of the alt coding region, at alt_cds_length - 3. That holds only for a variant upstream of the stop codon: an
     insertion inside it (TAA>TGAA) lengthens the alt coding region but leaves the stop codon in place. An indel
@@ -373,22 +376,22 @@ def evaluate_nmd_escape_rules(row):
     A PTC is considered to escape NMD if it satisfies any of the above rules. "Technical Notes.md" has figures of the
     rules.
 
-    A rule is None on a row that is not a PTC row, also on one with unknown_reason, because it does not apply there.
-    On a PTC row, a rule is None if one of its inputs is None, because its value is unknown then. nmd_escape is
-    True if one rule is True, None if no rule is True and one is None, and False otherwise.
+    A rule is None for a variant-transcript pair that is not a PTC variant, also for one with unknown_reason, because
+    it does not apply there. For a PTC variant, a rule is None if one of its inputs is None, because its value is
+    unknown then. nmd_escape is True if one rule is True, None if no rule is True and one is None, and False otherwise.
 
-    :param row: A row of the result of extract_ptc with the features of add_nmd_features: a RuleRow, or a pandas
-                Series or a dict with a value for each field of RuleRow. These are alt_has_ptc (bool), the columns that
-                ptc_in_alt_transcript reads (the PTC position and alt_transcript_exons), total_exon_count,
-                downstream_exon_count and ptc_exon_length (see add_nmd_features), and the columns that
-                calculate_ptc_to_start_distance reads.
+    :param row: A variant-transcript pair of extract_ptc with the features of add_nmd_features: a RuleRow, or a
+                pandas Series or a dict with a value for each field of RuleRow. These are alt_has_ptc (bool), the
+                columns that ptc_in_alt_transcript reads (the PTC position and alt_transcript_exons),
+                total_exon_count, downstream_exon_count and ptc_exon_length (see add_nmd_features), and the columns
+                that calculate_ptc_to_start_distance reads.
     :return: A dictionary with a flag or None for each rule and for the overall NMD escape
     """
 
     if not isinstance(row, RuleRow):
         row = record(row, RuleRow)
 
-    # Only relevant for premature stop codons. A row with unknown_reason has no known PTC either.
+    # Only relevant for premature stop codons. A variant-transcript pair with unknown_reason has no known PTC either.
     if not row.alt_has_ptc:
         return dict.fromkeys(NMD_RULE_COLUMN_KINDS)
 
@@ -452,15 +455,16 @@ def calculate_ptc_to_downstream_ej(row):
 
 def add_likely_misannotated_flag(row):
     """
-    Flag rows that look inconsistent between CDS and transcript annotations and might be likely misannotated.
-    A row is flagged as likely misannotated if any of these conditions apply:
+    Flag variant-transcript pairs that look inconsistent between CDS and transcript annotations and might be likely
+    misannotated. A variant-transcript pair is flagged as likely misannotated if any of these conditions apply:
         cds_in_transcript = False (the assembled CDS is not found in the transcript sequence)
         the reference CDS does not start with an annotated start codon, e.g. cds_start_NF (see
         rules.starts_with_annotated_start_codon)
         ref_valid_stop is False (the reference does not end in a valid annotated stop codon, e.g. for a transcript
-        without stop_codon rows such as one tagged cds_end_NF)
+        without stop_codon records such as one tagged cds_end_NF)
 
-    :return: A boolean flag. True if any condition above is met and thus the row is likely misannotated, False otherwise.
+    :return: A boolean flag. True if any condition above is met and thus the variant-transcript pair is likely
+             misannotated, False otherwise.
     """
 
     # Add likely_misannotated flag: when
@@ -486,9 +490,9 @@ def add_features_and_rules(results):
     """
     Add the NMD features and the NMD escape rules to a result of ``extract_ptc``.
 
-    This runs ``add_nmd_features`` on the FeatureRow of each row, then ``evaluate_nmd_escape_rules`` on the RuleRow of
-    each row (it reads columns that the features add). Then it adds the column nmd_efficiency_prediction_status (see
-    ``nmd_efficiency_prediction_status``) and applies the output schema.
+    This runs ``add_nmd_features`` on the FeatureRow of each variant-transcript pair, then ``evaluate_nmd_escape_rules``
+    on the RuleRow of each pair (it reads columns that the features add). Then it adds the column
+    nmd_efficiency_prediction_status (see ``nmd_efficiency_prediction_status``) and applies the output schema.
     The result has the columns, column order and dtypes of OUTPUT_COLUMN_KINDS (see nmd_scanner.schema), also for zero
     rows. ``results`` is not changed.
 
@@ -512,9 +516,9 @@ def add_features_and_rules(results):
 
 def nmd_efficiency_prediction_status(results):
     """
-    Return the nmd_efficiency_prediction_status of each row: "ok" if the NMD efficiency model can predict the row, else the first
-    reason why it cannot. PREDICTION_STATUSES in nmd_scanner.schema lists the values and their conditions, in the order
-    they are checked.
+    Return the nmd_efficiency_prediction_status of each variant-transcript pair: "ok" if the NMD efficiency model can
+    predict the pair, else the first reason why it cannot. PREDICTION_STATUSES in nmd_scanner.schema lists the values
+    and their conditions, in the order they are checked.
 
     :param results: DataFrame with unknown_reason, alt_has_ptc, ref_has_ptc, has_stop_codon, has_start_codon
                     and the columns of MODEL_INPUTS
@@ -534,7 +538,7 @@ def nmd_efficiency_prediction_status(results):
         is_true("ref_has_ptc"),
         is_false("has_stop_codon"),
         is_false("has_start_codon"),
-        is_true("start_loss") & results["ptc_to_start_codon"].isna().to_numpy(),
+        is_true("start_loss"),
         results[MODEL_INPUTS].isna().any(axis=1).to_numpy(),
     ]
     status = np.select(conditions, list(PREDICTION_STATUSES[:-1]), default=PREDICTION_STATUSES[-1])

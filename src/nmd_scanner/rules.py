@@ -21,6 +21,8 @@ SYMBOLIC_ALT_PATTERN = r"^<[^>]*>$|[\[\]]|^\.[A-Za-z]+$|^[A-Za-z]+\.$"
 # An ALT allele that changes no base: "." says that the record has no alternate allele, and "*" stands for the bases
 # that an overlapping deletion removes. That deletion has its own record.
 MISSING_ALT_PATTERN = r"^[.*]$"
+# The names that the steps of extract_ptc give the variant columns of scan.read_vcf
+VCF_COLUMNS = {"chrom": "Chromosome", "start": "Start", "end": "End", "variant_id": "ID", "ref": "Ref", "alt": "Alt"}
 
 
 # Main extract PTC script:
@@ -29,16 +31,17 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     Main function for extracting reference coding sequence, alternative coding sequence by incorporating the variant, analyzing for premature termination codons (PTCs),
     start and stop loss, and getting the transcript information.
 
-    :param cds_df: Coding regions of the annotation (DataFrame): CDS rows that include the stop codon, one row per
-                   transcript and exon, with exon_number, Frame (the GFF3 phase) and the columns has_start_codon and
-                   has_stop_codon. They say whether the coding region of the transcript starts with an annotated
-                   start codon and ends in an annotated stop codon. ``scan.read_annotation`` returns the coding
-                   regions as its CDS rows.
-    :param vcf: Variants (DataFrame) with Chromosome, Start, End, ID, Ref and Alt, as ``scan.read_vcf`` returns them.
-                A record with a symbolic ALT allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is
-                a record with ALT "." or "*" (see ``drop_missing_alleles``).
+    :param cds_df: Coding regions of the annotation (DataFrame): CDS records that include the stop codon, one row per
+                   transcript and exon, with exon_number, Frame (the GFF3 phase), gene_id, transcript_type,
+                   transcript_tags and the columns has_start_codon and has_stop_codon. The last two say whether the
+                   coding region of the transcript starts with an annotated start codon and ends in an annotated stop
+                   codon. ``scan.read_annotation`` returns the coding regions as its CDS records.
+    :param vcf: VCF records (DataFrame) with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
+                returns them. Without the variant_id column, each record has a null ID. A record with a symbolic ALT
+                allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with ALT "." or "*"
+                (see ``drop_missing_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
-    :param exons_df: Exon rows of the annotation (DataFrame)
+    :param exons_df: Exon records of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
              It has the columns and dtypes of PTC_COLUMN_KINDS (see nmd_scanner.schema). It has one row per
              VCF record and transcript where the variant of the record touches the coding region or the splice
@@ -46,16 +49,24 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
              ``variant_placement.place_in_transcript``). If the alt transcript is unknown, unknown_reason names why,
              and the alt columns are null. It has zero rows if no variant touches a coding region, or every variant
              is skipped or has a reference mismatch.
-    :raises ValueError: if cds_df has no has_start_codon or has_stop_codon column, i.e. it does not hold the coding
-                        regions, or if the FASTA has no sequence for a chromosome with variants and coding regions.
+    :raises ValueError: if cds_df has no has_start_codon, has_stop_codon, transcript_type or transcript_tags column,
+                        i.e. it is not the coding regions that scan.read_annotation returns, or if the FASTA has no
+                        sequence for a chromosome with variants and coding regions.
     """
 
-    missing = [column for column in ("has_start_codon", "has_stop_codon") if column not in cds_df.columns]
+    required = ("has_start_codon", "has_stop_codon", "transcript_type", "transcript_tags")
+    missing = [column for column in required if column not in cds_df.columns]
     if missing:
         raise ValueError(
-            f"cds_df has no {' and no '.join(missing)} column. extract_ptc takes the coding regions: CDS rows that "
-            "include the stop codon, with has_start_codon and has_stop_codon, as scan.read_annotation returns them."
+            f"cds_df has no {' and no '.join(missing)} column. extract_ptc takes the coding regions: CDS records that "
+            "include the stop codon, with has_start_codon, has_stop_codon, transcript_type and transcript_tags, as "
+            "scan.read_annotation returns them."
         )
+
+    # The steps below take the variant columns by the names of VCF_COLUMNS
+    vcf = vcf.rename(columns=VCF_COLUMNS)
+    if "ID" not in vcf.columns:
+        vcf = vcf.assign(ID=None)
 
     cds_df_adj = cds_df.copy()
     # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_exons)
@@ -68,9 +79,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     unsequenced = sorted((set(vcf["Chromosome"]) & set(cds_df_adj["Chromosome"])) - set(fasta.keys()))
     if unsequenced:
         raise ValueError(
-            f"The FASTA has no sequence for {len(unsequenced)} chromosome(s) with variants and CDS rows: "
-            f"{', '.join(unsequenced)}. Each chromosome with variants and CDS rows needs a sequence of the same name "
-            "in the FASTA."
+            f"The FASTA has no sequence for {len(unsequenced)} chromosome(s) with variants and CDS records: "
+            f"{', '.join(unsequenced)}. Each chromosome with variants and CDS records needs a sequence of the same "
+            "name in the FASTA."
         )
 
     # Join the variants with the coding regions and the splice dinucleotides at their exon edges
@@ -83,7 +94,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     variants, placements = place_variants(vcf, set(cds_df_adj["Chromosome"]), reference)
     intersection_cds_vcf = join_variant_windows(cds_df_adj, variants)
-    logger.info("Joining variants with cds entries: done.")
+    logger.info("Joining variants with CDS records: done.")
 
     # Nothing to analyze: the steps below need at least one row
     if intersection_cds_vcf.empty:
@@ -91,14 +102,14 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         return empty_table(PTC_COLUMN_KINDS)
 
     # Filter out Variants with a reference mismatch
-    mismatched_rows = intersection_cds_vcf[~intersection_cds_vcf["Ref_matches"]].drop_duplicates(
+    mismatched_pairs = intersection_cds_vcf[~intersection_cds_vcf["Ref_matches"]].drop_duplicates(
         ["transcript_id", "variant_row"]
     )
-    if not mismatched_rows.empty:
-        logger.warning("Skipping %d variant-transcript pairs due to reference mismatches.", len(mismatched_rows))
+    if not mismatched_pairs.empty:
+        logger.warning("Skipping %d variant-transcript pairs due to reference mismatches.", len(mismatched_pairs))
         logger.warning(
-            "Reference-mismatched variants:\n%s",
-            mismatched_rows[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
+            "Reference-mismatched variant-transcript pairs:\n%s",
+            mismatched_pairs[["transcript_id", "Chromosome", "Start_variant", "End_variant", "Ref", "Alt"]].to_string(
                 index=False
             ),
         )
@@ -108,7 +119,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
         logger.info("No variant left after the reference check; there are no results to compute.")
         return empty_table(PTC_COLUMN_KINDS)
 
-    # Apply each variant to the coding rows of each transcript, or find why its alt transcript is unknown
+    # Apply each variant to the coding intervals of each transcript, or find why its alt transcript is unknown
     intersection_cds_vcf = apply_variants(intersection_cds_vcf, placements, cds_df_adj, exons_df, reference)
     logger.info("Creating alt CDS sequence: done.")
 
@@ -120,12 +131,18 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
     cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
 
-    # Fetch reference sequence for all CDS entries per (relevant) transcripts
+    # Fetch reference sequence for all CDS records per (relevant) transcripts
     cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta)  # for faster access
 
     # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
     results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
     logger.info("Create reference CDS: done.")
+
+    # The type and the tags of each transcript. Each CDS record has those of its transcript record (see
+    # scan.read_gff3).
+    transcripts = cds_df_adj.drop_duplicates("transcript_id").set_index("transcript_id")
+    for column in ("transcript_type", "transcript_tags"):
+        results_df[column] = results_df["transcript_id"].map(transcripts[column])
 
     # Get transcript sequence for relevant transcripts (speed up process) + length and transcript exon information (Tuple: exon number & exon length)
     exons_df = exons_df[exons_df["transcript_id"].isin(relevant_transcripts)].copy()
@@ -144,7 +161,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     }
 
     # Validate that the CDS is present inside the transcript sequence, to make sure the transcript sequence was computed correctly.
-    # A transcript without exon rows has no transcript sequence.
+    # A transcript without exon records has no transcript sequence.
     transcript_sequences = exon_seqs.set_index("transcript_id")["transcript_sequence"].to_dict()
     results_df["cds_in_transcript"] = pd.Series(
         [
@@ -237,8 +254,8 @@ def drop_symbolic_alleles(vcf):
     and logs a warning with their count. Such an ALT names a structural variant instead of giving its sequence. The
     variant application would insert its text into the sequence, e.g. "<DEL>" into the alt CDS.
 
-    :param vcf: Variants (DataFrame) with the column Alt
-    :return: The rows of ``vcf`` whose ALT is a sequence, in their order and with their index
+    :param vcf: VCF records (DataFrame) with the column Alt
+    :return: The records of ``vcf`` whose ALT is a sequence, in their order and with their index
     """
 
     symbolic = vcf["Alt"].astype(str).str.contains(SYMBOLIC_ALT_PATTERN, regex=True)
@@ -255,11 +272,12 @@ def drop_missing_alleles(vcf):
     """
     Returns the variants without the records whose ALT is "." or "*" (see MISSING_ALT_PATTERN), and logs a warning
     with their count. Such a record changes no base. "*" stands for the bases that an overlapping deletion removes, e.g.
-    after bcftools norm -m- splits a joint-called site. The deletion comes from its own record and gets its own rows.
-    The variant application would insert the character into the sequence, e.g. "*" into the alt CDS.
+    after bcftools norm -m- splits a joint-called site. The deletion comes from its own record and gives its own
+    variant-transcript pairs. The variant application would insert the character into the sequence, e.g. "*" into the
+    alt CDS.
 
-    :param vcf: Variants (DataFrame) with the column Alt
-    :return: The rows of ``vcf`` whose ALT is not "." or "*", in their order and with their index
+    :param vcf: VCF records (DataFrame) with the column Alt
+    :return: The records of ``vcf`` whose ALT is not "." or "*", in their order and with their index
     """
 
     missing = vcf["Alt"].astype(str).str.contains(MISSING_ALT_PATTERN, regex=True)
@@ -274,20 +292,20 @@ def drop_missing_alleles(vcf):
 
 def join_variants_to_cds(cds_df, vcf):
     """
-    Joins every CDS row to the variants that overlap it.
+    Joins every CDS record to the variants that overlap it.
 
-    A CDS row and a variant overlap if they are on the same Chromosome and their 0-based half-open
-    intervals share at least one base: a variant that ends at the Start of a CDS row, or starts at
+    A CDS record and a variant overlap if they are on the same Chromosome and their 0-based half-open
+    intervals share at least one base: a variant that ends at the Start of a CDS record, or starts at
     its End, does not overlap it. Strand is ignored. polars-bio computes the overlaps.
 
-    :param cds_df: CDS rows (DataFrame) with Chromosome, Start and End
-    :param vcf: Variants (DataFrame) with Chromosome, Start and End
-    :return: DataFrame with one row per overlapping CDS row and variant, and a RangeIndex. It has the
+    :param cds_df: CDS records (DataFrame) with Chromosome, Start and End
+    :param vcf: VCF records (DataFrame) with Chromosome, Start and End
+    :return: DataFrame with one row per overlapping CDS record and variant, and a RangeIndex. It has the
         columns of cds_df, then the columns of vcf except Chromosome, also if no variant overlaps a
-        CDS row. A column of vcf that cds_df has too gets the suffix "_variant", e.g. Start_variant
+        CDS record. A column of vcf that cds_df has too gets the suffix "_variant", e.g. Start_variant
         and End_variant. The columns keep their dtypes, except a text column of cds_df with fewer
         distinct values than half its rows, which becomes category to save memory. The rows come in
-        the order of cds_df; the variants of one CDS row by Start, then by End descending, then in
+        the order of cds_df; the variants of one CDS record by Start, then by End descending, then in
         the order of vcf.
     :raises ValueError: if an End of cds_df or vcf is above 2**31 - 1, the largest coordinate that
         polars-bio joins
@@ -333,9 +351,9 @@ def join_variants_to_cds(cds_df, vcf):
     row_variant = pairs["row_variant"].to_numpy()
     # the copies of the rows below take the most memory, so the pairs go first
     del pairs
-    cds_rows = cds_df.iloc[row_cds].reset_index(drop=True)
-    variant_rows = vcf.drop(columns="Chromosome").iloc[row_variant].reset_index(drop=True)
-    return cds_rows.join(variant_rows, rsuffix="_variant")
+    cds_records = cds_df.iloc[row_cds].reset_index(drop=True)
+    variant_records = vcf.drop(columns="Chromosome").iloc[row_variant].reset_index(drop=True)
+    return cds_records.join(variant_records, rsuffix="_variant")
 
 
 def place_variants(vcf, chromosomes, reference):
@@ -343,10 +361,10 @@ def place_variants(vcf, chromosomes, reference):
     Finds the equivalent placements of each variant on the given chromosomes, and checks its whole REF against the
     reference genome.
 
-    :param vcf: Variants (DataFrame) with Chromosome, Start, End, Ref and Alt, as ``scan.read_vcf`` returns them
+    :param vcf: VCF records (DataFrame) with Chromosome, Start, End, Ref and Alt, the names of VCF_COLUMNS
     :param chromosomes: Chromosomes to keep, e.g. those with a coding region
     :param reference: Function that returns the ReferenceSequence of a chromosome
-    :return: Tuple (variants, placements). variants holds the kept rows plus variant_row (a key into placements),
+    :return: Tuple (variants, placements). variants holds the kept records plus variant_row (a key into placements),
              Window_Start and Window_End (the union of the placements) and Ref_matches. Variants whose REF equals
              their ALT are dropped. placements maps variant_row to the list of Placement.
     """
@@ -375,13 +393,13 @@ def place_variants(vcf, chromosomes, reference):
 
 def join_variant_windows(cds_df, variants):
     """
-    Joins the coding rows with the variant windows that come within 3 bases of them. This finds every coding row
+    Joins the CDS records with the variant windows that come within 3 bases of them. This finds every CDS record
     that a variant can change, also through a splice dinucleotide or an insertion next to it.
 
-    :param cds_df: Coding rows (DataFrame): CDS rows that include the stop codon
-    :param variants: Variants with Window_Start and Window_End (place_variants)
-    :return: DataFrame with one row per coding row and variant, as ``join_variants_to_cds`` returns it: the coding
-             row columns, then the variant columns. Start_variant and End_variant hold the VCF interval of the
+    :param cds_df: Coding regions (DataFrame): CDS records that include the stop codon
+    :param variants: VCF records with Window_Start and Window_End (place_variants)
+    :return: DataFrame with one row per CDS record and variant, as ``join_variants_to_cds`` returns it: the CDS
+             record columns, then the variant columns. Start_variant and End_variant hold the VCF interval of the
              variant.
     """
 
@@ -407,15 +425,15 @@ def join_variant_windows(cds_df, variants):
 
 def apply_variants(intersection_cds_vcf, placements, cds_df, exons_df, reference):
     """
-    Applies each variant to the coding rows of each transcript it joined (see place_in_transcript).
+    Applies each variant to the coding intervals of each transcript it joined (see place_in_transcript).
 
-    :param intersection_cds_vcf: Coding rows joined with variants (join_variant_windows)
+    :param intersection_cds_vcf: CDS records joined with variants (join_variant_windows)
     :param placements: Placements per variant_row (place_variants)
-    :param cds_df: All coding rows; they give the edges of each coding region
-    :param exons_df: Exon rows of the annotation (DataFrame with transcript_id, Start, End, exon_number)
+    :param cds_df: All CDS records; they give the edges of each coding region
+    :param exons_df: Exon records of the annotation (DataFrame with transcript_id, Start, End, exon_number)
     :param reference: Function that returns the ReferenceSequence of a chromosome
     :return: The rows of the variant-transcript pairs that touch a coding region or its splice dinucleotides, plus
-             Exon_Alt_CDS_seq (alt bases of the coding row; None if the alt transcript is unknown),
+             Exon_Alt_CDS_seq (alt bases of the CDS record; None if the alt transcript is unknown),
              UTR5_Ref, UTR5_Alt, UTR3_Ref and UTR3_Alt (the UTR change of the pair, see TranscriptEffect),
              Alt_Exon_Lengths ({exon_number: length of the exon in the alt transcript}; None if the alt transcript is
              unknown) and unknown_reason (None if the alt transcript is known)
@@ -453,14 +471,14 @@ def apply_variants(intersection_cds_vcf, placements, cds_df, exons_df, reference
     for (transcript_id, variant_row), positions in df.groupby(
         ["transcript_id", "variant_row"], observed=True
     ).indices.items():
-        coding_rows = [(int(starts[i]), int(ends[i])) for i in positions]
+        coding_intervals = [(int(starts[i]), int(ends[i])) for i in positions]
         exons = exons_by_transcript.get(transcript_id, [])
         chromosome_reference = reference(chromosomes[positions[0]])
         if transcript_id not in boundaries:
             boundaries[transcript_id] = exon_boundaries(exons, chromosome_reference)
         effect = place_in_transcript(
             placements[variant_row],
-            coding_rows,
+            coding_intervals,
             exons,
             chromosome_reference,
             strands[positions[0]],
@@ -470,12 +488,12 @@ def apply_variants(intersection_cds_vcf, placements, cds_df, exons_df, reference
         if effect is None:
             continue
         alt_lengths = dict(zip(exon_numbers.get(transcript_id, []), effect.alt_exon_lengths))
-        for i, coding_row in zip(positions, coding_rows):
+        for i, coding_interval in zip(positions, coding_intervals):
             keep[i] = True
             if effect.unknown_reason is not None:
                 unknown_reasons[i] = effect.unknown_reason
             else:
-                alt_coding[i] = effect.alt_coding[coding_row]
+                alt_coding[i] = effect.alt_coding[coding_interval]
                 utr5[i] = effect.utr5
                 utr3[i] = effect.utr3
                 alt_exon_lengths[i] = alt_lengths
@@ -508,10 +526,10 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     :param cds_df_test: Reference exon-level CDS data for all transcripts with exon_number
                         includes: transcript_id, exon_number, Start, End, Strand, Frame, Exon_CDS_seq, has_start_codon,
                         has_stop_codon
-    :return: DataFrame with one row per VCF record and transcript (without variant_row: per variant and transcript),
-             containing full reference and alternative CDS + lengths,
+    :return: DataFrame with one row per VCF record and transcript (without variant_row: one row per distinct variant
+             and transcript), containing full reference and alternative CDS + lengths,
              exon-wise CDS information as tuple (exon number, exon-wise CDS length), has_start_codon, has_stop_codon,
-             cds_frame (the Frame of the 5'-most CDS row: the number of bases before the first complete codon),
+             cds_frame (the Frame of the 5'-most CDS record: the number of bases before the first complete codon),
              utr5_change and utr3_change (tuples (ref, alt), see TranscriptEffect), alt_exon_lengths
              ({exon_number: alt length}, None without Alt_Exon_Lengths) and unknown_reason. A pair with
              unknown_reason has None in the alt columns.
@@ -534,9 +552,9 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
     columns = {column: df[column].to_numpy() for column in df.columns}
     starts = columns["Start"]
 
-    # The reference coding rows of each transcript with a variant
-    ref_rows = cds_df_test[cds_df_test["transcript_id"].isin(list(variants_by_transcript))]
-    ref_exons_by_transcript = dict(list(ref_rows.groupby("transcript_id", observed=True)))
+    # The reference CDS records of each transcript with a variant
+    ref_cds_records = cds_df_test[cds_df_test["transcript_id"].isin(list(variants_by_transcript))]
+    ref_exons_by_transcript = dict(list(ref_cds_records.groupby("transcript_id", observed=True)))
 
     results = []
     for transcript_id, variants in variants_by_transcript.items():
@@ -565,21 +583,20 @@ def create_reference_cds(intersection_cds_vcf, cds_df_test):
         # within transcript)
         has_start_codon = bool(ref_exons["has_start_codon"].iloc[0])
         has_stop_codon = bool(ref_exons["has_stop_codon"].iloc[0])
-        # The codons start after the Frame of the 5'-most CDS row, which is 1 or 2 if the CDS lacks its 5' end
-        # (e.g. cds_start_NF). That row has the smallest Start on the plus strand and the largest on the minus strand.
+        # The codons start after the Frame of the 5'-most CDS record, which is 1 or 2 if the CDS lacks its 5' end
+        # (e.g. cds_start_NF). That record has the smallest Start on the plus strand and the largest on the minus
+        # strand.
         cds_frame = int(ref_exons["Frame"].iloc[0 if strand == "+" else -1])
 
         for variant, positions in variants:
             # Variant-identifying fields come straight from the group key;
             # ID and gene_id are constant within the group, so read them once.
             chromosome, variant_start, variant_end, ref_allele, alt_allele = variant[:5]
-            # A record without ID has "." there, and its variant_id is null
+            # A null ID is NaN, None or pd.NA, by the dtype of the column. apply_schema makes it pd.NA.
             variant_id = columns["ID"][positions[0]]
-            if variant_id == ".":
-                variant_id = None
             gene_id = columns["gene_id"][positions[0]]
 
-            # An unknown alt transcript gives a row without alt CDS
+            # With an unknown alt transcript, the variant-transcript pair has no alt CDS
             unknown_reason = columns["unknown_reason"][positions[0]] if "unknown_reason" in columns else None
             if isinstance(unknown_reason, str):
                 results.append(
@@ -673,7 +690,7 @@ def utr_change(columns, row, utr):
     without them.
 
     :param columns: The columns of the joined rows, as arrays by row position
-    :param row: Position of a coding row of the pair
+    :param row: Row position of a CDS record of the pair
     :param utr: "UTR5" or "UTR3"
     """
 
@@ -686,12 +703,12 @@ def get_transcript_sequence(exons_df, fasta):
     """
     Construct full transcript sequences by concatenating the exon sequences from the FASTA genome reference, grouped by transcript.
     Get transcript length and transcript information as well.
-    :param exons_df: DataFrame with the exon rows of the annotation.
+    :param exons_df: DataFrame with the exon records of the annotation.
                      Must include: transcript_id, strand, chromosome, start, end, exon_number
     :param fasta: Fasta file, reference genome object
     :return: DataFrame with one row per transcript with full transcript sequence, start, end, strand, transcript sequence length, and
-             per exon sequence length information for that transcript. Without exon rows, it has no rows but the same
-             columns.
+             per exon sequence length information for that transcript. Without exon records, it has no rows but the
+             same columns.
     """
 
     exon_data = []
@@ -750,7 +767,7 @@ def get_transcript_sequence(exons_df, fasta):
             }
         )
 
-    # Without exon rows, extract_ptc still looks up the transcripts in these columns
+    # Without exon records, extract_ptc still looks up the transcripts in these columns
     exon_seqs = pd.DataFrame(
         exon_data,
         columns=[
@@ -774,12 +791,13 @@ def cds_range_in_transcript(exons, cds):
     i.e. read 5' to 3' on both strands. Position 0 is the first base of the 5' exon.
 
     The start is the transcript position of the 5' CDS base. The end lies one past the 3' CDS base (half-open),
-    i.e. after the stop codon if the CDS rows include it. The end is the start plus the summed length of the CDS rows.
-    This equals the mapped 3' CDS base plus one, since every CDS row lies inside an exon, also the parts of a stop
-    codon split across exons.
+    i.e. after the stop codon if the CDS records include it. The end is the start plus the summed length of the CDS
+    records. This equals the mapped 3' CDS base plus one, since every CDS record lies inside an exon, also the parts
+    of a stop codon split across exons.
 
-    :param exons: Exon rows of one transcript (DataFrame with Start, End, Strand; 0-based half-open genomic coordinates)
-    :param cds: CDS rows of the same transcript (DataFrame with Start, End)
+    :param exons: Exon records of one transcript (DataFrame with Start, End, Strand; 0-based half-open genomic
+                  coordinates)
+    :param cds: CDS records of the same transcript (DataFrame with Start, End)
     :return: Tuple (start, end) in transcript coordinates, or None if the 5' CDS base lies outside the exons
     """
 
@@ -845,7 +863,10 @@ def get_exon(cds_pos, exon_info):
 
 @dataclass(frozen=True, slots=True)
 class CodonScanRow:
-    """The columns of a row of create_reference_cds that analyze_sequence reads, see schema.records."""
+    """
+    A variant-transcript pair with the columns of create_reference_cds that analyze_sequence reads, see
+    schema.records.
+    """
 
     has_start_codon: bool
     has_stop_codon: bool
@@ -860,10 +881,11 @@ def analyze_sequence(results_df):
     """
     Analyzes reference and alternative CDS for start and stop codons, their positions, and potential premature termination codons (PTCs)
 
-    :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative sequences, per variant,
-                       has_start_codon (whether the CDS starts with an annotated start codon), has_stop_codon (whether
-                       the coding region ends in an annotated stop codon) and cds_frame (the number of bases before the
-                       first complete codon). All codon scans start at the first complete codon.
+    :param results_df: DataFrame containing CDS sequences and exon information for both reference and alternative
+                       sequences, per variant-transcript pair, has_start_codon (whether the CDS starts with an annotated
+                       start codon), has_stop_codon (whether the coding region ends in an annotated stop codon) and
+                       cds_frame (the number of bases before the first complete codon). All codon scans start at the
+                       first complete codon.
     :return: DataFrame with added annotation columns for reference and alternative sequence separately:
              such as position / exon of the annotated start codon (None if there is none or the variant changed it),
              last codon and its validity as stop codon, first in-frame stop codon + position,
@@ -878,7 +900,7 @@ def analyze_sequence(results_df):
 
     # Initialize result columns for both reference and alternative sequence. The loop collects the results per row
     # position in lists. Setting cells of the DataFrame in the loop is slow.
-    results = {"start_codon_exon": [None] * len(df)}  # exon number
+    results = {"start_codon_exon_number": [None] * len(df)}
     for label in ["ref", "alt"]:
         results[f"{label}_last_codon"] = [None] * len(df)
         results[f"{label}_valid_stop"] = [None] * len(df)
@@ -925,7 +947,7 @@ def analyze_sequence(results_df):
 
             # Store results. The exon of the annotated start codon is the same in the ref and the alt CDS.
             if label == "ref" and start_pos is not None:
-                results["start_codon_exon"][idx] = get_exon(start_pos, exon_info)  # exon number
+                results["start_codon_exon_number"][idx] = get_exon(start_pos, exon_info)
             results[f"{label}_last_codon"][idx] = last_codon
             results[f"{label}_valid_stop"][idx] = is_valid_stop
             results[f"{label}_first_stop_codon"][idx] = first_stop
@@ -959,7 +981,7 @@ def starts_with_annotated_start_codon(row, label):
 
 @dataclass(frozen=True, slots=True)
 class StartCodonRow:
-    """The columns of a row of analyze_sequence that start_stop_loss reads, see schema.records."""
+    """A variant-transcript pair with the columns of analyze_sequence that start_stop_loss reads, see schema.records."""
 
     has_start_codon: bool
     ref_cds_seq: str
@@ -999,7 +1021,10 @@ def start_stop_loss(df):
 
 @dataclass(frozen=True, slots=True)
 class SpliceRow:
-    """The columns of a row of extract_ptc that splice_alt_cds_into_transcript reads, see schema.records."""
+    """
+    A variant-transcript pair with the columns of extract_ptc that splice_alt_cds_into_transcript reads, see
+    schema.records.
+    """
 
     transcript_seq: str | None
     ref_cds_seq: str
@@ -1227,7 +1252,7 @@ def classify_rescued_orf(row, start, first_stop):
 
 @dataclass(frozen=True, slots=True)
 class TranscriptScanRow:
-    """The columns of a row of extract_ptc that analyze_transcript reads, see schema.records."""
+    """A variant-transcript pair with the columns of extract_ptc that analyze_transcript reads, see schema.records."""
 
     unknown_reason: str | None
     has_start_codon: bool
@@ -1253,10 +1278,10 @@ def analyze_transcript(results_df):
     at alt_cds_start_in_transcript + cds_frame, through the CDS into the 3'UTR (see classify_first_stop). It replaces alt_has_ptc and stop_loss from analyze_sequence and
     start_stop_loss, which see only the CDS: after a frameshift, the last codon of the alternative CDS is out of frame.
     The comparison with the annotated stop codon needs a reference transcript that, read the same way, stops there
-    (see ends_at_annotated_stop). Rows where it does not, and rows without an alternative transcript, keep those flags.
-    After a start loss, translation starts at the next ATG, in any frame. The flags then come from the first in-frame
-    stop codon after that ATG (see classify_rescued_orf), also on a row whose reference transcript does not stop at the
-    annotated stop codon.
+    (see ends_at_annotated_stop). Variant-transcript pairs where it does not, and pairs without an alternative
+    transcript, keep those flags. After a start loss, translation starts at the next ATG, in any frame. The flags then
+    come from the first in-frame stop codon after that ATG (see classify_rescued_orf), also for a variant-transcript
+    pair whose reference transcript does not stop at the annotated stop codon.
 
     :param results_df: DataFrame containing transcript sequence data and annotations, including start_loss and stop_loss flags,
                        alt_cds_start_in_transcript, has_start_codon, alt_transcript_exons (see
@@ -1276,7 +1301,7 @@ def analyze_transcript(results_df):
     # DataFrame in the loop is slow, so it does so only for alt_has_ptc and stop_loss.
     new_columns = [
         "alt_scan_start_codon_pos",
-        "alt_scan_start_codon_exon",  # for exon number
+        "alt_scan_start_codon_exon_number",
         "alt_scan_first_stop_codon",
         "alt_scan_first_stop_pos",
         "alt_scan_stop_codon_count",
@@ -1296,8 +1321,8 @@ def analyze_transcript(results_df):
         # The scan positions lie in the alt transcript, so its exon lengths give their exon numbers
         exon_info = row.alt_transcript_exons
 
-        # Skip rows with invalid or too-short sequences, or without a CDS position in the transcript. Such a row keeps
-        # the flags from the CDS, unless the alt transcript is unknown.
+        # Skip variant-transcript pairs with invalid or too-short sequences, or without a CDS position in the
+        # transcript. Such a pair keeps the flags from the CDS, unless the alt transcript is unknown.
         if not isinstance(seq, str) or len(seq) < 3 or cds_start is None:
             if row.unknown_reason is None:
                 results["stop_classification"][position] = "alt_cds"
@@ -1328,8 +1353,8 @@ def analyze_transcript(results_df):
         # STOP LOSS readthrough: the in-frame stop codons from the first complete codon on
         else:
             # The comparison needs a reference transcript that reads its first stop codon at the annotated one.
-            # Otherwise, e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the row keeps the flags
-            # from the CDS.
+            # Otherwise, e.g. for a selenocysteine TGA or an annotated stop codon out of frame, the variant-transcript
+            # pair keeps the flags from the CDS.
             stop_loss = row.stop_loss
             results["stop_classification"][position] = "alt_cds"
             if not row.has_stop_codon or ends_at_annotated_stop(row):
@@ -1339,7 +1364,8 @@ def analyze_transcript(results_df):
                 df.at[idx, "stop_loss"] = stop_loss
                 results["stop_classification"][position] = "alt_transcript"
 
-            # only analyze rows flagged with a stop codon loss: skip the others and fill with None values
+            # only analyze variant-transcript pairs flagged with a stop codon loss: skip the others and fill with None
+            # values
             if not stop_loss:
                 continue
 
@@ -1356,7 +1382,7 @@ def analyze_transcript(results_df):
 
         # Store results
         results["alt_scan_start_codon_pos"][position] = start_pos
-        results["alt_scan_start_codon_exon"][position] = start_exon  # for exon number
+        results["alt_scan_start_codon_exon_number"][position] = start_exon
         results["alt_scan_first_stop_codon"][position] = first_stop
         results["alt_scan_first_stop_pos"][position] = first_stop_pos
         results["alt_scan_stop_codon_count"][position] = len(stop_codons)

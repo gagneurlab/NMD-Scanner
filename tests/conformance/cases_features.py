@@ -51,7 +51,7 @@ FIGURE = Layout(
             {"exon_number": 3, "length": 60},
         ],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -93,7 +93,7 @@ CDS_INSIDE_EXON_2 = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 2, "length": 30}],
         "cds_in_transcript": True,
-        "start_codon_exon": 2,
+        "start_codon_exon_number": 2,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -142,7 +142,7 @@ THREE_EXONS = Layout(
             {"exon_number": 3, "length": 30},
         ],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -183,7 +183,7 @@ SINGLE_EXON = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 57}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -225,7 +225,7 @@ EXON_2_OF_13_NT = Layout(
             {"exon_number": 3, "length": 11},
         ],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -266,7 +266,7 @@ UTR_EXON_1_OF_1_NT = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 2, "length": 15}],
         "cds_in_transcript": True,
-        "start_codon_exon": 2,
+        "start_codon_exon_number": 2,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -303,7 +303,7 @@ NO_UTR5 = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 12}, {"exon_number": 2, "length": 9}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -340,7 +340,7 @@ NO_UTR3 = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 12}, {"exon_number": 2, "length": 9}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -382,7 +382,7 @@ RESCUE = Layout(
             {"exon_number": 3, "length": 48},
         ],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -424,7 +424,7 @@ PTC_150 = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 210}, {"exon_number": 2, "length": 6}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -463,7 +463,7 @@ CTG_START = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 68}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -486,22 +486,24 @@ CTG_START = Layout(
     },
 )
 
-# The transcript of CTG_START without start_codon rows, tagged cds_start_NF
+# The transcript of CTG_START without start_codon records, tagged cds_start_NF
 CDS_START_NF = Layout(
     Transcript(("ggg" + CTG_CDS[:100], CTG_CDS[100:] + "ggggg"), start_codon=False, tags=("cds_start_NF",)),
     {
         **CTG_START.ref,
+        "transcript_tags": "cds_start_NF",
         "has_start_codon": False,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "likely_misannotated": True,
     },
 )
 
-# No stop_codon rows, tagged cds_end_NF: the CDS ends in the sense codon TCC at the transcript end
+# No stop_codon records, tagged cds_end_NF: the CDS ends in the sense codon TCC at the transcript end
 CDS_END_NF = Layout(
     Transcript(("gaccATGGCCAAGCTG", "GGCTCC"), stop_codon=False, tags=("cds_end_NF",)),
     {
         **IDS,
+        "transcript_tags": "cds_end_NF",
         "cds_start": per_strand(14, 10),
         "cds_end": per_strand(52, 48),
         "ref_cds_seq": "ATGGCCAAGCTGGGCTCC",
@@ -511,7 +513,7 @@ CDS_END_NF = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 12}, {"exon_number": 2, "length": 6}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TCC",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -534,8 +536,8 @@ CDS_END_NF = Layout(
     },
 )
 
-# The stop_codon rows lie on the sense codon TCC
-STOP_CODON_ROWS_ON_A_SENSE_CODON = Layout(
+# The stop_codon records lie on the sense codon TCC
+STOP_CODON_RECORDS_ON_A_SENSE_CODON = Layout(
     Transcript(("gaccATGGCCAAGCTG", "GGCTCCgccgcc")),
     {
         **IDS,
@@ -548,7 +550,7 @@ STOP_CODON_ROWS_ON_A_SENSE_CODON = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 12}, {"exon_number": 2, "length": 6}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TCC",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -586,7 +588,7 @@ MITOCHONDRIAL_AGA = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 18}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "AGA",
         "ref_valid_stop": False,
         "ref_first_stop_codon": None,
@@ -1018,8 +1020,9 @@ CASES = [
         ruler=Ruler((-8, 0, 12, 27, 57, 82), "CDS"),
     ),
     # Pins the rule of upstream_exon_count "an exon that the variant deletes is not in the mRNA and does not count".
-    # The deleted exon 2 has length 0 in alt_transcript_exons and lies upstream of the PTC exon. The other case
-    # with a deleted exon (coding_region_edges) deletes it in frame, so its row has no PTC and no exon counts.
+    # The deleted exon 2 has length 0 in alt_transcript_exons and lies upstream of the PTC exon. The other case with a
+    # deleted exon (coding_region_edges) deletes it in frame, so its variant-transcript pair has no PTC and no exon
+    # counts.
     Case(
         "deletion_of_a_whole_exon_upstream_of_the_ptc_exon_is_no_upstream_exon",
         """
@@ -1222,7 +1225,7 @@ CASES = [
             "alt_transcript_length": 90,
             "alt_cds_start_in_transcript": 8,
             "alt_scan_start_codon_pos": 8,
-            "alt_scan_start_codon_exon": 1,
+            "alt_scan_start_codon_exon_number": 1,
             "alt_scan_first_stop_codon": "TAG",
             "alt_scan_first_stop_pos": 71,
             "alt_scan_stop_codon_count": 1,
@@ -1244,9 +1247,9 @@ CASES = [
     Case(
         "splice_site_snv_keeps_the_exon_count_and_the_utr_lengths_of_the_ref",
         """
-        G>A destroys the donor GT after exon 1, so the alt transcript is unknown. The row keeps the features of the ref
-        transcript: total_exon_count = 3, utr5_length = 8, utr3_length = 25 and likely_misannotated False. The features
-        of the alt transcript are null.
+        G>A destroys the donor GT after exon 1, so the alt transcript is unknown. The variant-transcript pair keeps the
+        features of the ref transcript: total_exon_count = 3, utr5_length = 8, utr3_length = 25 and likely_misannotated
+        False. The features of the alt transcript are null.
         exon 1: 20 nt, exon 2: 15 nt, exon 3: 55 nt
 
         tx      0        8                                    20                    35                 65            90
@@ -1350,7 +1353,7 @@ CASES = [
         "missense_in_a_cds_at_the_transcript_start_has_no_5utr",
         """
         The CDS starts at the transcript start, so utr5_length is 0. The missense AAG>GAG keeps the annotated stop
-        codon: annotated_stop_distance is 0. Not a PTC row, so ptc_less_than_150nt_to_start is null.
+        codon: annotated_stop_distance is 0. It is not a PTC variant, so ptc_less_than_150nt_to_start is null.
         exon 1: 12 nt, exon 2: 15 nt
 
         tx      0                 12          21    27
@@ -1589,7 +1592,7 @@ CASES = [
     Case(
         "ptc_in_a_cds_start_nf_transcript_has_no_distance_to_the_start_codon",
         """
-        The transcript of the CTG case, without start_codon rows and tagged cds_start_NF. Its start codon lies
+        The transcript of the CTG case, without start_codon records and tagged cds_start_NF. Its start codon lies
         upstream of the CDS, at an unknown distance. So ptc_to_start_codon is null, and ptc_less_than_150nt_to_start
         is null too. Without an annotated start codon, likely_misannotated is True.
         exon 1: 103 nt, exon 2: 73 nt
@@ -1656,9 +1659,9 @@ CASES = [
         ruler=Ruler((0, 3, 103, 162, 168, 176)),
     ),
     Case(
-        "missense_without_stop_codon_rows_is_likely_misannotated",
+        "missense_without_stop_codon_records_is_likely_misannotated",
         """
-        The transcript has no stop_codon rows and is tagged cds_end_NF. The CDS ends in the sense codon TCC at the
+        The transcript has no stop_codon records and is tagged cds_end_NF. The CDS ends in the sense codon TCC at the
         transcript end. has_stop_codon is False, so ref_valid_stop is False, and likely_misannotated is True. Without
         an annotated stop codon, utr3_length and annotated_stop_distance are null.
         exon 1: 16 nt, exon 2: 6 nt
@@ -1706,11 +1709,11 @@ CASES = [
         ruler=Ruler((0, 4, 16, 22)),
     ),
     Case(
-        "missense_with_stop_codon_rows_on_a_sense_codon_is_likely_misannotated",
+        "missense_with_stop_codon_records_on_a_sense_codon_is_likely_misannotated",
         """
-        The stop_codon rows lie on the sense codon TCC. has_stop_codon is True, but ref_valid_stop is False, so
-        likely_misannotated is True. The row keeps the flags from the CDS, whose alt CDS has no in-frame stop codon,
-        so annotated_stop_distance is null.
+        The stop_codon records lie on the sense codon TCC. has_stop_codon is True, but ref_valid_stop is False, so
+        likely_misannotated is True. The variant-transcript pair keeps the flags from the CDS, whose alt CDS has no
+        in-frame stop codon, so annotated_stop_distance is null.
         exon 1: 16 nt, exon 2: 12 nt
 
         tx      0    4                 16      22    28
@@ -1718,7 +1721,7 @@ CASES = [
         alt 5' [gacc ATG GCC GAG CTG]|[GGC TCC gccgcc] 3'
                              ^ A>G
         """,
-        STOP_CODON_ROWS_ON_A_SENSE_CODON,
+        STOP_CODON_RECORDS_ON_A_SENSE_CODON,
         Change("GCC[A>G]AGCTG"),
         {
             "variant_id": "var1",
@@ -1759,8 +1762,9 @@ CASES = [
         "missense_in_a_mitochondrial_cds_ending_in_aga_is_likely_misannotated",
         """
         Ensembl GFF3 on chrM. The CDS ends in AGA, a mitochondrial stop codon, so has_stop_codon is True. The codon
-        scans know only TAA, TAG and TGA. So ref_valid_stop is False, and likely_misannotated is True. The row keeps
-        the flags from the CDS, whose alt CDS has no in-frame stop codon, so annotated_stop_distance is null.
+        scans know only TAA, TAG and TGA. So ref_valid_stop is False, and likely_misannotated is True. The
+        variant-transcript pair keeps the flags from the CDS, whose alt CDS has no in-frame stop codon, so
+        annotated_stop_distance is null.
         exon 1: 18 nt
 
         tx      0                      18

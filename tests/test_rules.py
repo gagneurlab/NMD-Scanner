@@ -40,7 +40,7 @@ from nmd_scanner.schema import records
 
 
 def run_pipeline_on_transcript(
-    tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True, start_codon=True, exon_rows=True
+    tmp_path, strand, exon_seqs, cds_range, variant, stop_codon=True, start_codon=True, exon_records=True
 ):
     """
     Run extract_ptc, add_nmd_features and evaluate_nmd_escape_rules on one synthetic transcript with one variant.
@@ -53,8 +53,8 @@ def run_pipeline_on_transcript(
         transcript has no annotated stop codon, as one tagged cds_end_NF.
     :param start_codon: Whether the first 3 nt of the CDS are an annotated start codon. Without one, the transcript is
         like one tagged cds_start_NF.
-    :param exon_rows: Whether the annotation has the exon rows. Without them, it has only the coding regions.
-    :return: The single result row as a dictionary
+    :param exon_records: Whether the annotation has the exon records. Without them, it has only the coding regions.
+    :return: The single variant-transcript pair of the result, as a dictionary
     """
 
     flank = "C" * 10
@@ -86,16 +86,16 @@ def run_pipeline_on_transcript(
     (tmp_path / "genome.fa").write_text(f">{chrom}\n{genome}\n")
     fasta = Fasta(str(tmp_path / "genome.fa"))
 
-    # Exon rows and the coding regions: CDS rows that include the stop codon, split at the exon boundaries
+    # Exon records and the coding regions: CDS records that include the stop codon, split at the exon boundaries
     coding_end = cds_range[1] + 3 if stop_codon else cds_range[1]
-    rows = []
+    gff3_records = []
     for number, (tx_start, layout_start, length) in enumerate(exons, start=1):
-        rows.append(("exon", number, *to_genome(layout_start, layout_start + length)))
+        gff3_records.append(("exon", number, *to_genome(layout_start, layout_start + length)))
         part_start = max(cds_range[0], tx_start)
         part_end = min(coding_end, tx_start + length)
         if part_start < part_end:
             start, end = to_genome(layout_start + part_start - tx_start, layout_start + part_end - tx_start)
-            rows.append(("CDS", number, start, end))
+            gff3_records.append(("CDS", number, start, end))
     annotation = pd.DataFrame(
         [
             {
@@ -106,11 +106,13 @@ def run_pipeline_on_transcript(
                 "Feature": feature,
                 "exon_number": str(number),
                 "transcript_id": "tx1",
+                "transcript_type": "protein_coding",
+                "transcript_tags": "basic",
                 "gene_id": "gene1",
                 # GFF3 phase: the CDS starts with a complete codon
                 "Frame": "0",
             }
-            for feature, number, start, end in rows
+            for feature, number, start, end in gff3_records
         ]
     )
 
@@ -121,16 +123,16 @@ def run_pipeline_on_transcript(
     if strand == "-":
         ref = str(Seq(ref).reverse_complement())
         alt = str(Seq(alt).reverse_complement())
-    vcf = pd.DataFrame([{"Chromosome": chrom, "Start": start, "End": end, "ID": "var1", "Ref": ref, "Alt": alt}])
+    vcf = pd.DataFrame([{"chrom": chrom, "start": start, "end": end, "variant_id": "var1", "ref": ref, "alt": alt}])
 
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=start_codon, has_stop_codon=stop_codon)
     exons_df = annotation[annotation["Feature"] == "exon"]
-    results = extract_ptc(coding, vcf, fasta, exons_df if exon_rows else exons_df.iloc[:0])
+    results = extract_ptc(coding, vcf, fasta, exons_df if exon_records else exons_df.iloc[:0])
     assert len(results) == 1
-    row = results.iloc[0].to_dict()
-    row.update(add_nmd_features(row))
-    row.update(evaluate_nmd_escape_rules(row))
-    return row
+    pair = results.iloc[0].to_dict()
+    pair.update(add_nmd_features(pair))
+    pair.update(evaluate_nmd_escape_rules(pair))
+    return pair
 
 
 def test_create_reference_cds_using_file():
@@ -281,12 +283,12 @@ def test_create_reference_cds():
     ref_seq = "AAACCCGGGTTTAAA"
     ref_len = len(ref_seq)
 
-    for _, row in result.iterrows():
-        assert row["ref_cds_seq"] == ref_seq
-        assert row["ref_cds_length"] == ref_len
+    for _, pair in result.iterrows():
+        assert pair["ref_cds_seq"] == ref_seq
+        assert pair["ref_cds_length"] == ref_len
 
-    alt_seqs = {row["variant_id"]: row["alt_cds_seq"] for _, row in result.iterrows()}
-    alt_lens = {row["variant_id"]: row["alt_cds_length"] for _, row in result.iterrows()}
+    alt_seqs = {pair["variant_id"]: pair["alt_cds_seq"] for _, pair in result.iterrows()}
+    alt_lens = {pair["variant_id"]: pair["alt_cds_length"] for _, pair in result.iterrows()}
 
     # Variant-specific checks
     assert alt_seqs["var_snp"] == "AAACCTGGGTTTAAA"
@@ -392,28 +394,29 @@ def test_cds_range_in_transcript():
     assert cds_range("+", [(100, 200)], [(50, 150)]) is None
 
 
-def _values(row, columns):
-    """The value of each column of a result row; None means null."""
+def _values(pair, columns):
+    """The value of each column of a variant-transcript pair; None means null."""
     return {
-        column: None if pd.api.types.is_scalar(row[column]) and pd.isna(row[column]) else row[column]
+        column: None if pd.api.types.is_scalar(pair[column]) and pd.isna(pair[column]) else pair[column]
         for column in columns
     }
 
 
 @pytest.mark.parametrize("strand", ["+", "-"])
-def test_extract_ptc_of_a_transcript_without_exon_rows(tmp_path, strand):
+def test_extract_ptc_of_a_transcript_without_exon_records(tmp_path, strand):
     """
-    The only transcript of the variant has no exon rows, only its coding regions. Its row has null transcript columns,
-    and the flags come from the alt CDS. The missense variant AGC>AGA at `x` changes no stop codon.
+    The only transcript of the variant has no exon records, only its coding regions. Its variant-transcript pair has
+    null transcript columns, and the flags come from the alt CDS. The missense variant AGC>AGA at `x` changes no stop
+    codon.
 
            11 nt        10 nt
-    5' [uuuu=======]|[====x===uu] 3'   coding regions only, no exon rows
+    5' [uuuu=======]|[====x===uu] 3'   coding regions only, no exon records
     tx 0    4        11   15  19 21
 
     The drawing is in transcript orientation, also on the minus strand.
     """
-    row = run_pipeline_on_transcript(
-        tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], (4, 16), (15, "C", "A"), exon_rows=False
+    pair = run_pipeline_on_transcript(
+        tmp_path, strand, ["GACCATGGATG", "TAAGCTAAGC"], (4, 16), (15, "C", "A"), exon_records=False
     )
 
     expected = {
@@ -440,7 +443,7 @@ def test_extract_ptc_of_a_transcript_without_exon_rows(tmp_path, strand):
         "likely_misannotated": True,
         "nmd_escape": None,
     }
-    assert _values(row, expected) == expected
+    assert _values(pair, expected) == expected
 
 
 def test_get_exon():
@@ -602,16 +605,16 @@ def test_start_codon_pos_is_the_annotated_start_codon():
 
     result = analyze_sequence(df)
 
-    rows = records(result, StartCodonRow)
-    assert [starts_with_annotated_start_codon(row, "ref") for row in rows] == [True, True, False, False]
-    assert result["start_codon_exon"].tolist() == [1, 1, None, None]
+    pairs = records(result, StartCodonRow)
+    assert [starts_with_annotated_start_codon(pair, "ref") for pair in pairs] == [True, True, False, False]
+    assert result["start_codon_exon_number"].tolist() == [1, 1, None, None]
     # ATG>ACG changes the annotated start codon, so the alt CDS has none
-    assert [starts_with_annotated_start_codon(row, "alt") for row in rows] == [True, False, False, False]
+    assert [starts_with_annotated_start_codon(pair, "alt") for pair in pairs] == [True, False, False, False]
 
 
 def test_splice_alt_cds_into_transcript():
     # Single exon transcripts; the variant lies inside the CDS
-    row = SpliceRow(
+    pair = SpliceRow(
         transcript_seq="TTTAAAGGGCCCGGG",
         ref_cds_seq="AAAGGGCCC",
         alt_cds_seq="AAATTTCCC",
@@ -621,11 +624,11 @@ def test_splice_alt_cds_into_transcript():
         utr3_change=("", ""),
     )
 
-    result = splice_alt_cds_into_transcript(row)
+    result = splice_alt_cds_into_transcript(pair)
     assert result == "TTTAAATTTCCCGGG"
 
     # The 5'UTR repeats the CDS sequence: splice at the CDS position, not at the first match
-    row = SpliceRow(
+    pair = SpliceRow(
         transcript_seq="ATGAAATAACCATGAAATAAGG",
         ref_cds_seq="ATGAAATAA",
         alt_cds_seq="ATGTAATAA",
@@ -634,23 +637,23 @@ def test_splice_alt_cds_into_transcript():
         utr5_change=("", ""),
         utr3_change=("", ""),
     )
-    result = splice_alt_cds_into_transcript(row)
+    result = splice_alt_cds_into_transcript(pair)
     assert result == "ATGAAATAACCATGTAATAAGG"
 
     # The transcript does not hold the CDS sequence at the CDS position
-    assert splice_alt_cds_into_transcript(replace(row, cds_start_in_transcript=10)) is None
+    assert splice_alt_cds_into_transcript(replace(pair, cds_start_in_transcript=10)) is None
     # The CDS position is unknown
-    unknown = replace(row, cds_start_in_transcript=None, cds_end_in_transcript=None)
+    unknown = replace(pair, cds_start_in_transcript=None, cds_end_in_transcript=None)
     assert splice_alt_cds_into_transcript(unknown) is None
 
     # A deletion of TAAG at t17 reaches 1 nt past the stop codon into the 3'UTR, which loses that nt too
-    deletion = replace(row, alt_cds_seq="ATGAAA", utr3_change=("G", ""))
+    deletion = replace(pair, alt_cds_seq="ATGAAA", utr3_change=("G", ""))
     assert splice_alt_cds_into_transcript(deletion) == "ATGAAATAACCATGAAAG"
     # The transcript does not hold the ref 3'UTR bases
     assert splice_alt_cds_into_transcript(replace(deletion, utr3_change=("C", ""))) is None
 
     # An indel at the start codon edge changes the 5'UTR: here CC before the start codon becomes GGG
-    utr5 = replace(row, utr5_change=("CC", "GGG"))
+    utr5 = replace(pair, utr5_change=("CC", "GGG"))
     assert splice_alt_cds_into_transcript(utr5) == "ATGAAATAAGGGATGTAATAAGG"
     # The transcript does not hold the ref 5'UTR bases
     assert splice_alt_cds_into_transcript(replace(utr5, utr5_change=("AC", ""))) is None
@@ -679,11 +682,11 @@ def test_analyze_transcript_without_cds_start_in_transcript():
         ]
     )
 
-    row = analyze_transcript(df).loc[0]
+    pair = analyze_transcript(df).loc[0]
 
-    assert row["alt_scan_start_codon_pos"] is None
-    assert row["alt_scan_stop_codon_count"] is None
-    assert row["alt_scan_stop_codons"] is None
+    assert pair["alt_scan_start_codon_pos"] is None
+    assert pair["alt_scan_stop_codon_count"] is None
+    assert pair["alt_scan_stop_codons"] is None
 
 
 def test_analyze_transcript_reads_from_the_alt_cds_start():
@@ -697,7 +700,7 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
     alt tx  CC ATG AAA CAA CTG TGA GG
             0  2       8       14
     """
-    row = {
+    pair = {
         "unknown_reason": None,
         "transcript_seq": "CCCATGAAATAACTGTGAGG",
         "alt_transcript_seq": "CCATGAAACAACTGTGAGG",
@@ -716,7 +719,7 @@ def test_analyze_transcript_reads_from_the_alt_cds_start():
         "stop_loss": True,
     }
 
-    result = analyze_transcript(pd.DataFrame([row])).loc[0]
+    result = analyze_transcript(pd.DataFrame([pair])).loc[0]
 
     assert result["alt_has_ptc"] == False
     assert result["stop_loss"] == True
@@ -752,15 +755,15 @@ def test_stop_loss_scan_starts_at_the_cds_start(tmp_path, strand, exon_starts):
     bounds = [0] + exon_starts + [len(transcript_seq)]
     exon_seqs = [transcript_seq[start:end] for start, end in zip(bounds, bounds[1:])]
 
-    row = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 31), (31, "T", "C"))
+    pair = run_pipeline_on_transcript(tmp_path, strand, exon_seqs, (13, 31), (31, "T", "C"))
 
-    assert row["stop_loss"] == True
-    assert row["cds_start_in_transcript"] == 13
-    assert row["alt_cds_start_in_transcript"] == 13
-    assert row["alt_scan_start_codon_pos"] == 13
-    assert row["alt_scan_first_stop_codon"] == "TAG"
-    assert row["alt_scan_first_stop_pos"] == 40
-    assert row["alt_scan_stop_codons"] == [{"position": 40, "codon": "TAG"}]
+    assert pair["stop_loss"] == True
+    assert pair["cds_start_in_transcript"] == 13
+    assert pair["alt_cds_start_in_transcript"] == 13
+    assert pair["alt_scan_start_codon_pos"] == 13
+    assert pair["alt_scan_first_stop_codon"] == "TAG"
+    assert pair["alt_scan_first_stop_pos"] == 40
+    assert pair["alt_scan_stop_codons"] == [{"position": 40, "codon": "TAG"}]
 
 
 @pytest.mark.parametrize(
@@ -816,8 +819,8 @@ _FLANK = "CCCCCCCCCC"
 
 def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_stop_codon=False):
     """
-    Runs extract_ptc on the exon rows and the coding regions (CDS rows that include the stop codon) of the synthetic
-    transcript, and returns the result indexed by variant_id.
+    Runs extract_ptc on the exon records and the coding regions (CDS records that include the stop codon) of the
+    synthetic transcript, and returns the result indexed by variant_id.
 
     :param strand: strand of the transcript; on the minus strand, the genome is the reverse complement
     :param has_stop_codon: whether the coding region ends in the stop codon. Without it, the transcript ends with its
@@ -825,7 +828,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
     :param variants: {variant_id: (position, alt)}: SNVs at a 0-based position in the coding region (CDS plus stop
         codon), with the alt base in transcript orientation
     :param split_stop_codon: split the stop codon across an intron. Its first 2 bases end exon 2, its last base
-        starts exon 3 and is the only base of the CDS row of exon 3.
+        starts exon 3 and is the only base of the CDS record of exon 3.
     """
     stop = _STOP[:2] + _INTRON + _STOP[2:] if split_stop_codon else _STOP
     genome = _FLANK + _UTR5 + _CDS[:30] + _INTRON + _CDS[30:] + stop + _UTR3 + _FLANK
@@ -833,18 +836,18 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
     exon2_start = cds_start + 30 + len(_INTRON)
     stop_start = exon2_start + 18
     exon3_start = stop_start + 2 + len(_INTRON)
-    rows = [("exon", 1, len(_FLANK), cds_start + 30), ("CDS", 1, cds_start, cds_start + 30)]
+    gff3_records = [("exon", 1, len(_FLANK), cds_start + 30), ("CDS", 1, cds_start, cds_start + 30)]
     if split_stop_codon:
-        rows += [
+        gff3_records += [
             ("exon", 2, exon2_start, stop_start + 2),
             ("exon", 3, exon3_start, exon3_start + 1 + len(_UTR3)),
             ("CDS", 2, exon2_start, stop_start + 2),
             ("CDS", 3, exon3_start, exon3_start + 1),
         ]
     elif has_stop_codon:
-        rows += [("exon", 2, exon2_start, stop_start + 3 + len(_UTR3)), ("CDS", 2, exon2_start, stop_start + 3)]
+        gff3_records += [("exon", 2, exon2_start, stop_start + 3 + len(_UTR3)), ("CDS", 2, exon2_start, stop_start + 3)]
     else:
-        rows += [("exon", 2, exon2_start, stop_start), ("CDS", 2, exon2_start, stop_start)]
+        gff3_records += [("exon", 2, exon2_start, stop_start), ("CDS", 2, exon2_start, stop_start)]
 
     def genomic(pos):
         # 0-based plus strand position of a position in the coding region
@@ -857,7 +860,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
     if strand == "-":
         length = len(genome)
         genome = str(Seq(genome).reverse_complement())
-        rows = [(f, e, length - end, length - start) for f, e, start, end in rows]
+        gff3_records = [(f, e, length - end, length - start) for f, e, start, end in gff3_records]
         snvs = [(v, length - 1 - g, str(Seq(r).complement()), str(Seq(a).complement())) for v, g, r, a in snvs]
 
     (tmp_path / "genome.fa").write_text(f">chrT\n{genome}\n")
@@ -871,14 +874,16 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
                 "Feature": f,
                 "exon_number": str(e),
                 "transcript_id": "tx",
+                "transcript_type": "protein_coding",
+                "transcript_tags": None,
                 "gene_id": "gene",
                 "Frame": "0",
             }
-            for f, e, start, end in rows
+            for f, e, start, end in gff3_records
         ]
     )
     vcf = pd.DataFrame(
-        [{"Chromosome": "chrT", "Start": g, "End": g + 1, "ID": v, "Ref": r, "Alt": a} for v, g, r, a in snvs]
+        [{"chrom": "chrT", "start": g, "end": g + 1, "variant_id": v, "ref": r, "alt": a} for v, g, r, a in snvs]
     )
     fasta = Fasta(str(tmp_path / "genome.fa"))
     coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=has_stop_codon)
@@ -906,10 +911,11 @@ def test_extract_ptc_stop_codon_change(tmp_path, strand):
 
 
 @pytest.mark.parametrize("strand", ["+", "-"])
-def test_extract_ptc_gives_a_row_per_vcf_record(tmp_path, strand):
+def test_extract_ptc_gives_a_result_per_vcf_record(tmp_path, strand):
     """
     Two VCF records, var1 and var2, have the same CHROM, POS, REF and ALT: TGG>TAG at `x`, CDS position 46. The PTC
-    TAG at 45 lies upstream of the stop codon `s` at 48. Each record gets its own row, with its ID as variant_id.
+    TAG at 45 lies upstream of the stop codon `s` at 48. Each record gives its own variant-transcript pair, with its ID
+    as variant_id.
 
             39 nt            36 nt
     5' [uuu==========]|[======x=sssuuuu] 3'
@@ -922,7 +928,7 @@ def test_extract_ptc_gives_a_row_per_vcf_record(tmp_path, strand):
     assert list(result.index) == ["var1", "var2"]
     assert result["alt_has_ptc"].tolist() == [True, True]
     assert result["alt_first_stop_pos"].tolist() == [45, 45]
-    # Apart from variant_id, the two rows are the same
+    # Apart from variant_id, the two variant-transcript pairs are the same
     assert _values(result.loc["var1"], result.columns) == _values(result.loc["var2"], result.columns)
 
 
@@ -931,7 +937,7 @@ def test_extract_ptc_skips_records_with_alt_dot_or_star(tmp_path, strand, caplog
     """
     Three VCF records change TGG at `x`, CDS position 46: var1 has ALT ".", var2 has ALT "*", and var3 is TGG>TAG.
     ALT "." means no alternate allele, and "*" stands for the bases that an overlapping deletion removes. So var1 and
-    var2 change no base. They get no row, and a warning counts them. var3 gives the PTC TAG at 45, upstream of the
+    var2 change no base. They give no result, and a warning counts them. var3 gives the PTC TAG at 45, upstream of the
     stop codon `s` at 48.
 
             39 nt            36 nt
@@ -956,8 +962,8 @@ def test_extract_ptc_skips_records_with_alt_dot_or_star(tmp_path, strand, caplog
 
 
 def test_extract_ptc_needs_the_coding_regions():
-    # CDS and stop_codon rows without has_stop_codon: not the coding regions
-    rows = pd.DataFrame(
+    # CDS and stop_codon records without has_stop_codon: not the coding regions
+    annotation = pd.DataFrame(
         {
             "Chromosome": ["chrT", "chrT"],
             "Start": [100, 150],
@@ -969,7 +975,25 @@ def test_extract_ptc_needs_the_coding_regions():
         }
     )
     with pytest.raises(ValueError, match="has_stop_codon"):
-        extract_ptc(rows, vcf=None, fasta=None, exons_df=None)
+        extract_ptc(annotation, vcf=None, fasta=None, exons_df=None)
+
+
+def test_extract_ptc_needs_the_transcript_type_and_the_transcript_tags():
+    coding = pd.DataFrame(
+        {
+            "Chromosome": ["chrT"],
+            "Start": [100],
+            "End": [150],
+            "Strand": ["+"],
+            "Feature": ["CDS"],
+            "exon_number": ["1"],
+            "transcript_id": ["tx"],
+            "has_start_codon": [True],
+            "has_stop_codon": [True],
+        }
+    )
+    with pytest.raises(ValueError, match="no transcript_type and no transcript_tags column"):
+        extract_ptc(coding, vcf=None, fasta=None, exons_df=None)
 
 
 # drop_symbolic_alleles: the records that extract_ptc skips
@@ -1018,7 +1042,7 @@ def test_drop_missing_alleles_keeps_other_alleles(alt, caplog):
 
 
 def _join_cds():
-    """CDS rows in an order that is not sorted by Chromosome, and one on the minus strand."""
+    """CDS records in an order that is not sorted by Chromosome, and one on the minus strand."""
     return pd.DataFrame(
         {
             "Chromosome": ["chr2", "chr1", "chr1"],
@@ -1030,10 +1054,13 @@ def _join_cds():
     )
 
 
-def _join_vcf(rows):
+def _join_vcf(variants):
     """Variants from (Chromosome, Start, End, ID) tuples."""
     return pd.DataFrame(
-        [{"Chromosome": c, "Start": start, "End": end, "ID": i, "Ref": "N", "Alt": "A"} for c, start, end, i in rows]
+        [
+            {"Chromosome": c, "Start": start, "End": end, "ID": i, "Ref": "N", "Alt": "A"}
+            for c, start, end, i in variants
+        ]
     )
 
 
@@ -1050,7 +1077,7 @@ def test_join_variants_to_cds_uses_half_open_intervals():
             ("chr1", 199, 200, "last_base"),
             ("chr1", 95, 105, "deletion_over_cds_start"),
             ("chr1", 195, 210, "deletion_over_cds_end"),
-            ("chr1", 250, 260, "between_cds_rows"),
+            ("chr1", 250, 260, "between_cds_records"),
         ]
     )
     joined = join_variants_to_cds(_join_cds(), vcf)
@@ -1116,7 +1143,9 @@ def test_join_variants_to_cds_suffixes_the_variant_columns_that_cds_df_has_too()
 
 @pytest.mark.parametrize("reverse", [False, True], ids=["pairs_of_polars_bio", "reversed_pairs"])
 def test_join_variants_to_cds_order(monkeypatch, reverse):
-    """CDS rows in the order of cds_df; the variants of one CDS row by Start, then End descending, then VCF order."""
+    """
+    CDS records in the order of cds_df; the variants of one CDS record by Start, then End descending, then VCF order.
+    """
     if reverse:
         # polars-bio gives the ties in VCF order already, so only reversed pairs test the last sort key
         overlap = nmd_scanner.rules.pb.overlap
@@ -1172,15 +1201,15 @@ def test_join_variants_to_cds_rejects_an_end_above_the_limit_of_polars_bio(side)
         join_variants_to_cds(cds, vcf)
 
 
-def test_join_variant_windows_reaches_3_bases_past_the_coding_row():
+def test_join_variant_windows_reaches_3_bases_past_the_cds_record():
     """
-    A variant joins a coding row if its window comes within 3 bases of it: 2 bases for the splice dinucleotide, and 1
+    A variant joins a CDS record if its window comes within 3 bases of it: 2 bases for the splice dinucleotide, and 1
     more for an insertion right next to it. `w` marks a window base that joins, `x` one that does not.
 
     genomic  96 97                100                200    202 203
              x  w   ..........    [==================]    ..  w  x
 
-    The joined rows keep the coordinates of the coding row in Start and End, and those of the VCF record in
+    The joined table keeps the coordinates of the CDS record in Start and End, and those of the VCF record in
     Start_variant and End_variant.
     """
     cds = pd.DataFrame({"Chromosome": ["chr1"], "Start": [100], "End": [200], "transcript_id": ["tx"]})

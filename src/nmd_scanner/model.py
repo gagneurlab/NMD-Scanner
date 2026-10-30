@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 def add_nmd_efficiency_prediction(results: pd.DataFrame) -> pd.DataFrame:
     """
     Return a copy of ``results`` with the column nmd_efficiency_prediction after nmd_efficiency_prediction_status. It holds the NMD efficiency
-    that the model predicts for the row.
+    that the model predicts for each variant-transcript pair.
 
-    The model predicts only the rows with nmd_efficiency_prediction_status "ok". In the other rows, nmd_efficiency_prediction is NaN. The column
-    has dtype float64, also for zero rows. ``results`` is not changed. ``annotate`` calls this function unless
-    ``prediction=False``.
+    The model predicts only the variant-transcript pairs with nmd_efficiency_prediction_status "ok". For the other
+    variant-transcript pairs, nmd_efficiency_prediction is NaN. The column has dtype float64, also for zero rows.
+    ``results`` is not changed. ``annotate`` calls this function unless ``prediction=False``.
 
     :param results: DataFrame with nmd_efficiency_prediction_status and the columns of MODEL_INPUTS, e.g. from
         ``add_features_and_rules``. Other columns stay as they are.
@@ -44,11 +44,11 @@ def add_nmd_efficiency_prediction(results: pd.DataFrame) -> pd.DataFrame:
     counts = status.value_counts()
     for value in PREDICTION_STATUSES:
         if counts.get(value, 0) > 0:
-            logger.info("%d rows with nmd_efficiency_prediction_status %s", counts[value], value)
+            logger.info("%d variant-transcript pairs with nmd_efficiency_prediction_status %s", counts[value], value)
 
     ok = (status == "ok").to_numpy(dtype=bool, na_value=False)
     prediction = np.full(len(results), np.nan)
-    # Without a row to predict, the session does not run
+    # Without a variant-transcript pair to predict, the session does not run
     if ok.any():
         # The bool inputs become 0.0 and 1.0. The output is float32, with shape [N, 1].
         inputs = results.loc[ok, MODEL_INPUTS].to_numpy(dtype=np.float64)

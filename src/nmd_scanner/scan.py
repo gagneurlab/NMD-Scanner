@@ -9,11 +9,10 @@ import numpy as np
 import pandas as pd
 import polars as pl
 from Bio.Seq import Seq
-from pyfaidx import Fasta
 
 from nmd_scanner._polars_bio import pb
 
-# Create the functions used for reading in the files (VCF, GFF3, FASTA)
+# Create the functions used for reading in the files (VCF, GFF3)
 
 GFF3_SUFFIXES = (".gff3", ".gff3.gz", ".gff", ".gff.gz")
 
@@ -35,18 +34,20 @@ def read_vcf(vcf_path):
 
     """
     Reads a VCF file, plain or gzip-compressed, with polars-bio into a pandas DataFrame with the
-    columns Chromosome, Start, End, ID, Ref and Alt, one row per record in file order, and a
-    RangeIndex. QUAL, FILTER and INFO are not read.
+    columns chrom, start, end, variant_id, ref and alt, one row per record in file order, and a
+    RangeIndex. These are the names of the output columns (see schema.PTC_COLUMN_KINDS). QUAL,
+    FILTER and INFO are not read.
 
-    Start and End are 0-based half-open: Start is POS - 1, and End is Start plus the length of REF,
-    also for a symbolic allele with an INFO END. Every other field stays text as written, e.g.
-    ``01``, ``007`` and ``NA``. polars-bio returns ``.`` in ID and ALT as an empty string, which
-    becomes ``.`` again: a VCF field is never empty.
+    start and end are 0-based half-open: start is POS - 1, and end is start plus the length of REF,
+    also for a symbolic allele with an INFO END. variant_id is the ID of the record. Every other
+    field stays text as written, e.g. ``01``, ``007`` and ``NA``. polars-bio returns ``.`` in ID and
+    ALT as an empty string. In variant_id it becomes null, because ``.`` marks a missing value in a
+    VCF. In alt it becomes ``.`` again: a VCF field is never empty.
 
     The VCF needs its header, at least the ``##fileformat`` and ``#CHROM`` lines. It must be
     left-normalized and single-allelic (one ALT allele per record), e.g. produced by
     ``bcftools norm -m- -f reference.fa``. Multi-allelic records are rejected because the
-    downstream variant application assumes exactly one ALT allele per row.
+    downstream variant application assumes exactly one ALT allele per record.
 
     polars-bio rejects some files that VCF 4.3 allows, and so does read_vcf: a file with an empty
     last line, a file that starts with a UTF-8 byte order mark, and a record with POS 0.
@@ -66,13 +67,13 @@ def read_vcf(vcf_path):
         df = (
             pb.scan_vcf(os.fspath(vcf_path), info_fields=[], use_zero_based=True)
             .select(
-                pl.col("chrom").alias("Chromosome"),
-                pl.col("start").cast(pl.Int64).alias("Start"),
+                pl.col("chrom"),
+                pl.col("start").cast(pl.Int64),
                 # not the end polars-bio gives, which follows INFO END for a symbolic allele
-                (pl.col("start").cast(pl.Int64) + pl.col("ref").str.len_chars().cast(pl.Int64)).alias("End"),
-                pl.col("id").replace("", ".").alias("ID"),
-                pl.col("ref").alias("Ref"),
-                pl.col("alt").replace("", ".").alias("Alt"),
+                (pl.col("start").cast(pl.Int64) + pl.col("ref").str.len_chars().cast(pl.Int64)).alias("end"),
+                pl.col("id").replace("", None).alias("variant_id"),
+                pl.col("ref"),
+                pl.col("alt").replace("", "."),
             )
             .collect()
             .to_pandas()
@@ -90,7 +91,7 @@ def read_vcf(vcf_path):
     # rest of the pipeline assumes one. polars-bio joins the ALT alleles of a record with "|", which
     # its documentation does not say. A symbolic allele (<...>) and the mate of a breakend ([...[ or
     # ]...]) may contain "|" themselves, so their text is removed first.
-    alleles = df["Alt"].str.replace(r"<[^>]*>", "<>", regex=True).str.replace(r"[\[\]][^\[\]]*[\[\]]", "[]", regex=True)
+    alleles = df["alt"].str.replace(r"<[^>]*>", "<>", regex=True).str.replace(r"[\[\]][^\[\]]*[\[\]]", "[]", regex=True)
     multiallelic = alleles.str.contains("|", regex=False)
     if multiallelic.any():
         n_multiallelic = int(multiallelic.sum())
@@ -122,13 +123,13 @@ def detect_annotation_format(path):
 
 def read_annotation(path, fasta, reassign_exons=False):
     """
-    Reads a GFF3 gene annotation file into a pandas DataFrame with the exon rows and the coding
+    Reads a GFF3 gene annotation file into a pandas DataFrame with the exon records and the coding
     regions that ``rules.extract_ptc`` takes (see ``read_gff3``).
 
-    The coding regions are the CDS rows: they include the stop codon, one row per transcript and
+    The coding regions are the CDS records: they include the stop codon, one row per transcript and
     exon. On them, the column has_start_codon says whether the coding region of the transcript
     starts with an annotated start codon, and has_stop_codon whether it ends in an annotated stop
-    codon. On the exon rows, both are NA.
+    codon. On the exon records, both are NA.
 
     The format is checked from the filename suffix (``.gff3`` or ``.gff``, gzip-compressed or not).
 
@@ -149,50 +150,51 @@ def read_annotation(path, fasta, reassign_exons=False):
 
 def read_gff3(gff3_path, fasta):
     """
-    Reads a GFF3 file into a pandas DataFrame with the exon rows and the coding regions that
+    Reads a GFF3 file into a pandas DataFrame with the exon records and the coding regions that
     ``rules.extract_ptc`` takes.
 
-    Two GFF3 flavors are supported. The flavor is detected from the attributes of the rows that
-    ``_read_gff3_rows`` reads, so gene_type and transcript_type (GENCODE) or biotype (Ensembl) must
-    be on the transcript rows, not only on the gene rows:
+    Two GFF3 flavors are supported. The flavor is detected from the attributes of the records that
+    ``_read_gff3_records`` reads, so gene_type and transcript_type (GENCODE) or biotype (Ensembl) must
+    be on the transcript records, not only on the gene records:
 
-    - GENCODE: every feature row carries ``gene_id``/``transcript_id`` directly, and they are kept
+    - GENCODE: every record carries ``gene_id``/``transcript_id`` directly, and they are kept
       (e.g. hg19 lift37 has ``ENST00000477874.1_2`` there but ``ENST00000477874.1`` in ``ID``).
       Only chrY PAR transcripts reuse the chrX value on that attribute (the "_PAR_Y" suffix only
       shows up in ``ID``/``Parent``), so for those the ``ID``/``Parent`` hierarchy gives
       ``gene_id``/``transcript_id``.
-    - Ensembl: ``gene_id``/``transcript_id`` are never given directly on exon/CDS rows and are
-      resolved from the ``ID``/``Parent`` hierarchy (``gene:``/``transcript:`` prefixed). Exon rows
-      carry their number as ``rank``; a CDS row takes the number of the exon it lies in. Without
-      ``rank``, ``compute_exon_numbers`` computes the numbers.
+    - Ensembl: ``gene_id``/``transcript_id`` are never given directly on exon/CDS records and are
+      resolved from the ``ID``/``Parent`` hierarchy (``gene:``/``transcript:`` prefixed). Exon
+      records carry their number as ``rank``; a CDS record takes the number of the exon it lies in.
+      Without ``rank``, ``compute_exon_numbers`` computes the numbers.
 
-    The coding regions are the CDS rows. A GFF3 CDS includes the start and the stop codon, so the
-    result has no start_codon or stop_codon rows. On the CDS rows, the column has_start_codon says
-    whether the coding region of the transcript starts with an annotated start codon, and
-    has_stop_codon whether it ends in an annotated stop codon. On the exon rows, both are NA. The two
-    flavors get the coding regions and the two columns as follows:
+    The coding regions are the CDS records. A GFF3 CDS includes the start and the stop codon, so
+    the result has no start_codon or stop_codon records. On the CDS records, the column
+    has_start_codon says whether the coding region of the transcript starts with an annotated start
+    codon, and has_stop_codon whether it ends in an annotated stop codon. On the exon records, both
+    are NA. The two flavors get the coding regions and the two columns as follows:
 
-    - GENCODE: has_start_codon is True if the transcript has start_codon rows. A start codon can be
-      a non-ATG codon such as CTG. A cds_start_NF transcript has none. has_stop_codon is True if the
-      transcript has stop_codon rows. A few cds_end_NF transcripts without stop_codon rows have a
-      CDS that ends in a complete stop codon; ``_trim_cds_end_nf_stop_codons`` removes it from the
-      CDS.
-    - Ensembl: the GFF3 has no start_codon or stop_codon rows. has_start_codon comes from the first
-      3 CDS bases in ``fasta`` (``_has_start_codon_from_sequence``), and has_stop_codon from the
-      last 3 (``_has_stop_codon_from_sequence``).
+    - GENCODE: has_start_codon is True if the transcript has start_codon records. A start codon can
+      be a non-ATG codon such as CTG. A cds_start_NF transcript has none. has_stop_codon is True if
+      the transcript has stop_codon records. A few cds_end_NF transcripts without stop_codon
+      records have a CDS that ends in a complete stop codon; ``_trim_cds_end_nf_stop_codons``
+      removes it from the CDS.
+    - Ensembl: the GFF3 has no start_codon or stop_codon records. has_start_codon comes from the
+      first 3 CDS bases in ``fasta`` (``_has_start_codon_from_sequence``), and has_stop_codon from
+      the last 3 (``_has_stop_codon_from_sequence``).
 
-    The file is read with polars-bio (see ``_read_gff3_rows``), plain or gzip-compressed. Only the
+    The file is read with polars-bio (see ``_read_gff3_records``), plain or gzip-compressed. Only the
     attributes in ``GFF3_ATTRIBUTES`` are read.
 
     :param gff3_path: Path to the GFF3 file
     :param fasta: Reference genome (pyfaidx.Fasta object)
-    :return: DataFrame with the exon and CDS rows in file order and a RangeIndex, the columns
+    :return: DataFrame with the exon and CDS records in file order and a RangeIndex, the columns
         Chromosome, Source, Feature, Start, End, Score, Strand, Frame, has_start_codon,
-        has_stop_codon, gene_id and transcript_id, and the other attributes of ``GFF3_ATTRIBUTES``
-        that the file has, except ID and Parent. exon_number (nullable integer) is there for an
-        Ensembl GFF3, and for a GENCODE GFF3 that has the attribute.
+        has_stop_codon, gene_id, transcript_id, transcript_type and transcript_tags (see
+        ``_add_transcript_attributes``), and the other attributes of ``GFF3_ATTRIBUTES`` that the
+        file has, except ID and Parent. exon_number (nullable integer) is there for an Ensembl GFF3,
+        and for a GENCODE GFF3 that has the attribute.
     :raises ValueError: if the file has no ID or Parent attribute, e.g. because it is a GTF, if its
-        flavor is neither GENCODE nor Ensembl, or if an exon or CDS row breaks a rule of
+        flavor is neither GENCODE nor Ensembl, or if an exon or CDS record breaks a rule of
         ``_check_strand_and_phase`` or ``_check_cds_in_exons``
     """
     if not os.path.exists(gff3_path):
@@ -201,12 +203,12 @@ def read_gff3(gff3_path, fasta):
     with open(gff3_path, "rb"):
         pass
 
-    df = _read_gff3_rows(gff3_path)
+    df = _read_gff3_records(gff3_path)
     columns = set(df.columns)
     if not {"ID", "Parent"} & columns:
-        # polars-bio reads a GTF as GFF3 rows without attributes
+        # polars-bio reads a GTF as GFF3 records without attributes
         raise ValueError(
-            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: no row has an ID or Parent attribute, "
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: no record has an ID or Parent attribute, "
             "e.g. because it is a GTF."
         )
 
@@ -215,21 +217,21 @@ def read_gff3(gff3_path, fasta):
         _check_strand_and_phase(df, gff3_path)
         _check_cds_in_exons(df, gff3_path)
         df = _trim_cds_end_nf_stop_codons(df, fasta)
-        # the CDS includes the stop codon; the stop_codon rows only say whether there is one
+        # the CDS includes the stop codon; the stop_codon records only say whether there is one
         is_stop = df["Feature"] == "stop_codon"
         if not is_stop.any() and (df["Feature"] == "CDS").any():
             logger.warning(
-                "No stop_codon rows found next to the CDS rows: every transcript is treated as having no annotated "
-                "stop codon (no 3'UTR length, no stop codon distance, every in-frame stop is premature). "
-                "A GENCODE GFF3 marks the stop codons with stop_codon rows."
+                "No stop_codon records found next to the CDS records: every transcript is treated as having no "
+                "annotated stop codon (no 3'UTR length, no stop codon distance, every in-frame stop is premature). "
+                "A GENCODE GFF3 marks the stop codons with stop_codon records."
             )
-        # the CDS starts with the start codon; the start_codon rows only say whether there is one
+        # the CDS starts with the start codon; the start_codon records only say whether there is one
         is_start = df["Feature"] == "start_codon"
         if not is_start.any() and (df["Feature"] == "CDS").any():
             logger.warning(
-                "No start_codon rows found next to the CDS rows: every transcript is treated as having no annotated "
-                "start codon (no start loss, no start codon position, no PTC distance to the start codon). "
-                "A GENCODE GFF3 marks the start codons with start_codon rows."
+                "No start_codon records found next to the CDS records: every transcript is treated as having no "
+                "annotated start codon (no start loss, no start codon position, no PTC distance to the start codon). "
+                "A GENCODE GFF3 marks the start codons with start_codon records."
             )
         stop_transcripts = df.loc[is_stop, "transcript_id"]
         start_transcripts = df.loc[is_start, "transcript_id"]
@@ -249,7 +251,7 @@ def read_gff3(gff3_path, fasta):
 
     # ID/Parent are GFF3 structural columns; _resolve_ids_via_hierarchy has used them by this
     # point. Drop them so a stray "ID" column doesn't collide with the unrelated "ID" column
-    # read_vcf uses for the VCF record ID once CDS rows are joined to it.
+    # extract_ptc uses for the VCF record ID once CDS records are joined to it.
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
     return df.reset_index(drop=True)
@@ -257,56 +259,58 @@ def read_gff3(gff3_path, fasta):
 
 def _check_strand_and_phase(df, gff3_path):
     """
-    Raises a ValueError if an exon or CDS row has a strand other than + or -, or if a CDS row has a
-    phase (Frame) other than 0, 1 or 2. The analysis reads the strand of each transcript and the
-    phase of its 5'-most CDS row, and GFF3 requires a phase on each CDS row. The error gives the
-    count of such rows and names the transcript of the first one, in file order.
+    Raises a ValueError if an exon or CDS record has a strand other than + or -, or if a CDS
+    record has a phase (Frame) other than 0, 1 or 2. The analysis reads the strand of each
+    transcript and the phase of its 5'-most CDS record, and GFF3 requires a phase on each CDS
+    record. The error gives the count of such records and names the transcript of the first one,
+    in file order.
 
-    :param df: Rows of the GFF3 (DataFrame) with Chromosome, Feature, Start, End, Strand, Frame and
-        transcript_id, as the normalization of its flavor gives them
+    :param df: Records of the GFF3 (DataFrame) with Chromosome, Feature, Start, End, Strand, Frame
+        and transcript_id, as the normalization of its flavor gives them
     :param gff3_path: Path to the GFF3 file, for the error message
-    :raises ValueError: for such a row
+    :raises ValueError: for such a record
     """
     path = os.fspath(gff3_path)
-    rows = df[df["Feature"].isin(["exon", "CDS"])]
-    unstranded = rows[~rows["Strand"].isin(["+", "-"])]
+    exon_and_cds = df[df["Feature"].isin(["exon", "CDS"])]
+    unstranded = exon_and_cds[~exon_and_cds["Strand"].isin(["+", "-"])]
     if not unstranded.empty:
         first = unstranded.iloc[0]
         raise ValueError(
-            f"Cannot use {path!r}: {len(unstranded)} exon or CDS row(s) have a strand other than + or -. The first "
-            f"is {_where(first)}, with strand {first['Strand']!r}. NMD-Scanner needs strand + or - on each exon and "
-            "CDS row."
+            f"Cannot use {path!r}: {len(unstranded)} exon or CDS record(s) have a strand other than + or -. The "
+            f"first is {_where(first)}, with strand {first['Strand']!r}. NMD-Scanner needs strand + or - on each "
+            "exon and CDS record."
         )
-    cds = rows[rows["Feature"] == "CDS"]
+    cds = exon_and_cds[exon_and_cds["Feature"] == "CDS"]
     unphased = cds[~cds["Frame"].isin(["0", "1", "2"])]
     if not unphased.empty:
         first = unphased.iloc[0]
         raise ValueError(
-            f"Cannot use {path!r}: {len(unphased)} CDS row(s) have a phase other than 0, 1 or 2. The first is "
-            f"{_where(first)}, with phase {first['Frame']!r}. GFF3 requires a phase on each CDS row."
+            f"Cannot use {path!r}: {len(unphased)} CDS record(s) have a phase other than 0, 1 or 2. The first is "
+            f"{_where(first)}, with phase {first['Frame']!r}. GFF3 requires a phase on each CDS record."
         )
 
 
 def _check_cds_in_exons(df, gff3_path):
     """
-    Raises a ValueError if a CDS row does not lie inside an exon row of its transcript, i.e. if no exon row of the
-    transcript, on the same chromosome, starts at or before the CDS row and ends at or after it. The analysis reads
-    the CDS bases from the exons of the transcript. CDS rows that share bases are allowed, e.g. the two CDS rows at a
-    ribosomal slippage site. The check skips a transcript without exon rows: the output columns have a null case for it.
-    The error gives the count of such rows and names the first one, in file order.
+    Raises a ValueError if a CDS record does not lie inside an exon record of its transcript, i.e. if no exon
+    record of the transcript, on the same chromosome, starts at or before the CDS record and ends at or after it.
+    The analysis reads the CDS bases from the exons of the transcript. CDS records that share bases are allowed, e.g.
+    the two CDS records at a ribosomal slippage site. The check skips a transcript without exon records: the output
+    columns have a null case for it. The error gives the count of such records and names the first one, in file
+    order.
 
-    :param df: Rows of the GFF3 (DataFrame) with Chromosome, Feature, Start, End and transcript_id, as the
+    :param df: Records of the GFF3 (DataFrame) with Chromosome, Feature, Start, End and transcript_id, as the
         normalization of its flavor gives them
     :param gff3_path: Path to the GFF3 file, for the error message
-    :raises ValueError: for such a row
+    :raises ValueError: for such a record
     """
     key = ["Chromosome", "transcript_id"]
     exons = df.loc[df["Feature"] == "exon", [*key, "Start", "End"]].sort_values([*key, "Start"])
-    # The largest End of the exon rows of the transcript that start at or before each exon row
+    # The largest End of the exon records of the transcript that start at or before each exon record
     exons["reach"] = exons.groupby(key, sort=False)["End"].cummax()
     cds = df.loc[df["Feature"] == "CDS", [*key, "Start", "End"]]
     cds = cds[cds["transcript_id"].isin(exons["transcript_id"])]
-    # Each CDS row takes the reach of the last exon row of its transcript that starts at or before it
+    # Each CDS record takes the reach of the last exon record of its transcript that starts at or before it
     reach = pd.merge_asof(
         cds.assign(row=cds.index).sort_values("Start"),
         exons[[*key, "Start", "reach"]].sort_values("Start", kind="stable"),
@@ -317,17 +321,17 @@ def _check_cds_in_exons(df, gff3_path):
     if len(outside):
         first = df.loc[outside[0]]
         raise ValueError(
-            f"Cannot use {os.fspath(gff3_path)!r}: {len(outside)} CDS row(s) do not lie inside an exon row of their "
-            f"transcript. The first is {_where(first)}. NMD-Scanner needs each CDS row inside an exon row of its "
-            "transcript."
+            f"Cannot use {os.fspath(gff3_path)!r}: {len(outside)} CDS record(s) do not lie inside an exon record "
+            f"of their transcript. The first is {_where(first)}. NMD-Scanner needs each CDS record inside an exon "
+            "record of its transcript."
         )
 
 
-def _where(row):
-    """The feature, transcript and location (1-based, as in the GFF3) of a row, for an error message."""
+def _where(record):
+    """The type, transcript and location (1-based, as in the GFF3) of a record, for an error message."""
     return (
-        f"the {row['Feature']} row of transcript {row['transcript_id']} at "
-        f"{row['Chromosome']}:{row['Start'] + 1}-{row['End']}"
+        f"the {record['Feature']} record of transcript {record['transcript_id']} at "
+        f"{record['Chromosome']}:{record['Start'] + 1}-{record['End']}"
     )
 
 
@@ -345,27 +349,27 @@ GFF3_ATTRIBUTES = (
     "rank",
     "ensembl_end_phase",
 )
-# The feature types of the rows that read_gff3 uses. Ensembl has many transcript types (mRNA,
-# lnc_RNA, ...), so any row whose Parent is a gene is read too.
-GFF3_FEATURES = ("transcript", "exon", "CDS", "start_codon", "stop_codon")
+# The types of the GFF3 records that read_gff3 uses. Ensembl has many transcript types (mRNA, lnc_RNA, ...),
+# so any record whose Parent is a gene is read too.
+GFF3_TYPES = ("transcript", "exon", "CDS", "start_codon", "stop_codon")
 
 
-def _read_gff3_rows(gff3_path):
+def _read_gff3_records(gff3_path):
     """
-    Reads the rows of a GFF3 file that ``read_gff3`` uses, with polars-bio: the rows of a type in
-    ``GFF3_FEATURES`` and the rows whose Parent is a gene.
+    Reads the records of a GFF3 file that ``read_gff3`` uses, with polars-bio: the records of a
+    type in ``GFF3_TYPES`` and the records whose Parent is a gene.
 
     :param gff3_path: Path to the GFF3 file, plain or gzip-compressed
     :return: DataFrame with the columns Chromosome, Source, Feature (category), Start, End, Score
         (float64, NaN if missing), Strand and Frame (text, "." if missing), and the attributes in
-        ``GFF3_ATTRIBUTES`` that have a value in at least one row, as text (NaN where a row has
-        none). Start and End are 0-based half-open int64. polars-bio reads Score as float32, so it
+        ``GFF3_ATTRIBUTES`` that have a value in at least one record, as text (NaN where a record
+        has none). Start and End are 0-based half-open int64. polars-bio reads Score as float32, so it
         keeps about 7 significant digits. In attribute values, polars-bio percent-decodes only %3B,
         %3D, %26, %2C and %09, with upper-case hex digits; it leaves every other escape, e.g. %25 or
         %3b, as it is. A decoded %2C is a comma, so ``tag=a%2Ccds_end_NF`` reads as the two tags a and
         cds_end_NF.
     :raises ValueError: if polars-bio cannot read the file, if it skips a data line of the file, or if
-        a row has a start after its end
+        a record has a start after its end
     """
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -373,7 +377,7 @@ def _read_gff3_rows(gff3_path):
             data_lines = executor.submit(_count_gff3_data_lines, gff3_path)
             # All rows are collected and filtered afterwards: polars-bio filters this predicate in
             # Python, which takes longer, and the row count shows the lines that polars-bio skipped.
-            rows = (
+            records = (
                 pb.scan_gff(os.fspath(gff3_path), attr_fields=list(GFF3_ATTRIBUTES), use_zero_based=True)
                 # polars-bio's GFF frame takes the columns of select as one list
                 .select(
@@ -396,25 +400,25 @@ def _read_gff3_rows(gff3_path):
     except Exception as error:
         raise ValueError(f"Cannot read {os.fspath(gff3_path)!r} as GFF3 ({error}).") from error
     # polars-bio skips a line that it cannot parse, and logs it at DEBUG only
-    if rows.height < data_lines.result():
+    if records.height < data_lines.result():
         raise ValueError(
-            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: polars-bio read {rows.height} of its "
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: polars-bio read {records.height} of its "
             f"{data_lines.result()} data lines. It skips a line that it cannot parse, e.g. a line whose Start or "
             "Score is not a number or whose columns are not separated by tabs."
         )
-    rows = rows.filter(pl.col("Feature").is_in(GFF3_FEATURES) | pl.col("Parent").str.starts_with("gene:"))
+    records = records.filter(pl.col("Feature").is_in(GFF3_TYPES) | pl.col("Parent").str.starts_with("gene:"))
     # polars-bio gives Start as a 32-bit integer without sign, so a start of 0 wraps to the largest value
-    reversed_rows = rows.filter(pl.col("Start") >= pl.col("End"))
-    if reversed_rows.height:
-        first = reversed_rows.row(0, named=True)
+    reversed_records = records.filter(pl.col("Start") >= pl.col("End"))
+    if reversed_records.height:
+        first = reversed_records.row(0, named=True)
         raise ValueError(
-            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: {reversed_rows.height} row(s) have a start after their "
-            f"end, e.g. the {first['Feature']} row at {first['Chromosome']}:{first['Start'] + 1}-{first['End']}. "
-            "polars-bio reads a start of 0 as 4294967296."
+            f"Cannot read {os.fspath(gff3_path)!r} as GFF3: {reversed_records.height} record(s) have a start after "
+            f"their end, e.g. the {first['Feature']} record at "
+            f"{first['Chromosome']}:{first['Start'] + 1}-{first['End']}. polars-bio reads a start of 0 as 4294967296."
         )
-    # polars-bio gives an attribute that no row has as a column without values
-    absent = [name for name in GFF3_ATTRIBUTES if rows[name].null_count() == rows.height]
-    return rows.drop(absent).to_pandas()
+    # polars-bio gives an attribute that no record has as a column without values
+    absent = [name for name in GFF3_ATTRIBUTES if records[name].null_count() == records.height]
+    return records.drop(absent).to_pandas()
 
 
 def _count_gff3_data_lines(gff3_path):
@@ -436,7 +440,7 @@ def _count_gff3_data_lines(gff3_path):
 
 def _has_stop_codon_from_sequence(df, fasta):
     """
-    Sets has_stop_codon on the CDS rows of an Ensembl GFF3 from the last 3 CDS bases in ``fasta``.
+    Sets has_stop_codon on the CDS records of an Ensembl GFF3 from the last 3 CDS bases in ``fasta``.
 
     A transcript has a stop codon if the last 3 bases of its CDS are a stop codon (see
     ``_last_codons``), unless its last coding exon ends mid-codon: the exon attribute
@@ -444,7 +448,7 @@ def _has_stop_codon_from_sequence(df, fasta):
     cds_end_NF either, but the GFF3 has no cds_end_NF tag. So a cds_end_NF transcript whose CDS ends
     in stop codon bases gets has_stop_codon True here: 13 transcripts in Ensembl 108, none on chr22.
 
-    :param df: Exon and CDS rows of an Ensembl GFF3 (DataFrame) with transcript_id and exon_number
+    :param df: Exon and CDS records of an Ensembl GFF3 (DataFrame) with transcript_id and exon_number
     :param fasta: Reference genome (pyfaidx.Fasta object)
     :return: DataFrame with the column has_stop_codon (see ``_set_cds_flag``)
     """
@@ -474,14 +478,14 @@ def _has_stop_codon_from_sequence(df, fasta):
 
 def _has_start_codon_from_sequence(df, fasta):
     """
-    Sets has_start_codon on the CDS rows of an Ensembl GFF3 from the first 3 CDS bases in ``fasta``.
+    Sets has_start_codon on the CDS records of an Ensembl GFF3 from the first 3 CDS bases in ``fasta``.
 
-    An Ensembl GFF3 has no start_codon rows. So a transcript has a start codon here if its CDS starts
-    with ATG and its 5'-most CDS row has phase 0 (see ``_first_codons``). A non-ATG start codon,
-    e.g. CTG, is not found. A transcript without the 5' end of its CDS (cds_start_NF) whose CDS
-    starts with ATG in phase 0 gets a start codon.
+    An Ensembl GFF3 has no start_codon records. So a transcript has a start codon here if its CDS
+    starts with ATG and its 5'-most CDS record has phase 0 (see ``_first_codons``). A non-ATG start
+    codon, e.g. CTG, is not found. A transcript without the 5' end of its CDS (cds_start_NF) whose
+    CDS starts with ATG in phase 0 gets a start codon.
 
-    :param df: Exon and CDS rows of an Ensembl GFF3 (DataFrame) with transcript_id
+    :param df: Exon and CDS records of an Ensembl GFF3 (DataFrame) with transcript_id
     :param fasta: Reference genome (pyfaidx.Fasta object)
     :return: DataFrame with the column has_start_codon (see ``_set_cds_flag``)
     """
@@ -491,7 +495,7 @@ def _has_start_codon_from_sequence(df, fasta):
         "Start codons from the FASTA: %d of %d transcripts start with ATG in phase 0.", len(starts), len(codons)
     )
     logger.warning(
-        "Ensembl GFF3 has no start_codon rows: a CDS has a start codon if it starts with ATG in phase 0. "
+        "Ensembl GFF3 has no start_codon records: a CDS has a start codon if it starts with ATG in phase 0. "
         "A non-ATG start codon, e.g. CTG, is not found."
     )
     return _set_cds_flag(df, "has_start_codon", starts["transcript_id"])
@@ -499,8 +503,8 @@ def _has_start_codon_from_sequence(df, fasta):
 
 def _set_cds_flag(df, column, transcripts):
     """
-    Returns a copy of ``df`` with the column ``column`` (nullable boolean): on the CDS rows, whether
-    their transcript is in ``transcripts``; NA on the other rows.
+    Returns a copy of ``df`` with the column ``column`` (nullable boolean): on the CDS records,
+    whether their transcript is in ``transcripts``; NA on the other records.
     """
     flag = df["transcript_id"].isin(transcripts).astype("boolean")
     return df.assign(**{column: flag.where(df["Feature"] == "CDS")})
@@ -509,17 +513,17 @@ def _set_cds_flag(df, column, transcripts):
 def _trim_cds_end_nf_stop_codons(df, fasta):
     """
     Removes the last codon from the CDS of a GENCODE GFF3 for transcripts tagged cds_end_NF,
-    without stop_codon rows, whose CDS ends in a complete stop codon (see ``_last_codons``).
+    without stop_codon records, whose CDS ends in a complete stop codon (see ``_last_codons``).
 
     cds_end_NF means that the end of the CDS is not confirmed, so these 3 bases are no annotated
     stop codon. The GENCODE GTF of the same release has them as UTR.
 
     This concerns 10 transcripts in GENCODE 42, none on chr22. GENCODE GFF3 repeats the transcript
-    tags on every row, so the tags of the CDS rows are used.
+    tags on every record, so the tags of the CDS records are used.
 
-    :param df: Exon, CDS and stop_codon rows of a GENCODE GFF3 (DataFrame) with transcript_id and tag
+    :param df: Exon, CDS and stop_codon records of a GENCODE GFF3 (DataFrame) with transcript_id and tag
     :param fasta: Reference genome (pyfaidx.Fasta object)
-    :return: DataFrame with the CDS rows shortened
+    :return: DataFrame with the CDS records shortened
     """
     df = df.reset_index(drop=True)
     if "tag" not in df.columns:
@@ -532,17 +536,17 @@ def _trim_cds_end_nf_stop_codons(df, fasta):
 
     df = df.copy()
     for cds_index, start, end in stops.explode("pieces")["pieces"]:
-        # the stop codon piece is at the 3' end of its CDS row
+        # the stop codon piece is at the 3' end of its CDS record
         if df.at[cds_index, "Strand"] == "+":
             df.at[cds_index, "End"] = start
         else:
             df.at[cds_index, "Start"] = end
     logger.info(
-        "Stop codons: %d cds_end_NF transcripts without stop_codon rows end in a stop codon; "
+        "Stop codons: %d cds_end_NF transcripts without stop_codon records end in a stop codon; "
         "it is removed from the CDS.",
         len(stops),
     )
-    # a CDS row that held only stop codon bases is gone
+    # a CDS record that held only stop codon bases is gone
     return df[df["Start"] < df["End"]]
 
 
@@ -552,18 +556,18 @@ def _first_codons(cds, fasta):
     transcription. Transcripts with fewer than 3 CDS bases or on a chromosome that is not in
     ``fasta`` are left out.
 
-    :param cds: CDS rows (DataFrame) with Chromosome, Start, End, Strand, Frame and transcript_id
+    :param cds: CDS records (DataFrame) with Chromosome, Start, End, Strand, Frame and transcript_id
     :param fasta: Reference genome (pyfaidx.Fasta object)
     :return: DataFrame with one row per transcript and the columns transcript_id, codon (upper case)
-        and phase (the Frame of the CDS row at the 5' end, NaN if it is not a number)
+        and phase (the Frame of the CDS record at the 5' end, NaN if it is not a number)
     """
     plus = cds["Strand"] == "+"
-    # each transcript's CDS rows from its 5' end: by Start ascending on the plus strand, by End
+    # each transcript's CDS records from its 5' end: by Start ascending on the plus strand, by End
     # descending on the minus strand
     cds = cds.assign(_from_5_prime=cds["Start"].where(plus, -cds["End"])).sort_values(
         ["transcript_id", "_from_5_prime"]
     )
-    rows = zip(
+    cds_records = zip(
         cds["transcript_id"],
         cds["Chromosome"],
         cds["Strand"],
@@ -573,15 +577,15 @@ def _first_codons(cds, fasta):
     )
 
     codons = []
-    for transcript_id, transcript_rows in itertools.groupby(rows, key=lambda row: row[0]):
-        transcript_rows = list(transcript_rows)
-        _, chrom, strand, _, _, phase = transcript_rows[0]
+    for transcript_id, transcript_cds in itertools.groupby(cds_records, key=lambda record: record[0]):
+        transcript_cds = list(transcript_cds)
+        _, chrom, strand, _, _, phase = transcript_cds[0]
         if chrom not in fasta:
             continue
         # the first 3 bases, from the 5' end
         codon = ""
         missing = 3
-        for _, _, _, start, end, _ in transcript_rows:
+        for _, _, _, start, end, _ in transcript_cds:
             take = min(missing, end - start)
             if strand == "+":
                 codon += str(fasta[chrom][start : start + take]).upper()
@@ -601,23 +605,24 @@ def _last_codons(cds, fasta):
     transcription. Transcripts with fewer than 3 CDS bases or on a chromosome that is not in
     ``fasta`` are left out.
 
-    :param cds: CDS rows (DataFrame) with Chromosome, Start, End, Strand, Frame and transcript_id
+    :param cds: CDS records (DataFrame) with Chromosome, Start, End, Strand, Frame and transcript_id
     :param fasta: Reference genome (pyfaidx.Fasta object)
     :return: DataFrame with one row per transcript and the columns
 
         - transcript_id
-        - last_cds_index: index of the CDS row at the 3' end
+        - last_cds_index: index of the CDS record at the 3' end
         - pieces: the codon bases as (cds_index, Start, End) tuples, from 5' to 3'. A codon split
           across an intron has 2 pieces.
         - is_stop: the codon is TAA, TAG or TGA; on the mitochondrial chromosome TAA, TAG, AGA or AGG
-        - in_frame: the CDS row at the 3' end, after its phase (Frame), holds a multiple of 3 bases
+        - in_frame: the CDS record at the 3' end, after its phase (Frame), holds a multiple of 3 bases
     """
     plus = cds["Strand"] == "+"
-    # each transcript's CDS rows from its 3' end: by End descending on the plus strand, by Start ascending on the minus strand
+    # each transcript's CDS records from its 3' end: by End descending on the plus strand, by Start ascending on the
+    # minus strand
     cds = cds.assign(_from_3_prime=(-cds["End"]).where(plus, cds["Start"])).sort_values(
         ["transcript_id", "_from_3_prime"]
     )
-    rows = zip(
+    cds_records = zip(
         cds.index,
         cds["transcript_id"],
         cds["Chromosome"],
@@ -629,14 +634,14 @@ def _last_codons(cds, fasta):
 
     codons = []
     skipped = 0
-    for transcript_id, transcript_rows in itertools.groupby(rows, key=lambda row: row[1]):
-        transcript_rows = list(transcript_rows)
-        last_cds_index, _, chrom, strand, last_start, last_end, phase = transcript_rows[0]
+    for transcript_id, transcript_cds in itertools.groupby(cds_records, key=lambda record: record[1]):
+        transcript_cds = list(transcript_cds)
+        last_cds_index, _, chrom, strand, last_start, last_end, phase = transcript_cds[0]
 
         # the last 3 bases, from the 3' end: (cds_index, Start, End)
         parts = []
         missing = 3
-        for cds_index, _, _, _, start, end, _ in transcript_rows:
+        for cds_index, _, _, _, start, end, _ in transcript_cds:
             take = min(missing, end - start)
             parts.append((cds_index, end - take, end) if strand == "+" else (cds_index, start, start + take))
             missing -= take
@@ -668,25 +673,26 @@ def _last_codons(cds, fasta):
 
 def _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=False):
     """
-    Resolve gene_id/transcript_id for every row of a GFF3 dataframe from the ID/Parent
+    Resolve gene_id/transcript_id for every record of a GFF3 dataframe from the ID/Parent
     hierarchy rather than from the flat gene_id/transcript_id attributes.
 
-    This matters because some GFF3 flavors do not give exon/CDS rows a gene_id/transcript_id
+    This matters because some GFF3 flavors do not give exon/CDS records a gene_id/transcript_id
     attribute at all (Ensembl), and others reuse the same gene_id/transcript_id attribute value
-    for genomically distinct copies of a feature (GENCODE's chrY PAR transcripts: the "_PAR_Y"
+    for genomically distinct copies of a record (GENCODE's chrY PAR transcripts: the "_PAR_Y"
     suffix that disambiguates them from their chrX counterpart only shows up in ID/Parent, not
     in the gene_id/transcript_id attributes).
 
-    With ``keep_attributes``, the gene_id/transcript_id attributes stay where a row has them, and
-    the hierarchy only fills in the rows without one and the "_PAR_Y" rows. The ID can differ from
-    the attribute (GENCODE lift37: ``ENST00000477874.1_2`` vs ``ENST00000477874.1``).
+    With ``keep_attributes``, the gene_id/transcript_id attributes stay where a record has them,
+    and the hierarchy only fills in the records without one and the "_PAR_Y" records. The ID can
+    differ from the attribute (GENCODE lift37: ``ENST00000477874.1_2`` vs ``ENST00000477874.1``).
 
     :param df: Attribute-parsed GFF3 dataframe; must have ``ID`` and ``Parent`` columns.
-    :param transcript_mask: Boolean mask selecting the rows that define a transcript (their
+    :param transcript_mask: Boolean mask selecting the records that define a transcript (their
         ``ID`` is the transcript identifier, their ``Parent`` is the gene identifier).
     :return: A copy of ``df`` with (overwritten) ``gene_id`` and ``transcript_id`` columns, set
-        for the transcript rows themselves and for their children (rows whose ``Parent`` points
-        at a transcript row's ``ID``); unrelated rows (e.g. ``gene`` rows) are left as NaN.
+        for the transcript records themselves and for their children (records whose ``Parent``
+        points at a transcript record's ``ID``); unrelated records (e.g. ``gene`` records) are
+        left as NaN.
     """
 
     def strip_prefix(series):
@@ -697,14 +703,14 @@ def _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=False):
     ids = strip_prefix(df["ID"])
     parents = strip_prefix(df["Parent"])
 
-    tx_rows = transcript_mask & ids.notna() & parents.notna()
-    tx_to_gene = pd.Series(parents[tx_rows].to_numpy(), index=ids[tx_rows].to_numpy())
+    tx_records = transcript_mask & ids.notna() & parents.notna()
+    tx_to_gene = pd.Series(parents[tx_records].to_numpy(), index=ids[tx_records].to_numpy())
 
     transcript_id = pd.Series(pd.NA, index=df.index, dtype="object")
     gene_id = pd.Series(pd.NA, index=df.index, dtype="object")
 
-    transcript_id[tx_rows] = ids[tx_rows]
-    gene_id[tx_rows] = parents[tx_rows]
+    transcript_id[tx_records] = ids[tx_records]
+    gene_id[tx_records] = parents[tx_records]
 
     is_child = parents.isin(tx_to_gene.index)
     transcript_id[is_child] = parents[is_child]
@@ -725,12 +731,13 @@ def _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=False):
 
 def _normalize_gencode_gff3(df):
     """
-    Returns the exon, CDS, start_codon and stop_codon rows of a GENCODE-flavored GFF3 dataframe
+    Returns the exon, CDS, start_codon and stop_codon records of a GENCODE-flavored GFF3 dataframe
     (see ``read_gff3``), with gene_id/transcript_id from the attributes
     (from ID/Parent where missing and for chrY PAR copies).
     """
     transcript_mask = df["Feature"] == "transcript"
     df = _resolve_ids_via_hierarchy(df, transcript_mask, keep_attributes=True)
+    df = _add_transcript_attributes(df, transcript_mask, "transcript_type")
 
     child_mask = df["Feature"].isin(["exon", "CDS", "start_codon", "stop_codon"])
     _check_ids_resolved(df, child_mask)
@@ -744,18 +751,19 @@ def _normalize_gencode_gff3(df):
 
 def _normalize_ensembl_gff3(df):
     """
-    Returns the exon and CDS rows of an Ensembl-flavored GFF3 dataframe (see ``read_gff3``),
+    Returns the exon and CDS records of an Ensembl-flavored GFF3 dataframe (see ``read_gff3``),
     with gene_id/transcript_id resolved from ID/Parent and exon numbers.
     """
     transcript_mask = df["ID"].notna() & df["Parent"].astype(str).str.startswith("gene:")
     df = _resolve_ids_via_hierarchy(df, transcript_mask)
+    df = _add_transcript_attributes(df, transcript_mask, "biotype")
 
     child_mask = df["Feature"].isin(["exon", "CDS"])
     _check_ids_resolved(df, child_mask)
 
     child_df = df.loc[child_mask].reset_index(drop=True)
 
-    # Exon rows carry their number as the "rank" attribute, CDS rows carry nothing. Without
+    # Exon records carry their number as the "rank" attribute, CDS records carry nothing. Without
     # "rank", compute the numbers from genomic order.
     if "rank" in child_df.columns:
         rank = pd.to_numeric(child_df["rank"], errors="coerce")
@@ -765,26 +773,44 @@ def _normalize_ensembl_gff3(df):
     return compute_exon_numbers(child_df)
 
 
+def _add_transcript_attributes(df, transcript_mask, type_attribute):
+    """
+    Returns a copy of ``df`` in which every record has the transcript_type and the transcript_tags of its
+    transcript. Both come from the transcript record: transcript_type from the attribute ``type_attribute``, and
+    transcript_tags from the attribute tag, as text with the tags comma-separated as in the file, e.g.
+    "basic,Ensembl_canonical". Both are NA if the transcript record lacks the attribute, and on the records of a
+    transcript without a transcript record.
+
+    :param df: GFF3 records (DataFrame) with transcript_id, as ``_resolve_ids_via_hierarchy`` gives them
+    :param transcript_mask: Boolean mask selecting the transcript records
+    :param type_attribute: "transcript_type" for GENCODE, "biotype" for Ensembl. In Ensembl, the gene record has
+        a biotype too, the type of the gene, which is not used.
+    """
+    # The first transcript record of each transcript, in file order
+    transcripts = df[transcript_mask & df["transcript_id"].notna()].drop_duplicates("transcript_id")
+    df = df.copy()
+    for column, attribute in (("transcript_type", type_attribute), ("transcript_tags", "tag")):
+        if attribute not in transcripts.columns:
+            df[column] = pd.Series(pd.NA, index=df.index, dtype=object)
+            continue
+        # GENCODE repeats transcript_type and tag on the exon, CDS and codon records. If a record differs from its
+        # transcript record, the value of the transcript record is taken.
+        values = pd.Series(transcripts[attribute].to_numpy(), index=transcripts["transcript_id"].to_numpy())
+        df[column] = df["transcript_id"].map(values)
+    return df
+
+
 def _check_ids_resolved(df, mask):
     unresolved = int(df.loc[mask, "transcript_id"].isna().sum())
     if unresolved:
-        raise ValueError(f"Could not resolve transcript_id via the ID/Parent hierarchy for {unresolved} row(s).")
-
-
-def read_fasta(fasta_path):
-    """
-    Reads a genome FASTA file using pyfaidx.Fasta and returns a pyfaidx.Fasta object.
-    """
-    if not os.path.exists(fasta_path):
-        raise FileNotFoundError(f"FASTA file not found: {fasta_path}")
-    return Fasta(fasta_path)
+        raise ValueError(f"Could not resolve transcript_id via the ID/Parent hierarchy for {unresolved} record(s).")
 
 
 def compute_exon_numbers(annotation):
     """
-    Compute exon numbers for the Features exon, CDS and stop_codon in an annotation DataFrame.
+    Compute exon numbers for the records of the types exon, CDS and stop_codon in an annotation DataFrame.
     Exon numbers are assigned based on genomic order per transcript and strand.
-    CDS and stop_codon features inherit the exon number of the exon they overlap.
+    CDS and stop_codon records inherit the exon number of the exon they overlap.
 
     The exon numbers follow the direction of transcription: exon 1 has the smallest Start on
     the + strand and the largest Start on the - strand.
@@ -792,38 +818,39 @@ def compute_exon_numbers(annotation):
     :param annotation: DataFrame with Feature, transcript_id, Start, End and Strand, e.g. as
         ``read_annotation`` returns it
     :return: A copy of ``annotation`` with a RangeIndex and the computed numbers in the column
-        exon_number (nullable integer). Rows that are not exon, CDS or stop_codon rows keep their
-        exon_number; a CDS or stop_codon row without an overlapping exon keeps its exon_number too.
+        exon_number (nullable integer). Records of a type other than exon, CDS or stop_codon keep
+        their exon_number; a CDS or stop_codon record without an overlapping exon keeps its
+        exon_number too.
     """
     # a unique index for _assign_exon_numbers_to_cds
     annotation_df = annotation.reset_index(drop=True)
 
     # The computed numbers are ints, so hold the column as nullable integer. A caller may give it as
-    # text, e.g. "1", with missing values on features without one.
+    # text, e.g. "1", with missing values on records without one.
     if "exon_number" in annotation_df.columns:
         annotation_df["exon_number"] = annotation_df["exon_number"].astype("Int64")
     else:
         annotation_df["exon_number"] = pd.Series(pd.NA, index=annotation_df.index, dtype="Int64")
 
-    # Step 1: Compute exon numbers for exon features, by genomic order per transcript and strand
+    # Step 1: Compute exon numbers for exon records, by genomic order per transcript and strand
     exons = annotation_df[(annotation_df["Feature"] == "exon") & annotation_df["transcript_id"].notna()]
     sign = np.where(exons["Strand"] == "+", 1, -1)
     order = exons.assign(_key=exons["Start"].to_numpy() * sign).sort_values(["transcript_id", "_key"], kind="stable")
     annotation_df.loc[order.index, "exon_number"] = (order.groupby("transcript_id").cumcount() + 1).astype("Int64")
 
-    # Step 2: Assign exon numbers to CDS and stop_codon features
+    # Step 2: Assign exon numbers to CDS and stop_codon records
     return _assign_exon_numbers_to_cds(annotation_df)
 
 
 def _assign_exon_numbers_to_cds(df):
     """
-    Gives every CDS and stop_codon row of ``df`` the exon_number of the exon of its transcript that
-    it overlaps most (the first one on a tie). Rows without an overlapping exon keep their
-    exon_number. The exon rows must have an exon_number already.
+    Gives every CDS and stop_codon record of ``df`` the exon_number of the exon of its transcript
+    that it overlaps most (the first one on a tie). Records without an overlapping exon keep their
+    exon_number. The exon records must have an exon_number already.
 
     :param df: DataFrame with Feature, transcript_id, Start, End and an Int64 exon_number column;
         the index must be unique.
-    :return: A copy of ``df`` with the exon_number of the CDS and stop_codon rows set
+    :return: A copy of ``df`` with the exon_number of the CDS and stop_codon records set
     """
     df = df.copy()
     exons = df.loc[df["Feature"] == "exon", ["transcript_id", "Start", "End", "exon_number"]]

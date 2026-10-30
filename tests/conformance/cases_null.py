@@ -1,7 +1,7 @@
 """
 Conformance cases of the null cases: each case pins a constellation where the column tables of "Technical Notes.md"
-or "Input Defects.md" say "Null when", and some misannotations that make a column null. A CDS row outside the exon rows of its
-transcript is an error.
+or input_defects.md say "Null when", and some misannotations that make a column null. A CDS record outside the exon
+records of its transcript is an error.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
@@ -31,39 +31,39 @@ from .runner import (
 )
 
 
-def _exon_1_starts_at_the_second_cds_base(rows, strand):
+def _exon_1_starts_at_the_second_cds_base(records, strand):
     """Move the 5' end of exon 1 by 5 nt, past its 5' UTR and the first base of the start codon."""
-    for row in rows:
-        if row[2] == "exon" and row[8].endswith("exon_number=1"):
+    for record in records:
+        if record[2] == "exon" and record[8].endswith("exon_number=1"):
             if strand == "+":
-                row[3] = str(int(row[3]) + 5)
+                record[3] = str(int(record[3]) + 5)
             else:
-                row[4] = str(int(row[4]) - 5)
-    return rows
+                record[4] = str(int(record[4]) - 5)
+    return records
 
 
-def _cds_row_of_exon_2_starts_in_the_acceptor(rows, strand):
-    """Move the 5' end of the CDS row of exon 2 by 3 nt into the intron, over the CAG of the acceptor."""
-    for row in rows:
-        if row[2] == "CDS" and row[8].endswith("exon_number=2"):
+def _cds_record_of_exon_2_starts_in_the_acceptor(records, strand):
+    """Move the 5' end of the CDS record of exon 2 by 3 nt into the intron, over the CAG of the acceptor."""
+    for record in records:
+        if record[2] == "CDS" and record[8].endswith("exon_number=2"):
             if strand == "+":
-                row[3] = str(int(row[3]) - 3)
+                record[3] = str(int(record[3]) - 3)
             else:
-                row[4] = str(int(row[4]) + 3)
-    return rows
+                record[4] = str(int(record[4]) + 3)
+    return records
 
 
-def _exon_row_twice(rows, strand):
-    """Write the exon row twice."""
-    return [copy for row in rows for copy in ([row, list(row)] if row[2] == "exon" else [row])]
+def _exon_record_twice(records, strand):
+    """Write the exon record twice."""
+    return [copy for record in records for copy in ([record, list(record)] if record[2] == "exon" else [record])]
 
 
-def _cds_row_of_exon_3_has_exon_number_4(rows, strand):
-    """Give the CDS row of exon 3 the exon_number 4, which no exon row has."""
-    for row in rows:
-        if row[2] == "CDS" and row[8].endswith("exon_number=3"):
-            row[8] = row[8].replace("exon_number=3", "exon_number=4")
-    return rows
+def _cds_record_of_exon_3_has_exon_number_4(records, strand):
+    """Give the CDS record of exon 3 the exon_number 4, which no exon record has."""
+    for record in records:
+        if record[2] == "CDS" and record[8].endswith("exon_number=3"):
+            record[8] = record[8].replace("exon_number=3", "exon_number=4")
+    return records
 
 
 # 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
@@ -82,7 +82,7 @@ THREE_EXONS_REF = {
         {"exon_number": 3, "length": 6},
     ],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -108,17 +108,17 @@ THREE_EXONS_REF = {
     "likely_misannotated": False,
 }
 THREE_EXONS = Layout(Transcript(("gaccATGGCC", "AAGTGGGGC", "TCCTAAgccgcc")), THREE_EXONS_REF)
-# The same transcript without start_codon rows
+# The same transcript without start_codon records
 NO_START_CODON = Layout(
     Transcript(("gaccATGGCC", "AAGTGGGGC", "TCCTAAgccgcc"), start_codon=False),
     {
         **THREE_EXONS_REF,
         "has_start_codon": False,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "likely_misannotated": True,
     },
 )
-# The CDS ends in the sense codon TCA, and there are no stop_codon rows
+# The CDS ends in the sense codon TCA, and there are no stop_codon records
 NO_STOP_CODON = Layout(
     Transcript(("gaccATGGCC", "AAGTGGGGC", "TCCTCAgccgcc"), stop_codon=False),
     {
@@ -186,7 +186,7 @@ STOP_IN_THE_SHIFTED_FRAME = Layout(
         "utr3_length": 9,
     },
 )
-# No start_codon rows, and the 3' UTR holds a TGA in frame: gcc TGA cc
+# No start_codon records, and the 3' UTR holds a TGA in frame: gcc TGA cc
 NO_START_CODON_STOP_IN_THE_UTR = Layout(
     Transcript(("gaccATGGCC", "AAGTGGGGC", "TCCTAAgcctgacc"), start_codon=False),
     {
@@ -194,7 +194,7 @@ NO_START_CODON_STOP_IN_THE_UTR = Layout(
         "cds_start": per_strand(14, 18),
         "cds_end": per_strand(75, 79),
         "has_start_codon": False,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "transcript_end": 83,
         "transcript_seq": "GACCATGGCCAAGTGGGGCTCCTAAGCCTGACC",
         "transcript_length": 33,
@@ -207,9 +207,9 @@ NO_START_CODON_STOP_IN_THE_UTR = Layout(
         "likely_misannotated": True,
     },
 )
-# The CDS row of exon 3 has exon_number 4
-CDS_ROW_WITH_ANOTHER_EXON_NUMBER = Layout(
-    Transcript(("gaccATGGCC", "AAGTGGGGC", "TCGTAAgccgcc"), edit_gff3=_cds_row_of_exon_3_has_exon_number_4),
+# The CDS record of exon 3 has exon_number 4
+CDS_RECORD_WITH_ANOTHER_EXON_NUMBER = Layout(
+    Transcript(("gaccATGGCC", "AAGTGGGGC", "TCGTAAgccgcc"), edit_gff3=_cds_record_of_exon_3_has_exon_number_4),
     {
         **THREE_EXONS_REF,
         "ref_cds_seq": "ATGGCCAAGTGGGGCTCGTAA",
@@ -222,7 +222,7 @@ CDS_ROW_WITH_ANOTHER_EXON_NUMBER = Layout(
         "transcript_seq": "GACCATGGCCAAGTGGGGCTCGTAAGCCGCC",
     },
 )
-# 5' [gacc AT gcc] 3': a CDS of 2 nt, with start_codon and stop_codon rows on its 2 nt
+# 5' [gacc AT gcc] 3': a CDS of 2 nt, with start_codon and stop_codon records on its 2 nt
 TWO_NT_CDS = Layout(
     Transcript(("gaccATgcc",)),
     {
@@ -236,7 +236,7 @@ TWO_NT_CDS = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 2}],
         "cds_in_transcript": True,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "ref_last_codon": None,
         "ref_valid_stop": None,
         "ref_first_stop_codon": None,
@@ -272,7 +272,7 @@ SINGLE_EXON = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 12}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TGA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TGA",
@@ -294,7 +294,8 @@ SINGLE_EXON = Layout(
         "likely_misannotated": False,
     },
 )
-# 5' [gacc GCC CGG GAA ATG A gcc] 3': 13 nt CDS without start_codon rows; its stop_codon rows are on TGA, out of frame
+# 5' [gacc GCC CGG GAA ATG A gcc] 3': 13 nt CDS without start_codon records; its stop_codon records are on TGA,
+# out of frame
 STOP_CODON_OUT_OF_FRAME = Layout(
     Transcript(("gaccGCCCGGGAAATGAgcc",), start_codon=False),
     {
@@ -308,7 +309,7 @@ STOP_CODON_OUT_OF_FRAME = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 13}],
         "cds_in_transcript": True,
-        "start_codon_exon": None,
+        "start_codon_exon_number": None,
         "ref_last_codon": "TGA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": None,
@@ -330,9 +331,9 @@ STOP_CODON_OUT_OF_FRAME = Layout(
         "likely_misannotated": True,
     },
 )
-# 5' [ggac ATG GCC AAG TAA gcc] 3', with the exon row twice in the GFF3
-EXON_ROW_TWICE = Layout(
-    Transcript(("ggacATGGCCAAGTAAgcc",), edit_gff3=_exon_row_twice),
+# 5' [ggac ATG GCC AAG TAA gcc] 3', with the exon record twice in the GFF3
+EXON_RECORD_TWICE = Layout(
+    Transcript(("ggacATGGCCAAGTAAgcc",), edit_gff3=_exon_record_twice),
     {
         **IDS,
         "cds_start": per_strand(14, 13),
@@ -344,7 +345,7 @@ EXON_ROW_TWICE = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 12}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -420,7 +421,7 @@ TWO_EXONS_CDS = {
     "has_stop_codon": True,
     "cds_frame": 0,
     "ref_cds_exons": [{"exon_number": 1, "length": 7}, {"exon_number": 2, "length": 8}],
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -449,10 +450,10 @@ TWO_EXONS = Layout(
     },
 )
 
-# The same transcript without exon rows in the GFF3: its CDS, start_codon and stop_codon rows stay. "Input
+# The same transcript without exon records in the GFF3: its CDS, start_codon and stop_codon records stay. "Input
 # Defects.md" makes every column of the transcript null then, and cds_in_transcript False.
-TWO_EXONS_WITHOUT_EXON_ROWS = Layout(
-    Transcript(TWO_EXONS_SEQUENCES, exon_rows=False),
+TWO_EXONS_WITHOUT_EXON_RECORDS = Layout(
+    Transcript(TWO_EXONS_SEQUENCES, exon_records=False),
     {
         **TWO_EXONS_CDS,
         "cds_in_transcript": False,
@@ -471,9 +472,9 @@ TWO_EXONS_WITHOUT_EXON_ROWS = Layout(
 )
 
 
-# THREE_EXONS without exon rows in the GFF3, as TWO_EXONS_WITHOUT_EXON_ROWS
-THREE_EXONS_WITHOUT_EXON_ROWS = Layout(
-    Transcript(THREE_EXONS.transcript.exons, exon_rows=False),
+# THREE_EXONS without exon records in the GFF3, as TWO_EXONS_WITHOUT_EXON_RECORDS
+THREE_EXONS_WITHOUT_EXON_RECORDS = Layout(
+    Transcript(THREE_EXONS.transcript.exons, exon_records=False),
     {
         **THREE_EXONS_REF,
         "cds_in_transcript": False,
@@ -492,7 +493,7 @@ THREE_EXONS_WITHOUT_EXON_ROWS = Layout(
 )
 
 
-# The missense AGC>AGA in exon 2 on TWO_EXONS, with or without exon rows: the columns of the alt CDS
+# The missense AGC>AGA in exon 2 on TWO_EXONS, with or without exon records: the columns of the alt CDS
 MISSENSE_ALT_CDS = {
     "variant_id": "var1",
     "ref": per_strand("C", "G"),
@@ -533,7 +534,7 @@ SHORT_TRANSCRIPT = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 9}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -555,7 +556,7 @@ SHORT_TRANSCRIPT = Layout(
         "likely_misannotated": False,
     },
 )
-# One exon whose start_codon rows mark the stop codon TAG, a misannotation
+# One exon whose start_codon records mark the stop codon TAG, a misannotation
 TAG_START_CODON = Layout(
     Transcript(("gccTAGGCCAAGCTGTAAgcc",)),
     {
@@ -569,7 +570,7 @@ TAG_START_CODON = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 15}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAG",
@@ -656,12 +657,12 @@ CASES = [
         },
     ),
     Case(
-        "without_start_codon_rows_start_codon_exon_is_null",
+        "without_start_codon_records_start_codon_exon_number_is_null",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TTG GGC]|[TCC TAA gccgcc] 3'
                                     ^ G>T
-        The GFF3 has no start_codon rows, so has_start_codon is False. G>T changes TGG to TTG.
+        The GFF3 has no start_codon records, so has_start_codon is False. G>T changes TGG to TTG.
         """,
         NO_START_CODON,
         Change("AAGT[G>T]GGG"),
@@ -702,7 +703,7 @@ CASES = [
                                      ^ G>A
                                    *** PTC
                                    <-----> ptc_to_exon_end = 6
-        The GFF3 has no start_codon rows, so has_start_codon is False. G>A changes TGG to TGA, the PTC at CDS 9.
+        The GFF3 has no start_codon records, so has_start_codon is False. G>A changes TGG to TGA, the PTC at CDS 9.
         """,
         NO_START_CODON,
         Change("AAGTG[G>A]GGC"),
@@ -747,15 +748,16 @@ CASES = [
         marks=(Mark("alt", 13, 16, "*", "PTC"), Span("alt", 13, 19, "ptc_to_exon_end = 6")),
     ),
     # Pins the null clause of ptc_to_start_codon "the annotated start codon is a stop codon, such as TAG" ("Input
-    # Defects.md": "A variant that leaves it unchanged gives a PTC row whose PTC is this start codon"). So
-    # ptc_less_than_150nt_to_start and nmd_start_proximal_rule are null ("`ptc_to_start_codon` is null"). The row keeps
-    # the flags from the CDS: the ref transcript, read in frame, stops at the TAG and not at the annotated stop codon.
-    # likely_misannotated is False ("Input Defects.md": "`likely_misannotated` does not flag it, because its start codon
+    # Defects.md": "A variant that leaves it unchanged gives a PTC variant whose PTC is this start codon"). So
+    # ptc_less_than_150nt_to_start and nmd_start_proximal_rule are null ("`ptc_to_start_codon` is null"). The
+    # variant-transcript pair keeps the flags from the CDS: the ref transcript, read in frame, stops at the TAG and
+    # not at the annotated stop codon.
+    # likely_misannotated is False (input_defects.md: "`likely_misannotated` does not flag it, because its start codon
     # check only asks for an annotated start codon at CDS position 0").
-    # `ptc_without_an_annotated_start_codon_has_no_ptc_to_start_codon` pins the other clause, a PTC row without an
-    # annotated start codon.
+    # `ptc_without_an_annotated_start_codon_has_no_ptc_to_start_codon` pins the other clause, a PTC variant without
+    # an annotated start codon.
     Case(
-        "missense_in_a_cds_whose_annotated_start_codon_is_tag_is_a_ptc_row_without_ptc_to_start_codon",
+        "missense_in_a_cds_whose_annotated_start_codon_is_tag_is_a_ptc_variant_without_ptc_to_start_codon",
         """
         tx      0   3               15
         ref 5' [gcc TAG GCC AAG CTG TAA gcc] 3'
@@ -763,9 +765,9 @@ CASES = [
                          ^ C>A
                     *** PTC
                     <---------------------> ptc_to_exon_end = 18
-        C>A at CDS 4: GCC>GAC. The start_codon rows mark TAG at CDS 0, a stop codon. It is the first in-frame stop
+        C>A at CDS 4: GCC>GAC. The start_codon records mark TAG at CDS 0, a stop codon. It is the first in-frame stop
         codon of the alt CDS, so it is the PTC, and ptc_to_start_codon is null. The ref transcript, read in frame
-        from tx 3, stops at this TAG, so the row keeps the flags from the CDS: alt_has_ptc is True.
+        from tx 3, stops at this TAG, so the variant-transcript pair keeps the flags from the CDS: alt_has_ptc is True.
         annotated_stop_distance = 15 - 3 = 12. likely_misannotated is False: its start codon check only asks for an
         annotated start codon at CDS position 0.
         """,
@@ -823,7 +825,7 @@ CASES = [
         ref 5' [gacc AT gcc] 3'
         alt 5' [gacc GT gcc] 3'
                      ^ A>G
-        The GFF3 has start_codon and stop_codon rows on the 2 nt CDS.
+        The GFF3 has start_codon and stop_codon records on the 2 nt CDS.
         """,
         TWO_NT_CDS,
         Change("acc[A>G]Tgc"),
@@ -894,7 +896,7 @@ CASES = [
             "alt_transcript_length": 9,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -952,7 +954,7 @@ CASES = [
             "alt_transcript_length": 10,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -971,11 +973,12 @@ CASES = [
         equivalent=(Change("gacc[ATGCCCGGGT>A]GAgcc"),),
         marks=(Span("alt", 4, 7, "alt_cds_length = 3"),),
     ),
-    # Pins the rows that keep the flags from the CDS because their alt_transcript_seq has fewer than 3 nt ("Stop codon
-    # classification"): "Such a sequence holds no codon, so it is neither classified nor scanned, also after a start
-    # loss. Its alt CDS has fewer than 3 nt too. So `alt_has_ptc` is null, and `stop_loss` is True if
-    # `ref_valid_stop` is True." The scan "runs only if `start_loss` or `stop_loss` is True and `alt_transcript_seq`
-    # has at least 3 nt". Every other start loss with alt_transcript_seq is scanned. The next case leaves 3 nt.
+    # Pins the variant-transcript pairs that keep the flags from the CDS because their alt_transcript_seq has fewer
+    # than 3 nt ("Stop codon classification"): "Such a sequence holds no codon, so it is neither classified nor
+    # scanned, also after a start loss. Its alt CDS has fewer than 3 nt too. So `alt_has_ptc` is null, and
+    # `stop_loss` is True if `ref_valid_stop` is True." The scan "runs only if `start_loss` or `stop_loss` is True and
+    # `alt_transcript_seq` has at least 3 nt". Every other start loss with alt_transcript_seq is scanned. The next
+    # case leaves 3 nt.
     Case(
         "deletion_that_leaves_two_nt_of_the_transcript_is_not_scanned_and_keeps_the_flags_from_the_cds",
         """
@@ -984,8 +987,8 @@ CASES = [
         alt 5' [g--- --- --- --- --c] 3'
                  ^^^^^^^^^^^^^^^^^^ 14 nt>-
         Deleting tx 1 to 14 leaves the alt transcript GC of 2 nt and an empty alt CDS at alt tx 1. It is a start
-        loss. GC holds no codon, so the row is not scanned and keeps the flags from the CDS: alt_has_ptc is
-        null, and stop_loss is True, because ref_valid_stop is True and alt_valid_stop is null.
+        loss. GC holds no codon, so the variant-transcript pair is not scanned and keeps the flags from the CDS:
+        alt_has_ptc is null, and stop_loss is True, because ref_valid_stop is True and alt_valid_stop is null.
         """,
         SHORT_TRANSCRIPT,
         Change("g[accATGGCCTAAtc>]c"),
@@ -1026,7 +1029,7 @@ CASES = [
         ruler=Ruler((0, 4, 13)),
     ),
     # Pins the threshold of the scan ("PTC columns"): "An `alt_transcript_seq` of exactly 3 nt is scanned too." The
-    # row is a start loss, and the scan finds no ATG: "Without an ATG, ...
+    # variant is a start loss, and the scan finds no ATG: "Without an ATG, ...
     # Both flags are then False, and `annotated_stop_distance` is null." The case before leaves 2 nt, which are not
     # scanned.
     Case(
@@ -1064,7 +1067,7 @@ CASES = [
             "alt_transcript_length": 3,
             "alt_cds_start_in_transcript": 1,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -1084,12 +1087,12 @@ CASES = [
         ruler=Ruler((0, 4, 13)),
     ),
     Case(
-        "cds_without_stop_codon_rows_and_without_in_frame_stop_has_no_utr3_length_and_no_annotated_stop_distance",
+        "cds_without_stop_codon_records_and_without_in_frame_stop_has_no_utr3_length_and_no_annotated_stop_distance",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TCA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TTG GGC]|[TCC TCA gccgcc] 3'
                                     ^ G>T
-        The GFF3 has no stop_codon rows, and the last codon is TCA. G>T changes TGG to TTG.
+        The GFF3 has no stop_codon records, and the last codon is TCA. G>T changes TGG to TTG.
         """,
         NO_STOP_CODON,
         Change("AAGT[G>T]GGG"),
@@ -1161,7 +1164,7 @@ CASES = [
             "alt_transcript_length": 33,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": 4,
-            "alt_scan_start_codon_exon": 1,
+            "alt_scan_start_codon_exon_number": 1,
             "alt_scan_first_stop_codon": "TGA",
             "alt_scan_first_stop_pos": 25,
             "alt_scan_stop_codon_count": 1,
@@ -1217,7 +1220,7 @@ CASES = [
             "alt_transcript_length": 31,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": 10,
-            "alt_scan_start_codon_exon": 2,
+            "alt_scan_start_codon_exon_number": 2,
             "alt_scan_first_stop_codon": "TAA",
             "alt_scan_first_stop_pos": 22,
             "alt_scan_stop_codon_count": 1,
@@ -1263,7 +1266,7 @@ CASES = [
             "alt_transcript_length": 31,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -1313,7 +1316,7 @@ CASES = [
             "alt_transcript_length": 32,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": 24,
-            "alt_scan_start_codon_exon": 3,
+            "alt_scan_start_codon_exon_number": 3,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -1333,16 +1336,16 @@ CASES = [
         ruler=Ruler((0, 4, 22, 32)),
     ),
     Case(
-        "cds_row_that_starts_before_exon_1_is_an_error_that_names_the_transcript_and_the_cds_row",
+        "cds_record_that_starts_before_exon_1_is_an_error_that_names_the_transcript_and_the_cds_record",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TGA GGC]|[TCC TAA gccgcc] 3'
                                      ^ G>A
-                     <-----> the CDS row of exon 1
-                      <----> the exon row of exon 1 in the GFF3
-        The exon row of exon 1 starts at the T of ATG, so the CDS row of exon 1 starts 1 nt before its exon row. The
-        block draws exon 1 before this edit of the GFF3. annotate() rejects the GFF3 with a ValueError that names
-        the transcript tx1 and the CDS row.
+                     <-----> the CDS record of exon 1
+                      <----> the exon record of exon 1 in the GFF3
+        The exon record of exon 1 starts at the T of ATG, so the CDS record of exon 1 starts 1 nt before its exon
+        record. The block draws exon 1 before this edit of the GFF3. annotate() rejects the GFF3 with a ValueError
+        that names the transcript tx1 and the CDS record.
         """,
         Layout(
             Transcript(THREE_EXONS.transcript.exons, edit_gff3=_exon_1_starts_at_the_second_cds_base), THREE_EXONS.ref
@@ -1351,30 +1354,35 @@ CASES = [
         Raises(
             ValueError,
             match=per_strand(
-                names("CDS row of transcript tx1 at chr1:15-20"), names("CDS row of transcript tx1 at chr1:72-77")
+                names("CDS record of transcript tx1 at chr1:15-20"),
+                names("CDS record of transcript tx1 at chr1:72-77"),
             ),
         ),
-        marks=(Span("ref", 4, 10, "the CDS row of exon 1"), Span("ref", 5, 10, "the exon row of exon 1 in the GFF3")),
+        marks=(
+            Span("ref", 4, 10, "the CDS record of exon 1"),
+            Span("ref", 5, 10, "the exon record of exon 1 in the GFF3"),
+        ),
     ),
     Case(
-        "cds_row_that_starts_in_the_acceptor_is_an_error_that_names_the_transcript_and_the_cds_row",
+        "cds_record_that_starts_in_the_acceptor_is_an_error_that_names_the_transcript_and_the_cds_record",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TTG GGC]|[TCC TAA gccgcc] 3'
                                     ^ G>T
-        The CDS row of exon 2 starts 3 nt before its exon row, on the CAG of the acceptor. The block does not draw
-        this intron, since the change does not touch it. annotate() rejects the GFF3 with a ValueError that names
-        the transcript tx1 and the CDS row.
+        The CDS record of exon 2 starts 3 nt before its exon record, on the CAG of the acceptor. The block does not
+        draw this intron, since the change does not touch it. annotate() rejects the GFF3 with a ValueError that
+        names the transcript tx1 and the CDS record.
         """,
         Layout(
-            Transcript(THREE_EXONS.transcript.exons, edit_gff3=_cds_row_of_exon_2_starts_in_the_acceptor),
+            Transcript(THREE_EXONS.transcript.exons, edit_gff3=_cds_record_of_exon_2_starts_in_the_acceptor),
             THREE_EXONS.ref,
         ),
         Change("AAGT[G>T]GGG"),
         Raises(
             ValueError,
             match=per_strand(
-                names("CDS row of transcript tx1 at chr1:38-49"), names("CDS row of transcript tx1 at chr1:43-54")
+                names("CDS record of transcript tx1 at chr1:38-49"),
+                names("CDS record of transcript tx1 at chr1:43-54"),
             ),
         ),
     ),
@@ -1384,12 +1392,12 @@ CASES = [
         ref 5' [ggac ATG GCC AAG TAA gcc] 3'
         alt 5' [gga- -TG GCC AAG TAA gcc] 3'
                    ^^^ cA>-
-        The GFF3 has the exon row twice. The alt line draws the deletion cA>-. Its other placement ac>- lies in the
+        The GFF3 has the exon record twice. The alt line draws the deletion cA>-. Its other placement ac>- lies in the
         5' UTR: the alt keeps ATG GCC AAG TAA, and the 5' UTR loses AC.
-        transcript_seq holds the exon twice. The deleted 5' UTR bases come from both exon rows, ACAC, and
+        transcript_seq holds the exon twice. The deleted 5' UTR bases come from both exon records, ACAC, and
         transcript_seq does not hold ACAC before the CDS.
         """,
-        EXON_ROW_TWICE,
+        EXON_RECORD_TWICE,
         Change("gga[cA>]TGG"),
         {
             "variant_id": "var1",
@@ -1433,7 +1441,7 @@ CASES = [
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gcctgacc] 3'
         alt 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAC gcctgacc] 3'
                                                    ^ A>C
-        The GFF3 has no start_codon rows, so has_start_codon is False. A>C changes TAA to TAC: a stop loss. The
+        The GFF3 has no start_codon records, so has_start_codon is False. A>C changes TAA to TAC: a stop loss. The
         next in-frame stop codon is the TGA at tx 28.
         """,
         NO_START_CODON_STOP_IN_THE_UTR,
@@ -1458,7 +1466,7 @@ CASES = [
             "alt_transcript_length": 33,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": "TGA",
             "alt_scan_first_stop_pos": 28,
             "alt_scan_stop_codon_count": 1,
@@ -1504,7 +1512,7 @@ CASES = [
             "alt_transcript_length": 31,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": 4,
-            "alt_scan_start_codon_exon": 1,
+            "alt_scan_start_codon_exon_number": 1,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -1522,18 +1530,18 @@ CASES = [
         },
     ),
     Case(
-        "ptc_in_an_exon_whose_cds_row_has_another_exon_number_takes_the_exon_features_from_the_alt_transcript",
+        "ptc_in_an_exon_whose_cds_record_has_another_exon_number_takes_the_exon_features_from_the_alt_transcript",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCG TAA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TGG GGC]|[TAG TAA gccgcc] 3'
                                               ^ C>A
                                              *** PTC
                                              <------------> ptc_to_exon_end = 12
-        The CDS row of exon 3 has exon_number 4. C>A changes TCG to TAG, the PTC at CDS 15, in "exon 4".
+        The CDS record of exon 3 has exon_number 4. C>A changes TCG to TAG, the PTC at CDS 15, in "exon 4".
         The exon features read the exons of the alt transcript: the PTC at tx 19 lies in exon 3, the last exon.
         So upstream_exon_count = 2, downstream_exon_count = 0 and ptc_exon_length = 12.
         """,
-        CDS_ROW_WITH_ANOTHER_EXON_NUMBER,
+        CDS_RECORD_WITH_ANOTHER_EXON_NUMBER,
         Change("CAGT[C>A]GTAA"),
         {
             "variant_id": "var1",
@@ -1591,8 +1599,8 @@ CASES = [
         ref 5' [gacc GCC CGG GAA ATG A gcc] 3'
         alt 5' [gacc GAC CGG GAA ATG A gcc] 3'
                       ^ C>A
-        The GFF3 has stop_codon rows on the TGA at CDS 10, out of frame. C>A changes GCC to GAC. The row keeps the
-        flags from the CDS, and the alt CDS has no in-frame stop codon.
+        The GFF3 has stop_codon records on the TGA at CDS 10, out of frame. C>A changes GCC to GAC. The
+        variant-transcript pair keeps the flags from the CDS, and the alt CDS has no in-frame stop codon.
         """,
         STOP_CODON_OUT_OF_FRAME,
         Change("ACCG[C>A]CCGG"),
@@ -1637,8 +1645,8 @@ CASES = [
         ref 5' [gacc GCC CGG GAA ATG A gcc] 3'
         alt 5' [gacc G-- --- --- --- A gcc] 3'
                       ^^^^^^^^^^^^^^ 11 nt>-
-        The GFF3 has stop_codon rows on TGA, out of frame: the row keeps the flags from the CDS. Deleting
-        CCCGGGAAATG leaves the alt CDS GA.
+        The GFF3 has stop_codon records on TGA, out of frame: the variant-transcript pair keeps the flags from the
+        CDS. Deleting CCCGGGAAATG leaves the alt CDS GA.
         """,
         STOP_CODON_OUT_OF_FRAME,
         Change("gaccG[CCCGGGAAATG>]Agcc"),
@@ -1665,7 +1673,7 @@ CASES = [
             "alt_transcript_length": 9,
             "alt_cds_start_in_transcript": 4,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -1683,17 +1691,17 @@ CASES = [
         },
         equivalent=(Change("gacc[GCCCGGGAAAT>]GAgcc"),),
     ),
-    # The only transcript has no exon rows. "Input Defects.md" gives null transcript columns, cds_in_transcript False,
+    # The only transcript has no exon records. input_defects.md gives null transcript columns, cds_in_transcript False,
     # likely_misannotated True, and the flags from the CDS (alt_transcript_seq is null).
     Case(
-        "missense_in_a_transcript_without_exon_rows_gives_null_transcript_columns",
+        "missense_in_a_transcript_without_exon_records_gives_null_transcript_columns",
         """
         ref 5' [gacc ATG GAT G]|[TA AGC TAA gc] 3'
         alt 5' [gacc ATG GAT G]|[TA AGA TAA gc] 3'
                                       ^ C>A
-        The GFF3 has CDS rows only, no exon rows. C>A changes AGC to AGA.
+        The GFF3 has CDS records only, no exon records. C>A changes AGC to AGA.
         """,
-        TWO_EXONS_WITHOUT_EXON_ROWS,
+        TWO_EXONS_WITHOUT_EXON_RECORDS,
         Change("AAG[C>A]TAA"),
         {
             **MISSENSE_ALT_CDS,
@@ -1707,19 +1715,19 @@ CASES = [
             "stop_classification": "alt_cds",
         },
     ),
-    # A PTC row on a transcript without exon rows. alt_transcript_exons is null, so the PTC has no exon features,
+    # A PTC variant on a transcript without exon records. alt_transcript_exons is null, so the PTC has no exon features,
     # and the rules that read them are null. ptc_to_start_codon reads CDS positions only: 9 - 0.
     Case(
-        "nonsense_in_a_transcript_without_exon_rows_has_no_exon_features",
+        "nonsense_in_a_transcript_without_exon_records_has_no_exon_features",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
         alt 5' [gacc ATG GCC]|[AAG TGA GGC]|[TCC TAA gccgcc] 3'
                                      ^ G>A
                                    *** PTC
-        The GFF3 has CDS rows only, no exon rows. G>A changes TGG to TGA, the PTC at CDS 9. alt_transcript_exons
-        is null, so the PTC has no exon features.
+        The GFF3 has CDS records only, no exon records. G>A changes TGG to TGA, the PTC at CDS 9.
+        alt_transcript_exons is null, so the PTC has no exon features.
         """,
-        THREE_EXONS_WITHOUT_EXON_ROWS,
+        THREE_EXONS_WITHOUT_EXON_RECORDS,
         Change("AAGTG[G>A]GGC"),
         {
             **TGG_TO_TGA,
@@ -1761,21 +1769,21 @@ CASES = [
         },
         marks=(Mark("alt", 13, 16, "*", "PTC"),),
     ),
-    # Pins the null clause of annotated_stop_distance "on a row that keeps the flags from the CDS, the alt CDS has no
-    # in-frame stop codon" on a row without alt_transcript_seq. The other cases of the clause have alt_transcript_seq.
-    # The transcript has no exon rows, so the row keeps the flags from the CDS: stop_loss is True, because
-    # ref_valid_stop is True and alt_valid_stop is False.
+    # Pins the null clause of annotated_stop_distance "on a variant-transcript pair that keeps the flags from the CDS,
+    # the alt CDS has no in-frame stop codon" on a pair without alt_transcript_seq. The other cases of the clause
+    # have alt_transcript_seq. The transcript has no exon records, so the variant-transcript pair keeps the flags from
+    # the CDS: stop_loss is True, because ref_valid_stop is True and alt_valid_stop is False.
     Case(
-        "stop_loss_in_a_transcript_without_exon_rows_has_no_annotated_stop_distance",
+        "stop_loss_in_a_transcript_without_exon_records_has_no_annotated_stop_distance",
         """
         ref 5' [gacc ATG GAT G]|[TA AGC TAA gc] 3'
         alt 5' [gacc ATG GAT G]|[TA AGC CAA gc] 3'
                                         ^ T>C
-        The GFF3 has CDS rows only, no exon rows. T>C changes the stop codon TAA to CAA, and the alt CDS has no
-        in-frame stop codon. alt_transcript_seq is null, so the row keeps the flags from the CDS: stop_loss is
-        True, and annotated_stop_distance is null.
+        The GFF3 has CDS records only, no exon records. T>C changes the stop codon TAA to CAA, and the alt CDS has
+        no in-frame stop codon. alt_transcript_seq is null, so the variant-transcript pair keeps the flags from the
+        CDS: stop_loss is True, and annotated_stop_distance is null.
         """,
-        TWO_EXONS_WITHOUT_EXON_ROWS,
+        TWO_EXONS_WITHOUT_EXON_RECORDS,
         Change("AGC[T>C]AAGC"),
         {
             "variant_id": "var1",
@@ -1811,22 +1819,24 @@ CASES = [
             "stop_classification": "alt_cds",
         },
     ),
-    # A start loss on a transcript without exon rows: the row has no alt_transcript_seq, so the scan does not run, and
-    # the row keeps the PTC of the alt CDS. ptc_to_start_codon is null, so the model cannot predict the row: start_loss.
+    # A start loss on a transcript without exon records: the variant-transcript pair has no alt_transcript_seq, so the
+    # scan does not run, and the pair keeps the PTC of the alt CDS. ptc_to_start_codon is null, so the model cannot
+    # predict the variant-transcript pair: start_loss.
     Case(
-        "start_loss_in_a_transcript_without_exon_rows_keeps_the_ptc_of_the_alt_cds_and_has_the_status_start_loss",
+        "start_loss_in_a_transcript_without_exon_records_keeps_the_ptc_of_the_alt_cds_and_has_the_status_start_loss",
         """
         ref 5' [gacc ATG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
         alt 5' [gacc TAG GCC]|[AAG TGG GGC]|[TCC TAA gccgcc] 3'
                      ^^ AT>TA
                      *** PTC
-        The GFF3 has CDS rows only, no exon rows. AT>TA changes the start codon ATG to TAG: a start loss. The row has
-        no alt_transcript_seq, so the scan of the alt transcript does not run, and the row keeps the flags from the
-        alt CDS. Its first in-frame stop codon is the TAG at CDS 0, upstream of the annotated stop codon at CDS 18: a
-        PTC. No ATG of a scan starts the ORF, so ptc_to_start_codon is null, and nmd_efficiency_prediction_status is start_loss.
+        The GFF3 has CDS records only, no exon records. AT>TA changes the start codon ATG to TAG: a start loss. The
+        variant-transcript pair has no alt_transcript_seq, so the scan of the alt transcript does not run, and the
+        pair keeps the flags from the alt CDS. Its first in-frame stop codon is the TAG at CDS 0, upstream of the
+        annotated stop codon at CDS 18: a PTC. No ATG of a scan starts the ORF, so ptc_to_start_codon is null, and
+        nmd_efficiency_prediction_status is start_loss.
         annotated_stop_distance is 18 - 0 = 18, in alt CDS coordinates.
         """,
-        THREE_EXONS_WITHOUT_EXON_ROWS,
+        THREE_EXONS_WITHOUT_EXON_RECORDS,
         Change("GACC[AT>TA]GGCC"),
         {
             "variant_id": "var1",
@@ -1872,22 +1882,22 @@ CASES = [
         },
         marks=(Mark("alt", 4, 7, "*", "PTC"),),
     ),
-    # The GFF3 has the exon row twice, and the deletion lies in both copies: each exon of the alt transcript has 18 nt,
-    # 36 nt in all. alt_transcript_seq holds the deletion once and has 37 nt. The exon lengths do not add up, so
-    # alt_transcript_exons is null, and so are the exon numbers of the scan. The frameshift reads on into the second
-    # copy of the exon, to the TAA at tx 31: a stop loss.
+    # The GFF3 has the exon record twice, and the deletion lies in both copies: each exon of the alt transcript has
+    # 18 nt, 36 nt in all. alt_transcript_seq holds the deletion once and has 37 nt. The exon lengths do not add up,
+    # so alt_transcript_exons is null, and so are the exon numbers of the scan. The frameshift reads on into the
+    # second copy of the exon, to the TAA at tx 31: a stop loss.
     Case(
-        "frameshift_in_an_exon_with_two_exon_rows_has_no_alt_transcript_exons",
+        "frameshift_in_an_exon_with_two_exon_records_has_no_alt_transcript_exons",
         """
         ref 5' [ggac ATG GCC AAG TAA gcc] 3'
         alt 5' [ggac ATG -CC AAG TAA gcc] 3'
                          ^ G>-
-        The GFF3 has the exon row twice, so transcript_seq holds the exon twice. Deleting one G of GG shifts the
-        frame. The deletion lies in both exon rows: the exons of the alt transcript have 18 + 18 = 36 nt, but
+        The GFF3 has the exon record twice, so transcript_seq holds the exon twice. Deleting one G of GG shifts the
+        frame. The deletion lies in both exon records: the exons of the alt transcript have 18 + 18 = 36 nt, but
         alt_transcript_seq has 37 nt. So alt_transcript_exons is null. The scan reads on into the second copy
         of the exon, to the TAA at tx 31: a stop loss.
         """,
-        EXON_ROW_TWICE,
+        EXON_RECORD_TWICE,
         Change("ATG[G>]CCAAG"),
         {
             "variant_id": "var1",
@@ -1913,7 +1923,7 @@ CASES = [
             "alt_cds_start_in_transcript": 4,
             "alt_transcript_exons": None,
             "alt_scan_start_codon_pos": 4,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": "TAA",
             "alt_scan_first_stop_pos": 31,
             "alt_scan_stop_codon_count": 1,
