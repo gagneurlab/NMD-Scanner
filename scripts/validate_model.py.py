@@ -16,10 +16,10 @@
 # %% [markdown]
 # # Model validation
 #
-# This notebook draws the figures of the training run of scripts/train_model.py, and it computes the numbers of the
-# section "Model validation" of the main README: how well nmd_efficiency_rf.onnx and nmd_escape alone rank the measured
-# NMD efficiency in the benchmarks of nmd_scanner.benchmark. It writes validation.json and figures/, with each figure
-# as PNG and PDF, to OUT_DIR. scripts/README.md shows how to run it.
+# This notebook draws the figures of the training run of scripts/train_model.py, and it computes the numbers behind the
+# figures of the section "Model validation" of the main README: how well nmd_efficiency_rf.onnx and nmd_escape alone
+# rank the measured NMD efficiency in the benchmarks of nmd_scanner.benchmark. It writes validation.json and figures/,
+# with each figure as PNG and PDF, to OUT_DIR. scripts/README.md shows how to run it.
 #
 # Cohorts: the benchmarks of nmd_scanner.benchmark.DATASETS. Each module of nmd_scanner.benchmark.datasets describes
 # its study and its NMD efficiency. TCGA has the out-of-fold predictions in oof_predictions.parquet of TRAIN_DIR.
@@ -571,8 +571,8 @@ save_figure(plot, OUT_DIR, "efficiency_by_nmd_escape", 11, 3.5)
 
 # %% [markdown]
 # The bars show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
-# cohort, with the 95% bootstrap CIs. These are the numbers of the table in the section "Model validation" of the main
-# README. The bracket of a cohort gives the P value of the gain of the model over the rules.
+# cohort, with the 95% bootstrap CIs. This is the first figure of the section "Model validation" of the main README.
+# The bracket of a cohort gives the P value of the gain of the model over the rules.
 
 # %%
 bars_df = intervals({cohort: validation[cohort] for cohort in cohorts}, MODEL_AND_RULES)
