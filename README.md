@@ -102,7 +102,7 @@ The model predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 202
 
 ## Model validation
 
-The first figure gives the Spearman correlation of the prediction with the measured NMD efficiency, with 95% CIs from a bootstrap over genes. "Canonical rules" ranks the same measurements by `nmd_escape` alone. [scripts/README.md](scripts/README.md) shows how to reproduce the figures.
+The figure gives the Spearman correlation of the prediction with the measured NMD efficiency, with 95% CIs from a bootstrap over genes. "Canonical rules" ranks the same measurements by `nmd_escape` alone. [scripts/README.md](scripts/README.md) shows how to reproduce the figures.
 
 | Cohort                                                                                 | Variant origin     |
 | -------------------------------------------------------------------------------------- | ------------------ |
@@ -113,11 +113,7 @@ The first figure gives the Spearman correlation of the prediction with the measu
 
 ![Spearman correlation per cohort](data/validate/figures/spearman_per_cohort.png)
 
-The level of the measured efficiency differs between cohorts and tissues. Before you compare the predictions with another cohort's measurements, recalibrate them with a linear fit.
-
-The second figure shows that R2 is the squared Pearson r minus the mean offset minus the spread mismatch. A linear fit removes both error terms.
-
-![R2 decomposition](data/validate/figures/r2_decomposition.png)
+The level of the measured efficiency differs between cohorts and tissues. To compare the predictions with another cohort's measurements, it is necessary to recalibrate them with a linear fit.
 
 ## License
 

@@ -529,8 +529,8 @@ save_figure(plot, OUT_DIR, "measured_vs_predicted", 8, 7.5)
 # %% [markdown]
 # Per cohort, the dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the
 # prediction, with the 95% CI of the measured mean. The gray line marks equal values, and the blue line is the
-# least-squares fit of measured on predicted over all measurements, the linear recalibration that the main README
-# suggests.
+# least-squares fit of measured on predicted over all measurements, the linear recalibration that is necessary to
+# compare the predictions with another cohort's measurements.
 
 # %%
 calibrations = {}
@@ -614,11 +614,13 @@ plot = (
 save_figure(plot, OUT_DIR, "spearman_per_cohort", 7, 3.5)
 
 # %% [markdown]
-# Per cohort, the bars split the R2 of the model into three terms: the squared Pearson correlation r of the prediction
-# with the measured NMD efficiency, minus the squared difference of their means, minus the squared difference of the
-# standard deviation of the prediction and r times that of the measured NMD efficiency. Each term is a share of the
-# variance of the measured NMD efficiency, and R2 is the r2_score of scikit-learn. The linear recalibration that the main
-# README suggests removes both error terms, so that R2 becomes the squared Pearson correlation.
+# The measured efficiency has a different mean and spread in each cohort. So R2 of the raw predictions can be low or
+# negative, although the predictions rank the measurements well. The figure splits R2 into the squared Pearson
+# correlation r of the prediction with the measured NMD efficiency, minus the mean offset, minus the spread mismatch.
+# The mean offset is the squared difference of the means. The spread mismatch is the squared difference of the standard
+# deviation of the prediction and r times that of the measured NMD efficiency. Each term is a share of the variance of
+# the measured NMD efficiency, and R2 is the r2_score of scikit-learn. A linear fit removes both error terms, so that R2
+# becomes the squared Pearson correlation.
 
 # %%
 r2_panels = {}
