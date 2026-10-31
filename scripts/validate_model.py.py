@@ -625,7 +625,11 @@ r2_panels = {}
 for cohort, cohort_df in cohorts.items():
     values = [sign * validation[cohort]["r2_decomposition"][term] for term, sign, _ in R2_TERMS]
     r2_panels[f"{cohort_names[cohort]}\n{len(cohort_df):,} {MEASUREMENTS[cohort]}"] = pl.DataFrame(
-        {"term": [name for _, _, name in R2_TERMS], "value": values, "label": [f"{value:+.2f}" for value in values]}
+        {
+            "term": [name for _, _, name in R2_TERMS],
+            "value": values,
+            "label": [f"{value:+.2f}" if round(value, 2) else "0.00" for value in values],
+        }
     )
 positive = pl.col("value") >= 0
 # coord_flip draws the first term at the bottom, so the terms go in reverse order.
