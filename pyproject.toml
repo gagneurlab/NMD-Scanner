@@ -25,6 +25,24 @@ dependencies = [
     "onnxruntime>=1.23.2",
 ]
 
+[project.optional-dependencies]
+# The dependencies of the scripts in scripts/ and of nmd_scanner.benchmark.figures
+scripts = [
+    "scikit-learn>=1.9.1",
+    "joblib>=1.6.0",
+    "skl2onnx>=1.20.0",
+    "onnx>=1.23.2",
+    "scipy>=1.18.1",
+    "fastexcel>=0.21.0",
+    "fsspec[http]>=2026.1.0",
+    "jupytext>=1.19.6",
+    "nbconvert>=7.17.2",
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "plotnine>=0.15.8",
+    "click>=8.5.0",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/gagneurlab/NMD-Scanner"
 
@@ -42,22 +60,20 @@ test = [
     "pytest-mock",
     "pytest-cov",
     "pytest-sugar",
+    "fsspec>=2026.1.0",
 ]
 lint = [
     "ruff",
     "mypy",
     "pandas-stubs",
 ]
-scripts = [
-    "scikit-learn>=1.9.1",
-    "skl2onnx>=1.20.0",
-    "onnx>=1.23.2",
-    "scipy>=1.18.1",
-    "openpyxl>=3.1.5",
-]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nmd_scanner"]
+
+[tool.hatch.build.targets.sdist]
+# The package predicts with the ONNX model, so the sdist leaves out the pickle of the same random forest
+exclude = ["/nmd_efficiency_rf.pkl"]
 
 [tool.ruff]
 target-version = "py312"
@@ -76,6 +92,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "SIM", "PLR", "F811", "F841"]
 "__init__.py" = ["F401"]
+# The notebook sets its paths in its first cell, before the imports
+"scripts/validate_model.py.py" = ["E402"]
 
 [tool.tox]
 requires = ["tox>=4", "tox-uv"]
