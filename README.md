@@ -113,8 +113,6 @@ The figure gives the Spearman correlation of the prediction with the measured NM
 
 ![Spearman correlation per cohort](data/validate/figures/spearman_per_cohort.png)
 
-The level of the measured efficiency differs between cohorts and tissues. To compare the predictions with another cohort's measurements, it is necessary to recalibrate them with a linear fit.
-
 ## License
 
 All source code in this repository is licensed under the [MIT License](https://github.com/gagneurlab/NMD-Scanner/blob/main/LICENSE).

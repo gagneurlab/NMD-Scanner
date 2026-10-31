@@ -529,8 +529,7 @@ save_figure(plot, OUT_DIR, "measured_vs_predicted", 8, 7.5)
 # %% [markdown]
 # Per cohort, the dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the
 # prediction, with the 95% CI of the measured mean. The gray line marks equal values, and the blue line is the
-# least-squares fit of measured on predicted over all measurements, the linear recalibration that is necessary to
-# compare the predictions with another cohort's measurements.
+# least-squares fit of measured on predicted over all measurements.
 
 # %%
 calibrations = {}
