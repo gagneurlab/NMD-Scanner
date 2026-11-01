@@ -135,7 +135,6 @@ EXCLUDED_TISSUES = ["Bladder", "Cervix - Ectocervix", "Cervix - Endocervix", "Fa
 # The scores of the Spearman bars and of the MMRF-TARGET intervals: the key in the dict of correlations, the direct
 # label, the color, and the offset from the position of the group
 MODEL_AND_RULES = [("model", "Model", BLUE, 0.15), ("rules", "Canonical rules", LIGHT_GRAY, -0.15)]
-GAIN = [("gain", "", BLUE, 0.0)]
 # The keys of the MMRF-TARGET variant-sample pairs by transcript in validation.json, and their names in the log and the
 # figure
 TRANSCRIPT_GROUPS = {
@@ -828,7 +827,7 @@ gain_panel = "Gain of the model over the rules"
 transcript_intervals_df = facet_frame(
     {
         "Spearman correlation": intervals(transcript_split, MODEL_AND_RULES),
-        gain_panel: intervals(transcript_split, GAIN),
+        gain_panel: intervals(transcript_split, [("gain", "", BLUE, 0.0)]),
     }
 )
 zero_df = pl.DataFrame({"panel": [gain_panel], "x": [0.0]}).cast({"panel": transcript_intervals_df["panel"].dtype})
