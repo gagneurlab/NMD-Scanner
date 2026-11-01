@@ -6,8 +6,6 @@ Run it from the repo root with:
 
 \b
     uv run --extra scripts python scripts/build_benchmarks.py
-
---dataset builds only the named benchmarks, e.g. --dataset gtex --dataset geuvadis. By default, it builds all.
 """
 
 import logging
@@ -43,25 +41,12 @@ logger = logging.getLogger("build_benchmarks")
     default="data/benchmarks",
     show_default=True,
     type=click.Path(path_type=Path, file_okay=False),
-    help="directory for the benchmark tables",
+    help="directory for the benchmark tables, and for the downloaded study tables in <out-dir>/downloads",
 )
-@click.option(
-    "--downloads",
-    type=click.Path(path_type=Path, file_okay=False),
-    help="directory for the downloaded study tables, by default <out-dir>/downloads. A study table that is there"
-    " already is read from there, with the same sha256 check.",
-)
-@click.option(
-    "--dataset",
-    "datasets",
-    multiple=True,
-    type=click.Choice(list(DATASETS)),
-    help="a benchmark to build; repeat it for more",
-)
-def main(gff3: Path, fasta: Path, out_dir: Path, downloads: Path | None, datasets: tuple[str, ...]) -> None:
+def main(gff3: Path, fasta: Path, out_dir: Path) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     out_dir.mkdir(parents=True, exist_ok=True)
-    downloads = downloads or out_dir / "downloads"
+    downloads = out_dir / "downloads"
     genome = Fasta(str(fasta))
     transcripts_df = (
         pl.from_pandas(read_annotation(gff3, genome)[["transcript_id", "Strand", "gene_id"]])
@@ -74,8 +59,7 @@ def main(gff3: Path, fasta: Path, out_dir: Path, downloads: Path | None, dataset
     )
     if transcripts_df.is_empty():
         raise ValueError(f"{gff3} has no exon or CDS record")
-    for name in datasets or DATASETS:
-        dataset = DATASETS[name]
+    for name, dataset in DATASETS.items():
         table_df = dataset.build(dataset.download(downloads), transcripts_df, genome)
         path = out_dir / f"{name}.parquet"
         table_df.write_parquet(path)
