@@ -71,7 +71,7 @@ import numpy as np
 import plotnine as pn
 import polars as pl
 from pyfaidx import Fasta
-from scipy.stats import norm, rankdata, t
+from scipy.stats import norm, spearmanr, t
 from sklearn.metrics import r2_score
 
 from nmd_scanner import annotate_variants, read_annotation
@@ -159,10 +159,6 @@ R2_TERMS = [
 ]
 
 
-def spearman(x: np.ndarray, y: np.ndarray) -> float:
-    return float(np.corrcoef(rankdata(x), rankdata(y))[0, 1])
-
-
 def percentiles(values: np.ndarray) -> list[float]:
     return [float(v) for v in np.percentile(values, [2.5, 97.5])]
 
@@ -184,10 +180,10 @@ def correlations(cohort_df: pl.DataFrame) -> dict:
     rules_resampled = np.empty(N_RESAMPLES)
     for resample in range(N_RESAMPLES):
         i = np.concatenate([gene_positions[gene] for gene in rng.integers(0, len(gene_positions), len(gene_positions))])
-        model_resampled[resample] = spearman(model[i], y[i])
-        rules_resampled[resample] = spearman(rules[i], y[i])
-    model_value = spearman(model, y)
-    rules_value = spearman(rules, y)
+        model_resampled[resample] = spearmanr(model[i], y[i]).statistic
+        rules_resampled[resample] = spearmanr(rules[i], y[i]).statistic
+    model_value = spearmanr(model, y).statistic
+    rules_value = spearmanr(rules, y).statistic
     gain = model_value - rules_value
     gain_resampled = model_resampled - rules_resampled
     return {
@@ -374,7 +370,7 @@ save_figure(plot, "target_histogram", 6, 3.5)
 
 # %%
 oof_measured = oof_df["NMD_efficiency"].to_numpy()
-oof_spearman = spearman(oof_df["prediction"].to_numpy(), oof_measured)
+oof_spearman = spearmanr(oof_df["prediction"].to_numpy(), oof_measured).statistic
 oof_r2 = r2_score(oof_measured, oof_df["prediction"].to_numpy())
 plot = (
     pn.ggplot(oof_df, pn.aes("prediction", "NMD_efficiency"))
