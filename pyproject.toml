@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The dependencies of the scripts in scripts/ and of nmd_scanner.benchmark.figures
+# The dependencies of the scripts in scripts/
 scripts = [
     "scikit-learn>=1.9.1",
     "joblib>=1.6.0",
