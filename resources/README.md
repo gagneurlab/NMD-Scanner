@@ -27,8 +27,6 @@ VCF files created for testing the NMD-Scanner functionality.
 
 - **`test_variants.vcf`** : Test VCF containing variants on the plus strand only.
 
-- **`test_variants_minus.vcf`** : Test VCF containing variants on the minus strand only.
-
 - **`variants.vcf`** : Combined test VCF containing both plus- and minus-strand variants.
 
 The VCFs contain edge-case variants such as start and stop-loss mutations, frameshifts and nonsense mutations.
