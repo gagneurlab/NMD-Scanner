@@ -26,7 +26,7 @@ def results():
 
 def test_the_packaged_model_is_the_trained_model():
     sha256 = hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest()
-    assert sha256 == "852cf99fe0f2194b0bc23b57e5ac6ad2feaac02de88696561e3a9e6bd4ccd836"
+    assert sha256 == "8ce66633d8e49ce36982641ad81c4a8953a9b57682d21d37f1b832d727fd053e"
 
 
 def test_add_nmd_efficiency_prediction_is_exported_from_the_package():
