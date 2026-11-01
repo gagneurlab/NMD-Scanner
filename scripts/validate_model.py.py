@@ -26,7 +26,8 @@
 #
 # Steps of the validation:
 #
-# 1. Read the benchmark tables of BENCHMARK_DIR, except TCGA.
+# 1. Read the benchmark tables of BENCHMARK_DIR, except TCGA. Drop the measurements that share their variant-transcript
+#    pair with a TCGA training variant-sample pair, since the final model trained on all TCGA variant-sample pairs.
 # 2. Run nmd_scanner.annotate_variants on their unique variants. It adds the prediction of the model as
 #    nmd_efficiency_prediction. Join each measurement to the NMD-Scanner result of its variant-transcript pair.
 # 3. Keep the measurements with nmd_efficiency_prediction_status "ok". Log the measurements that this drops, and why.
@@ -499,7 +500,21 @@ save_figure(plot, "oob_error", 6, 4)
 # ## Validation
 
 # %%
-benchmarks = {name: pl.read_parquet(BENCHMARK_DIR / f"{name}.parquet") for name in DATASETS if name != "tcga"}
+benchmarks = {}
+for name in DATASETS:
+    if name == "tcga":
+        continue
+    table_df = pl.read_parquet(BENCHMARK_DIR / f"{name}.parquet")
+    seen_df = table_df.join(oof_df, on=KEY, how="semi")
+    logger.info(
+        "%s: dropped %d of %d measurements, which share %d variant-transcript pairs with the TCGA training"
+        " variant-sample pairs",
+        name,
+        len(seen_df),
+        len(table_df),
+        seen_df.select(KEY).n_unique(),
+    )
+    benchmarks[name] = table_df.join(oof_df, on=KEY, how="anti")
 variants_df = pl.concat([table_df.select(VARIANT_COLUMNS) for table_df in benchmarks.values()]).unique()
 fasta = Fasta(str(FASTA))
 results_df = annotate_variants(variants_df.to_pandas(), read_annotation(GFF3, fasta), fasta, sequences=False)
