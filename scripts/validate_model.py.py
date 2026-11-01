@@ -664,7 +664,7 @@ save_figure(plot, "efficiency_by_nmd_escape", 11, 3.5)
 
 # %% [markdown]
 # The bars show the Spearman correlation of the model and of the canonical rules with the measured NMD efficiency, per
-# cohort, with the 95% bootstrap CIs. This is the first figure of the section "Model validation" of the main README.
+# cohort, with the 95% bootstrap CIs. The section "Model validation" of the main README shows this figure.
 # The bracket of a cohort gives the P value of the gain of the model over the rules.
 
 # %%
