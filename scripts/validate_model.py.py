@@ -402,7 +402,20 @@ save_figure(plot, "calibration_oof", 5, 6)
 # standard deviation over the permutations.
 
 # %%
-importance_df = pl.read_parquet(TRAIN_DIR / "feature_importance.parquet").sort("value", "input")
+cv_results = json.loads((TRAIN_DIR / "cv_results.json").read_text())
+# The facet title of each kind of importance
+importance_titles = {
+    "impurity": "Impurity importance\nMean decrease in impurity",
+    "permutation": (
+        "Permutation importance\nDecrease in R2 on the training\nvariant-sample pairs, mean and SD"
+        f"\nof {cv_results['n_permutations']} permutations"
+    ),
+}
+importance_df = (
+    pl.read_parquet(TRAIN_DIR / "feature_importance.parquet")
+    .with_columns(pl.col("kind").replace_strict(importance_titles))
+    .sort("value", "input")
+)
 # Each panel orders its bars by importance, so a bar is one kind and input. Bars of equal importance are ordered
 # by input name. The axis shows only the input.
 bars = importance_df["kind"] + "|" + importance_df["input"]
@@ -475,7 +488,7 @@ save_figure(plot, "learning_curve", 6, 4)
 
 # %%
 oob_df = pl.read_parquet(TRAIN_DIR / "oob_error.parquet").select("trees", error=1 - pl.col("oob_r2"))
-final_trees = json.loads((TRAIN_DIR / "cv_results.json").read_text())["params"]["n_estimators"]
+final_trees = cv_results["params"]["n_estimators"]
 plot = (
     pn.ggplot(oob_df, pn.aes("trees", "error"))
     + pn.geom_vline(xintercept=final_trees, color=GRAY)

@@ -13,7 +13,7 @@ Run it from the repo root with:
 \b
 Outputs in --out-dir:
 - nmd_efficiency_rf.onnx (see save_onnx), and the same random forest as the joblib pickle nmd_efficiency_rf.pkl
-- cv_results.json: the R2 of each fold and the hyperparameters
+- cv_results.json: the R2 of each fold, the hyperparameters and N_PERMUTATIONS
 - oof_predictions.parquet: the out-of-fold prediction of each TCGA variant-sample pair
 - feature_importance.parquet, learning_curve.parquet and oob_error.parquet: the numbers of the training figures
 """
@@ -213,6 +213,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         "folds": folds,
         "inner_cv_r2": final.best_score_,
         "params": final.best_params_,
+        "n_permutations": N_PERMUTATIONS,
     }
     (out_dir / "cv_results.json").write_text(json.dumps(results, indent=2) + "\n")
     joblib.dump(final.best_estimator_, out_dir / "nmd_efficiency_rf.pkl")
@@ -227,17 +228,14 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         [
             pl.DataFrame(
                 {
-                    "kind": "Impurity importance\nMean decrease in impurity",
+                    "kind": "impurity",
                     "input": MODEL_INPUTS,
                     "value": final.best_estimator_.feature_importances_,
                 }
             ),
             pl.DataFrame(
                 {
-                    "kind": (
-                        "Permutation importance\nDecrease in R2 on the training\nvariant-sample pairs, mean and SD"
-                        f"\nof {N_PERMUTATIONS} permutations"
-                    ),
+                    "kind": "permutation",
                     "input": MODEL_INPUTS,
                     "value": permutation.importances_mean,
                     "sd": permutation.importances_std,
