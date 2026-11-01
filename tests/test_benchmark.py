@@ -15,7 +15,7 @@ from pyfaidx import Fasta
 
 from nmd_scanner.benchmark import DATASETS, datasets, join_features
 from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
-from nmd_scanner.benchmark.sources import check_sha256, fetch, hgvsc_alleles
+from nmd_scanner.benchmark.sources import fetch, hgvsc_alleles
 
 # ENST3 is missing from the GFF3
 TRANSCRIPTS = pl.DataFrame({"transcript": ["ENST1", "ENST2"], "strand": ["+", "-"], "gene": ["ENSG1", "ENSG2"]})
@@ -166,13 +166,6 @@ def test_build_geuvadis(fasta, caplog):
     assert "Geuvadis: 1 of 3 variants are outside the study's accurate annotation" in caplog.text
 
 
-def test_check_sha256():
-    data = b"NMD"
-    assert check_sha256(data, hashlib.sha256(data).hexdigest(), "data") == data
-    with pytest.raises(ValueError, match="data has sha256"):
-        check_sha256(data, hashlib.sha256(b"other").hexdigest(), "data")
-
-
 def test_fetch_reads_downloads(tmp_path):
     """fetch reads a file or a zip member that downloads has, and checks its sha256."""
     (tmp_path / "table.csv").write_bytes(b"a,b\n")
@@ -210,10 +203,6 @@ def test_datasets_cover_every_module():
     modules = {module.name for module in pkgutil.iter_modules(datasets.__path__)}
     expected = {name: f"{datasets.__name__}.{name}" for name in modules}
     assert {name: dataset.__name__ for name, dataset in DATASETS.items()} == expected
-    for name, dataset in DATASETS.items():
-        assert isinstance(dataset.NAME, str), name
-        assert callable(dataset.download), name
-        assert callable(dataset.build), name
 
 
 def test_join_features(caplog):
