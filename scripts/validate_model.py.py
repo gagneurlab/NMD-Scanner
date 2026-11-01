@@ -488,7 +488,7 @@ save_figure(plot, "learning_curve", 6, 4)
 
 # %%
 oob_df = pl.read_parquet(TRAIN_DIR / "oob_error.parquet").select("trees", error=1 - pl.col("oob_r2"))
-final_trees = cv_results["params"]["n_estimators"]
+final_trees = cv_results["n_estimators"]
 plot = (
     pn.ggplot(oob_df, pn.aes("trees", "error"))
     + pn.geom_vline(xintercept=final_trees, color=GRAY)

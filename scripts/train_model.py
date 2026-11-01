@@ -13,7 +13,7 @@ Run it from the repo root with:
 \b
 Outputs in --out-dir:
 - nmd_efficiency_rf.onnx (see save_onnx), and the same random forest as the joblib pickle nmd_efficiency_rf.pkl
-- cv_results.json: the R2 of each fold, the hyperparameters and N_PERMUTATIONS
+- cv_results.json: the R2 of each fold, the hyperparameters of the grid search, N_ESTIMATORS and N_PERMUTATIONS
 - oof_predictions.parquet: the out-of-fold prediction of each TCGA variant-sample pair
 - feature_importance.parquet, learning_curve.parquet and oob_error.parquet: the numbers of the training figures
 """
@@ -47,9 +47,10 @@ SEED = 42
 N_FOLDS = 5
 # The folds are stratified by this many quantile bins of the target
 N_TARGET_BINS = 5
-# The grid of the random forest search: 324 candidates
+# Each random forest has this many trees. The out-of-bag R2 levels off at 200 trees, as the oob_error figure shows.
+N_ESTIMATORS = 200
+# The grid of the random forest search: 108 candidates
 RF_GRID = {
-    "n_estimators": [200, 300, 400],
     "max_depth": [5, 7, 9, 11],
     "max_features": ["sqrt", 0.2, 0.3],
     "min_samples_split": [5, 10, 15],
@@ -77,7 +78,7 @@ def chromosome_folds(y: np.ndarray, chrom: np.ndarray) -> list[tuple[np.ndarray,
 
 def tune(x_df: pl.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
     """Run a grid search over RF_GRID on chromosome_folds, and refit the best random forest on all of x_df and y."""
-    forest = RandomForestRegressor(random_state=SEED, n_jobs=1)
+    forest = RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=SEED, n_jobs=1)
     search = GridSearchCV(forest, RF_GRID, scoring="r2", cv=chromosome_folds(y, chrom), n_jobs=-1)
     return search.fit(x_df, y)
 
@@ -213,6 +214,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         "folds": folds,
         "inner_cv_r2": final.best_score_,
         "params": final.best_params_,
+        "n_estimators": N_ESTIMATORS,
         "n_permutations": N_PERMUTATIONS,
     }
     (out_dir / "cv_results.json").write_text(json.dumps(results, indent=2) + "\n")
