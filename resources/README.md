@@ -1,7 +1,7 @@
 # Resources
 
-This directory contains datasets, reference files, and test resources used for the development, benchmarking, and validation of the NMD-Scanner.
-The files in this directory are not required for normal usage of the NMD-Scanner package, but are provided for reproducibility, benchmarking, testing and example analyses.
+This directory contains datasets, reference files, and test resources used for the development of the NMD-Scanner.
+The files in this directory are not required for normal usage of the NMD-Scanner package, but are provided for reproducibility, testing and example analyses.
 
 ---
 
@@ -43,5 +43,5 @@ These files are provided to allow testing on a small genomic region (chromosome 
 
 ## Notes
 
-- These resources are intended for testing, benchmarking and reproducibility.
+- These resources are intended for testing and reproducibility.
 - Users of the NMD-Scanner do not need to download or use these files to run the tool on their own data.
