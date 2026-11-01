@@ -686,8 +686,8 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC --- TAA cccctgacctagccc] 3'
                                                             ^^^ TCC>-
         3 nt deleted from tx 35-40: alt GCC GCC TAA.
-        Descriptions: CCT at tx 35, TCC at tx 37 (as the old CTCC>C), CCT at tx 38 (as the old TCCT>T, with the T
-        of the stop codon). Neither a PTC nor a stop loss.
+        Descriptions: CCT at tx 35, TCC at tx 37 (as CTCC>C), CCT at tx 38 (as TCCT>T, with the T of the stop
+        codon). Neither a PTC nor a stop loss.
         """,
         STOP_TCC_TAA,
         Change("GCCGCC[TCC>]TAA"),
@@ -724,9 +724,8 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
                                                               ^^^^^^^ CTAAC>-
                                                                       *** TAG at the position of the stop codon
         5 nt deleted from tx 38-46: alt GCC GCC TAG ccc.
-        Descriptions: CCTAA at tx 38, CTAAC at tx 39 (as the old CCTAAC>C), TAACC at tx 40 (as the old
-        CTAACC>C), ACCTA at tx 42. The TAG of the 3'UTR lands at the position of the stop codon: neither a PTC
-        nor a stop loss.
+        Descriptions: CCTAA at tx 38, CTAAC at tx 39 (as CCTAAC>C), TAACC at tx 40 (as CTAACC>C), ACCTA at tx 42.
+        The TAG of the 3'UTR lands at the position of the stop codon: neither a PTC nor a stop loss.
         """,
         STOP_GCC_TAA_CCTAG,
         Change("GCCGCCGC[CTAAC>]CTAG"),

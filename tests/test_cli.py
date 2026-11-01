@@ -468,7 +468,7 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
     listing = next(
         message for message in warnings if message.startswith("Reference-mismatched variant-transcript pairs:")
     )
-    # one row per transcript: transcript_id, Chromosome, Start_variant, End_variant, Ref, Alt
+    # one line per variant-transcript pair: transcript_id, Chromosome, Start_variant, End_variant, Ref, Alt
     rows = [line.split() for line in listing.splitlines()[2:]]
     assert rows
     assert {tuple(row[1:]) for row in rows} == {("chr18", "21383518", "21383519", "C", "T")}
