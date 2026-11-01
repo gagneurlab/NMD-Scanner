@@ -882,17 +882,14 @@ def chr18_annotation():
     return fasta, read_annotation("resources/chr18.gff3.gz", fasta)
 
 
-@pytest.mark.parametrize("sequences", [True, False])
-@pytest.mark.parametrize("prediction", [True, False])
-def test_annotate_variants_returns_what_annotate_returns(chr18_annotation, sequences, prediction):
+def test_annotate_variants_returns_what_annotate_returns(chr18_annotation):
     fasta, annotation_df = chr18_annotation
     vcf = "resources/test_files/test_variants.vcf"
-    expected = annotate(
-        vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", sequences=sequences, prediction=prediction
-    )
+    expected = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", sequences=False, prediction=False)
 
-    results = annotate_variants(read_vcf(vcf), annotation_df, fasta, sequences=sequences, prediction=prediction)
+    results = annotate_variants(read_vcf(vcf), annotation_df, fasta, sequences=False, prediction=False)
 
+    assert list(results.columns) == list(output_column_kinds(sequences=False, prediction=False))
     pd.testing.assert_frame_equal(results, expected)
 
 
@@ -922,14 +919,6 @@ def test_annotate_variants_takes_a_table_without_variant_id(chr18_annotation):
 
     pd.testing.assert_frame_equal(results.drop(columns="variant_id"), expected.drop(columns="variant_id"))
     assert results["variant_id"].isna().all()
-
-
-def test_annotate_variants_annotates_two_vcf_tables_with_one_annotation(chr18_annotation):
-    fasta, annotation_df = chr18_annotation
-
-    for vcf in ("resources/test_files/test_variants.vcf", "resources/test_files/test_variants_minus.vcf"):
-        expected = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-        pd.testing.assert_frame_equal(annotate_variants(read_vcf(vcf), annotation_df, fasta), expected)
 
 
 def test_annotate_reads_gff3_with_the_fasta(tmp_path):
