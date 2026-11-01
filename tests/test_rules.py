@@ -19,6 +19,7 @@ from pyfaidx import Fasta
 import nmd_scanner.rules
 from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
 from nmd_scanner.rules import (
+    VCF_COLUMNS,
     SpliceRow,
     StartCodonRow,
     analyze_sequence,
@@ -994,6 +995,30 @@ def test_extract_ptc_needs_the_transcript_type_and_the_transcript_tags():
     )
     with pytest.raises(ValueError, match="no transcript_type and no transcript_tags column"):
         extract_ptc(coding, vcf=None, fasta=None, exons_df=None)
+
+
+def test_extract_ptc_names_the_missing_vcf_columns():
+    coding = pd.DataFrame(
+        {
+            "Chromosome": ["chrT"],
+            "Start": [100],
+            "End": [150],
+            "Strand": ["+"],
+            "Feature": ["CDS"],
+            "exon_number": ["1"],
+            "transcript_id": ["tx"],
+            "has_start_codon": [True],
+            "has_stop_codon": [True],
+            "transcript_type": ["protein_coding"],
+            "transcript_tags": ["basic"],
+        }
+    )
+    vcf = pd.DataFrame({"chrom": ["chrT"], "start": [120], "end": [121], "ref": ["A"], "alt": ["G"]})
+    with pytest.raises(ValueError, match=r"^vcf has no alt column\."):
+        extract_ptc(coding, vcf.drop(columns="alt"), fasta=None, exons_df=None)
+    # The internal names of VCF_COLUMNS do not count
+    with pytest.raises(ValueError, match="^vcf has no chrom and no start and no end and no ref and no alt column"):
+        extract_ptc(coding, vcf.rename(columns=VCF_COLUMNS), fasta=None, exons_df=None)
 
 
 # drop_symbolic_alleles: the records that extract_ptc skips

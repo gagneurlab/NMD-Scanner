@@ -50,8 +50,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
              and the alt columns are null. It has zero rows if no variant touches a coding region, or every variant
              is skipped or has a reference mismatch.
     :raises ValueError: if cds_df has no has_start_codon, has_stop_codon, transcript_type or transcript_tags column,
-                        i.e. it is not the coding regions that scan.read_annotation returns, or if the FASTA has no
-                        sequence for a chromosome with variants and coding regions.
+                        i.e. it is not the coding regions that scan.read_annotation returns, if vcf has no chrom,
+                        start, end, ref or alt column, or if the FASTA has no sequence for a chromosome with variants
+                        and coding regions.
     """
 
     required = ("has_start_codon", "has_stop_codon", "transcript_type", "transcript_tags")
@@ -61,6 +62,13 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
             f"cds_df has no {' and no '.join(missing)} column. extract_ptc takes the coding regions: CDS records that "
             "include the stop codon, with has_start_codon, has_stop_codon, transcript_type and transcript_tags, as "
             "scan.read_annotation returns them."
+        )
+
+    missing = [column for column in ("chrom", "start", "end", "ref", "alt") if column not in vcf.columns]
+    if missing:
+        raise ValueError(
+            f"vcf has no {' and no '.join(missing)} column. extract_ptc takes VCF records with chrom, start, end, ref, "
+            "alt and optionally variant_id, as scan.read_vcf returns them."
         )
 
     # The steps below take the variant columns by the names of VCF_COLUMNS
