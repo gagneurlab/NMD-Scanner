@@ -254,7 +254,6 @@ def main_cli():
     # If user adds flag, reassign exon numbers
     parser.add_argument(
         "--reassign-exons",
-        dest="reassign_exons",
         action="store_true",
         help="Recompute exon numbers (recommended for hg19; may be slow)",
     )

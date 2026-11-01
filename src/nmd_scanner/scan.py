@@ -791,12 +791,11 @@ def _add_transcript_attributes(df, transcript_mask, type_attribute):
     df = df.copy()
     for column, attribute in (("transcript_type", type_attribute), ("transcript_tags", "tag")):
         if attribute not in transcripts.columns:
-            df[column] = pd.Series(pd.NA, index=df.index, dtype=object)
+            df[column] = pd.NA
             continue
         # GENCODE repeats transcript_type and tag on the exon, CDS and codon records. If a record differs from its
         # transcript record, the value of the transcript record is taken.
-        values = pd.Series(transcripts[attribute].to_numpy(), index=transcripts["transcript_id"].to_numpy())
-        df[column] = df["transcript_id"].map(values)
+        df[column] = df["transcript_id"].map(transcripts.set_index("transcript_id")[attribute])
     return df
 
 

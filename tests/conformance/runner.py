@@ -272,9 +272,9 @@ class Transcript:
             transcript_record = ("transcript", "ID=tx1;Parent=g1;gene_id=g1;transcript_id=tx1;" + TYPES + tag)
         transcript = ";gene_id=g1;transcript_id=tx1;" + TYPES
 
-        def record(feature, start, end, phase, attributes):
+        def record(gff3_type, start, end, phase, attributes):
             genomic_start, genomic_end = self.to_genome(start, end, strand)
-            columns = [self.contig, "test", feature, genomic_start + 1, genomic_end, ".", strand, phase, attributes]
+            columns = [self.contig, "test", gff3_type, genomic_start + 1, genomic_end, ".", strand, phase, attributes]
             return [str(column) for column in columns]
 
         records = [
@@ -285,11 +285,11 @@ class Transcript:
         coding = [
             start + i for (start, _), exon in zip(spans, self.exons) for i, base in enumerate(exon) if base.isupper()
         ]
-        features = [("CDS", coding)]
+        gff3_types = [("CDS", coding)]
         if self.start_codon and not ensembl:
-            features.append(("start_codon", coding[:3]))
+            gff3_types.append(("start_codon", coding[:3]))
         if self.stop_codon and not ensembl:
-            features.append(("stop_codon", coding[-3:]))
+            gff3_types.append(("stop_codon", coding[-3:]))
         phase = self.frame
         for number, (start, end) in enumerate(spans, start=1):
             if ensembl:
@@ -299,18 +299,18 @@ class Transcript:
                 exon_attributes = f"ID=exon:tx1:{number};" + attributes
             if self.exon_records:
                 records.append(record("exon", start, end, ".", exon_attributes))
-            for feature, positions in features:
+            for gff3_type, positions in gff3_types:
                 part = [position for position in positions if start <= position < end]
                 if not part:
                     continue
                 if ensembl:
                     record_attributes = "ID=CDS:p1;Parent=transcript:tx1;protein_id=p1"
                 else:
-                    record_attributes = f"ID={feature}:tx1:{number};" + attributes
+                    record_attributes = f"ID={gff3_type}:tx1:{number};" + attributes
                 records.append(
-                    record(feature, part[0], part[-1] + 1, phase if feature == "CDS" else ".", record_attributes)
+                    record(gff3_type, part[0], part[-1] + 1, phase if gff3_type == "CDS" else ".", record_attributes)
                 )
-                if feature == "CDS":
+                if gff3_type == "CDS":
                     # the phase of the next CDS record: the bases that its first codon still needs
                     phase = (3 - (len(part) - phase) % 3) % 3
         if self.edit_gff3 is not None:
