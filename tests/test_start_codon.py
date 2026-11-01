@@ -62,31 +62,43 @@ class SyntheticTranscript:
                 "transcript", 0, len(positions), ".", f"ID=tx1;Parent=g1;gene_id=g1;transcript_id=tx1;{types}{tag}"
             ),
         ]
-        features = [("CDS", cds_start, stop_codon + 3), ("stop_codon", stop_codon, stop_codon + 3)]
+        gff3_types = [("CDS", cds_start, stop_codon + 3), ("stop_codon", stop_codon, stop_codon + 3)]
         if start_codon:
-            features.append(("start_codon", cds_start, cds_start + 3))
+            gff3_types.append(("start_codon", cds_start, cds_start + 3))
         exon_start = 0
         phase = frame
         for number, exon in enumerate(exons, start=1):
             exon_end = exon_start + len(exon)
             parts = [("exon", exon_start, exon_end)]
-            parts += [(feature, max(exon_start, start), min(exon_end, end)) for feature, start, end in features]
-            for feature, start, end in parts:
+            parts += [(gff3_type, max(exon_start, start), min(exon_end, end)) for gff3_type, start, end in gff3_types]
+            for gff3_type, start, end in parts:
                 if start >= end:
                     continue
                 attributes = (
-                    f"ID={feature}:tx1:{number};Parent=tx1;gene_id=g1;transcript_id=tx1;{types};exon_number={number}"
+                    f"ID={gff3_type}:tx1:{number};Parent=tx1;gene_id=g1;transcript_id=tx1;{types};exon_number={number}"
                 )
-                self.lines.append(self._line(feature, start, end, phase if feature == "CDS" else ".", attributes + tag))
-                if feature == "CDS":
+                self.lines.append(
+                    self._line(gff3_type, start, end, phase if gff3_type == "CDS" else ".", attributes + tag)
+                )
+                if gff3_type == "CDS":
                     # phase of the next CDS record: the bases that its first codon still needs
                     phase = (3 - (end - start - phase) % 3) % 3
             exon_start = exon_end
 
-    def _line(self, feature, start, end, phase, attributes):
-        """GFF3 record of type ``feature`` at transcript positions start to end (0-based, half-open)."""
+    def _line(self, gff3_type, start, end, phase, attributes):
+        """GFF3 record of type ``gff3_type`` at transcript positions start to end (0-based, half-open)."""
         genomic = self.positions[start:end]
-        columns = [self.chrom, "test", feature, min(genomic) + 1, max(genomic) + 1, ".", self.strand, phase, attributes]
+        columns = [
+            self.chrom,
+            "test",
+            gff3_type,
+            min(genomic) + 1,
+            max(genomic) + 1,
+            ".",
+            self.strand,
+            phase,
+            attributes,
+        ]
         return "\t".join(str(column) for column in columns)
 
     def variant(self, position, ref, alt):

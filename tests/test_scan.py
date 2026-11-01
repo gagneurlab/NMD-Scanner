@@ -531,8 +531,8 @@ def _records(annotation):
     """
     table = _cds_exon_table(annotation)
     records = [
-        (tx, feature, start, end, number, None if pd.isna(has_stop) else bool(has_stop))
-        for tx, feature, start, end, number, has_stop in table[
+        (tx, gff3_type, start, end, number, None if pd.isna(has_stop) else bool(has_stop))
+        for tx, gff3_type, start, end, number, has_stop in table[
             ["transcript_id", "Feature", "Start", "End", "exon_number", "has_stop_codon"]
         ].itertuples(index=False)
     ]

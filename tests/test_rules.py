@@ -104,7 +104,7 @@ def run_pipeline_on_transcript(
                 "Start": start,
                 "End": end,
                 "Strand": strand,
-                "Feature": feature,
+                "Feature": gff3_type,
                 "exon_number": str(number),
                 "transcript_id": "tx1",
                 "transcript_type": "protein_coding",
@@ -113,7 +113,7 @@ def run_pipeline_on_transcript(
                 # GFF3 phase: the CDS starts with a complete codon
                 "Frame": "0",
             }
-            for feature, number, start, end in gff3_records
+            for gff3_type, number, start, end in gff3_records
         ]
     )
 
