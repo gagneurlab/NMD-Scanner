@@ -430,30 +430,23 @@ save_figure(plot, "feature_importance", 10.5, 5)
 # fold with the fewest.
 
 # %%
-learning_df = pl.read_parquet(TRAIN_DIR / "learning_curve.parquet").sort("training_variant_sample_pairs", "fold")
-train_sizes = learning_df["training_variant_sample_pairs"].unique().sort().to_numpy()
-# The scores as learning_curve returns them: one row per training size, and one column per fold
-train_scores, test_scores = (
-    learning_df[column].to_numpy().reshape(len(train_sizes), -1) for column in ("training_r2", "held_out_r2")
+learning_df = pl.read_parquet(TRAIN_DIR / "learning_curve.parquet")
+# The mean and the standard deviation of R2 over the folds, per number of training variant-sample pairs and curve
+curves_df = (
+    learning_df.unpivot(
+        ["training_r2", "held_out_r2"], index="training_variant_sample_pairs", variable_name="curve", value_name="r2"
+    )
+    .group_by("training_variant_sample_pairs", "curve")
+    .agg(mean=pl.col("r2").mean(), sd=pl.col("r2").std(ddof=0))
+    .with_columns(
+        label=pl.col("curve").replace_strict(
+            {"training_r2": "Training\nvariant-sample pairs", "held_out_r2": "Held-out fold"}
+        ),
+        color=pl.col("curve").replace_strict({"training_r2": GRAY, "held_out_r2": BLUE}),
+    )
+    .sort("curve", "training_variant_sample_pairs")
 )
-curves_df = pl.concat(
-    [
-        pl.DataFrame(
-            {
-                "training_variant_sample_pairs": train_sizes,
-                "mean": scores.mean(axis=1),
-                "sd": scores.std(axis=1),
-                "label": label,
-                "color": color,
-            }
-        )
-        for scores, label, color in (
-            (train_scores, "Training\nvariant-sample pairs", GRAY),
-            (test_scores, "Held-out fold", BLUE),
-        )
-    ]
-)
-training_df, held_out_df = (curves_df.filter(pl.col("color") == color) for color in (GRAY, BLUE))
+training_df, held_out_df = (curves_df.filter(pl.col("curve") == curve) for curve in ("training_r2", "held_out_r2"))
 # The label of the training curve goes on two lines centered above its fifth point, clear of the band there and at the
 # neighbouring points
 band_top = training_df[3:6].select((pl.col("mean") + pl.col("sd")).max()).item()
@@ -468,7 +461,7 @@ plot = (
         pn.aes(label="label"),
         data=held_out_df.tail(1),
         ha="left",
-        nudge_x=0.03 * train_sizes[-1],
+        nudge_x=0.03 * learning_df["training_variant_sample_pairs"].max(),
         color=INK,
         size=9,
     )
