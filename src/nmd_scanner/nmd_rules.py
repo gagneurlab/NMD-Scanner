@@ -150,8 +150,8 @@ def nmd_efficiency_prediction_status(results):
     predict the pair, else the first reason why it cannot. PREDICTION_STATUSES in nmd_scanner.schema lists the values
     and their conditions, in the order they are checked.
 
-    :param results: DataFrame with unknown_reason, alt_has_ptc, ref_has_ptc, has_stop_codon, has_start_codon,
-                    start_loss and the columns of MODEL_INPUTS
+    :param results: DataFrame with unknown_reason, alt_has_ptc, ref_has_ptc, has_stop_codon, has_start_codon
+                    and the columns of MODEL_INPUTS
     :return: Series of the values of PREDICTION_STATUSES, with the index of ``results`` and the categorical dtype of
              nmd_efficiency_prediction_status
     """

@@ -50,8 +50,8 @@ def add_nmd_efficiency_prediction(results: pd.DataFrame) -> pd.DataFrame:
     prediction = np.full(len(results), np.nan)
     # Without a variant-transcript pair to predict, the session does not run
     if ok.any():
-        # The inputs are float32, with the bool inputs as 0.0 and 1.0. The output is float32, with shape [N, 1].
-        inputs = results.loc[ok, MODEL_INPUTS].to_numpy(dtype=np.float32)
+        # The bool inputs become 0.0 and 1.0. The output is float32, with shape [N, 1].
+        inputs = results.loc[ok, MODEL_INPUTS].to_numpy(dtype=np.float64)
         prediction[ok] = session.run(None, {session.get_inputs()[0].name: inputs})[0].ravel()
 
     results = results.copy()
