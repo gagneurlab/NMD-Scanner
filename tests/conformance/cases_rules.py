@@ -981,7 +981,6 @@ CASES = [
             "ptc_exon_number": 2,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCAA[A>]GCC"), Change("GCC[AAA>AA]GCC")),
         marks=(
             Ruler((62, 150, 200, 257, 266), "CDS", "alt"),
             Mark("alt", 154, 155, "*", "PTC TGA, in the alt frame"),

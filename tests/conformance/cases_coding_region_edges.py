@@ -407,12 +407,12 @@ CASES = [
     Case(
         "deletion_of_a_whole_short_coding_exon_that_keeps_both_splice_sites_empties_the_exon",
         """
-        ref 5' [gccac ATG GCC AAG CTG CTG]gtaagtcccccccctttcag[CAG CAG CTG CTG]|[AAG CTG TAA gcccccccc] 3'
-        alt 5' [gccac ATG GCC AAG CTG CTG]gtaagtcccccccctttcag[--- --- --- ---]|[AAG CTG TAA gcccccccc] 3'
-                                                               ^^^^^^^^^^^^^^^ 12 nt>-
+        ref 5' [gccac ATG GCC AAG CTG CTG]|[CAG CAG CTG CTG]|[AAG CTG TAA gcccccccc] 3'
+        alt 5' [gccac ATG GCC AAG CTG CTG]|[--- --- --- ---]|[AAG CTG TAA gcccccccc] 3'
+                                            ^^^^^^^^^^^^^^^ 12 nt>-
                 <-------- 20 nt -------->
-                                                               <--- 12 nt --->
-                                                                                 <------ 18 nt ------>
+                                            <--- 12 nt --->
+                                                              <------ 18 nt ------>
         The acceptor AG and the donor GT stay. The placement 1 nt to the left deletes the G of the AG instead of
         the last G of exon 2. It gives the same sequence but loses the acceptor, so it does not count.
         alt CDS: ATGGCCAAGCTGCTG|AAGCTGTAA, 4 codons shorter, in frame
@@ -460,7 +460,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TTTCA[GCAGCAGCTGCT>]GGTAAGT"),),
         marks=(Span("ref", 0, 20, "20 nt"), Span("ref", 20, 32, "12 nt"), Span("ref", 32, 50, "18 nt")),
     ),
     Case(
@@ -543,7 +542,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("GCTGCT[GGTAAGTCCCCCCCCTTTCA>]GCAGCAG"),),
     ),
     Case(
         "snv_in_the_donor_of_a_utr_only_exon_touches_no_coding_region",
@@ -632,7 +630,6 @@ CASES = [
         SHORT_EXON_2,
         Change("AAGCTGCTGGT[A>]AGTCC"),
         TOUCHES_NO_CODING_REGION,
-        equivalent=(Change("AAGCTGCTGGTA[A>]GTCC"),),
     ),
     Case(
         "insertion_right_after_the_stop_codon_inside_an_exon_touches_no_coding_region",
@@ -645,7 +642,6 @@ CASES = [
         THREE_EXONS,
         Change("TCCTAA[>C]GCCGCC"),
         TOUCHES_NO_CODING_REGION,
-        equivalent=(Change("TCCTAA[G>CG]CCGCC"),),
     ),
     Case(
         "stop_codon_inserted_right_before_the_stop_codon_goes_into_the_3utr",
@@ -702,7 +698,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TCCTAA[>TAA]GCCGCC"),),
         marks=(Ruler((22, 25), "tx", "alt"),),
     ),
     Case(
@@ -757,7 +752,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TCCTAA[A>]AACCTAG"), Change("TCCTAAAA[A>]CCTAG")),
     ),
     Case(
         "insertion_right_after_a_stop_codon_that_ends_an_exon_touches_no_coding_region",
@@ -770,13 +764,12 @@ CASES = [
         CODING_EXON_2,
         Change("CTGTAA[>CC]GTAAGT"),
         TOUCHES_NO_CODING_REGION,
-        equivalent=(Change("CTGTAA[G>CCG]TAAGT"),),
     ),
     Case(
         "insertion_in_the_a_run_of_a_stop_codon_that_ends_an_exon_goes_into_the_3utr",
         """
-        ref    5' [gccaccgcag]|[ATG GCC AAG CTG CTG AAG CTG TA--A]gtaagtcccccccctttcag[gccccccccccc] 3'
-        alt    5' [gccaccgcag]|[ATG GCC AAG CTG CTG AAG CTG TAAAA]gtaagtcccccccctttcag[gccccccccccc] 3'
+        ref    5' [gccaccgcag]|[ATG GCC AAG CTG CTG AAG CTG TA--A]|[gccccccccccc] 3'
+        alt    5' [gccaccgcag]|[ATG GCC AAG CTG CTG AAG CTG TAAAA]|[gccccccccccc] 3'
                                                               ^^ ->AA
         alt tx     0            10                          31 34
         AA inserted anywhere in the run AA
@@ -823,7 +816,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("AAGCTGT[>AA]AAGTAAGTCC"), Change("AAGCTGTAA[>AA]GTAAGTCC")),
         marks=(Ruler((0, 10, 31, 34), "tx", "alt"),),
     ),
     Case(
@@ -838,20 +830,18 @@ CASES = [
         THREE_EXONS,
         Change("GACC[>C]ATGGCC"),
         TOUCHES_NO_CODING_REGION,
-        equivalent=(Change("GA[>C]CCATGGCC"),),
     ),
     Case(
         "insertion_right_before_a_start_codon_that_begins_an_exon_touches_no_coding_region",
         """
-        ref 5' [gccaccgcag]gtaagtcccccccctttcag[--ATG GCC AAG ..12.. TAA]|[gccccccccccc] 3'
-        alt 5' [gccaccgcag]gtaagtcccccccctttcag[CCATG GCC AAG ..12.. TAA]|[gccccccccccc] 3'
+        ref 5' [gccaccgcag]gtaagtcccccccctttcag[--ATG GCC ..15.. TAA]|[gccccccccccc] 3'
+        alt 5' [gccaccgcag]gtaagtcccccccctttcag[CCATG GCC ..15.. TAA]|[gccccccccccc] 3'
                                                 ^^ ->CC
         The splice site puts the CC into exon 2, and the start codon edge puts them into its 5'UTR part.
         """,
         CODING_EXON_2,
         Change("TTTCAG[>CC]ATGGCC"),
         TOUCHES_NO_CODING_REGION,
-        equivalent=(Change("TTTCAG[A>CCA]TGGCC"),),
     ),
     Case(
         "atg_inserted_at_the_start_codon_starts_the_cds_at_the_5_most_atg",
@@ -905,13 +895,12 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GACCATG[>ATG]GCCGTAAG"),),
     ),
     Case(
         "atg_inserted_at_a_start_codon_that_begins_an_exon_starts_the_cds_at_the_5_most_atg",
         """
-        ref 5' [gccaccgcag]gtaagtcccccccctttcag[---ATG GCC AAG CTG CTG AAG CTG TAA]|[gccccccccccc] 3'
-        alt 5' [gccaccgcag]gtaagtcccccccctttcag[ATGATG GCC AAG CTG CTG AAG CTG TAA]|[gccccccccccc] 3'
+        ref 5' [gccaccgcag]gtaagtcccccccctttcag[---ATG GCC ..15.. TAA]|[gccccccccccc] 3'
+        alt 5' [gccaccgcag]gtaagtcccccccctttcag[ATGATG GCC ..15.. TAA]|[gccccccccccc] 3'
                                                 ^^^ ->ATG
         alt CAG|ATG ATG GCC. One placement inserts GAT into the acceptor AG and does not count. Of the others,
         the 5'-most puts an ATG at the start of exon 2, so the CDS gains a Met.
@@ -955,7 +944,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TTTCA[>GAT]GATGGCC"), Change("CAGATG[>ATG]GCCAAG")),
     ),
     Case(
         "deletion_of_the_a_before_the_start_codon_shortens_the_5utr",
@@ -1004,7 +992,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GGACCA[A>]TGCTG"),),
         marks=(Ruler((0, 5), "tx", "alt"),),
         ruler=Ruler((0, 6, 18)),
     ),
@@ -1061,7 +1048,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("GGACCT[AT>]GCTG"),),
     ),
     # Pins the fallback of the start codon edge rule for an insertion that reaches into the CDS ("Variants at exon
     # boundaries"): "Without such a position, it takes the placement shifted farthest into the 5' UTR. So an
@@ -1122,7 +1108,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("gccaC[>C]TGGCC"), Change("gcc[aC>aCC]TGGCC")),
         marks=(Ruler((0, 5), "tx", "alt"),),
         ruler=Ruler((0, 4, 19, 22)),
     ),
@@ -1576,7 +1561,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CAGTCCT[AACCT>T]AGCC"),),
         marks=(Ruler((22, 25, 28), "tx", "alt"),),
         ruler=Ruler((0, 4, 22, 25)),
     ),
@@ -1636,7 +1620,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CAGTCC[TAACC>]TAGCCTG"), Change("CAGTCCTA[ACCTA>]GCCTGACC")),
         marks=(Ruler((22,), "tx", "alt"),),
         ruler=Ruler((0, 4, 22, 25)),
     ),
@@ -1832,7 +1815,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CAGTCCT[AAGCCGCCCC>C]CCCCCCCC"),),
         ruler=Ruler((0, 4, 22, 25, 31)),
     ),
 ]

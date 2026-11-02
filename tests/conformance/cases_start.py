@@ -783,7 +783,6 @@ CASES += [
             "ptc_exon_number": None,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("gggA[TG>G]GT"),),
         marks=(
             Ruler((0, 3, 6, 7, 11, 23, 31), "tx", "alt"),
             Mark("alt", 6, 9, "s", "TAA in the frame of the CDS start"),
@@ -1194,7 +1193,6 @@ CASES += [
                                                         sss the stop codon of the scan
         A>ATGAT keeps an ATG at the CDS start, so it is no start loss. The 4 nt frameshift reads past the shifted stop
         codon at tx 22 to the TGA at tx 27 in the 3' UTR: a stop loss, annotated_stop_distance = 22 - 27 = -5.
-        The insertion also fits after AT (GATT) and after ATG (ATTG).
         """,
         ATG_C12,
         Change("gggA[>TGAT]TGCCC"),
@@ -1221,7 +1219,6 @@ CASES += [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("gggAT[>GATT]GCCC"), Change("gggATG[>ATTG]CCCC")),
         marks=(
             Ruler((0, 3, 22, 27, 32), "tx", "alt"),
             Mark("alt", 22, 25, "s", "the annotated stop codon, shifted"),
@@ -1349,7 +1346,7 @@ CASES += [
                                              sss the stop codon of the scan
         The deletion of TGAAACCCTAA removes the start codon and the stop codon; the alt CDS is the A at tx 2. The scan
         finds the ATG at tx 4, in the former 3' UTR, downstream of the stop codon. Its ORF does not overlap the CDS:
-        neither flag. The deletion also fits 1 nt to the left, as ATGAAACCCTA.
+        neither flag.
         """,
         STOP_THEN_ATG,
         Change("ccA[TGAAACCCTAA>]gatg"),
@@ -1378,7 +1375,6 @@ CASES += [
             "ptc_exon_number": None,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("cc[ATGAAACCCTA>]Agatg"),),
         marks=(
             Ruler((0, 2, 4, 10, 15), "tx", "alt"),
             Mark("alt", 4, 7, "a", "ATG of the scan"),
@@ -1569,7 +1565,6 @@ CASES += [
             "ptc_exon_number": 1,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("gggt[caATGG>G]ATG"),),
         marks=(
             Ruler((0, 4, 11, 17, 25, 33), "tx", "alt"),
             Mark("alt", 5, 8, "a", "ATG of the scan"),

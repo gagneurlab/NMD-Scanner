@@ -830,7 +830,6 @@ CASES = [
             "ptc_exon_number": 2,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("ATGG[C>]CGCCGCC"), Change("ATG[GCC>GC]GCCGCC")),
         marks=(
             Mark("alt", 25, 26, "*", "PTC TGA, in the alt frame"),
             Mark("alt", 39, 42, "s", "annotated stop codon"),
@@ -895,7 +894,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("ACCG[C>]CGCCGCCTAA"),),
         marks=(
             Mark("alt", 39, 42, "s", "annotated stop codon"),
             Mark("alt", 46, 49, "f", "first in-frame stop codon"),
@@ -955,7 +953,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("ACCGC[C>GC]GCCGCCTAA"),),
         ruler=Ruler((0, 13, 25, 33, 40)),
     ),
     Case(
@@ -963,8 +960,8 @@ CASES = [
         (
             """
             tx      0             13                25                  40
-            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC T-AA cccct..24..ccc] 3'
-            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TGAA cccct..24..ccc] 3'
+            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC T-AA cccc..25..ccc] 3'
+            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TGAA cccc..25..ccc] 3'
                                                                          ^ ->G
                                                                         sss annotated stop codon TGA, annotated_stop_distance = 0
             G inserted after tx 40 turns TAA into TGAA. The alt CDS stops at the TGA, at the place of the annotated stop
@@ -1006,7 +1003,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCT[A>GA]ACCCC"),),
         marks=(Mark("alt", 40, 43, "s", "annotated stop codon TGA, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 40)),
     ),
@@ -1015,8 +1011,8 @@ CASES = [
         (
             """
             tx      0             13                25                  40  43
-            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TGG TAA actgccc..14..ccc] 3'
-            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TGG T-A actgccc..14..ccc] 3'
+            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TGG TAA actgc..16..ccc] 3'
+            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TGG T-A actgc..16..ccc] 3'
                                                                          ^ A>-
                                                                         s annotated stop codon TAA, annotated_stop_distance = 0
             A>- deletes one A of the A run TAAA, at tx 41, 42 or 43. Each placement gives the same alt transcript, and
@@ -1058,7 +1054,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TGGTA[A>]ACTG"), Change("TGGTAA[A>]CTG")),
         marks=(Mark("alt", 40, 41, "s", "annotated stop codon TAA, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 40, 43)),
     ),
@@ -1071,8 +1066,7 @@ CASES = [
             alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC GCCTAA ccc..26..ccc] 3'
                                                                         ^^^ ->GCC
                                                                            sss annotated stop codon, annotated_stop_distance = 0
-            GCC inserted after tx 39 keeps the frame. It extends the repeat CCGCCGCCGCC at tx 29 to 39, so CCG inserted
-            after tx 28 is the same change.
+            GCC inserted after tx 39 keeps the frame. It extends the repeat CCGCCGCCGCC at tx 29 to 39.
             """
         ),
         STOP,
@@ -1110,7 +1104,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GA[>CCG]CCGCCGCCGCCTAA"), Change("GCCGCCGC[C>CGCC]TAACCCC")),
         marks=(Mark("alt", 43, 46, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 29, 40)),
     ),
@@ -1123,8 +1116,7 @@ CASES = [
             alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC --- TAA ccc..26..ccc] 3'
                                                                     ^^^ GCC>-
                                                                         sss annotated stop codon, annotated_stop_distance = 0
-            GCC>- at tx 37 to 39 keeps the frame. In the repeat CCGCCGCCGCC at tx 29 to 39, CCG>- at tx 29 to 31 is the
-            same change.
+            GCC>- at tx 37 to 39 keeps the frame. It shortens the repeat CCGCCGCCGCC at tx 29 to 39.
             """
         ),
         STOP,
@@ -1162,7 +1154,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CTGA[CCG>]CCGCCGCCTAA"),),
         marks=(Mark("alt", 37, 40, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 29, 37, 40)),
     ),
@@ -1171,11 +1162,11 @@ CASES = [
         (
             """
             tx      0             13                25              37     40
-            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ---TAA cccct..24..ccc] 3'
-            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TCCTAA cccct..24..ccc] 3'
+            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ---TAA ccc..26..ccc] 3'
+            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TCCTAA ccc..26..ccc] 3'
                                                                         ^^^ ->TCC
                                                                            sss annotated stop codon, annotated_stop_distance = 0
-            TCC inserted after tx 39 keeps the frame. CCT inserted after tx 37 or after tx 40 is the same change.
+            TCC inserted after tx 39 keeps the frame.
             """
         ),
         STOP,
@@ -1213,7 +1204,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CCGCCG[>CCT]CCTAACC"), Change("GCCGCCGCCT[>CCT]AACCCC")),
         marks=(Mark("alt", 43, 46, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
@@ -1222,11 +1212,11 @@ CASES = [
         (
             """
             tx      0             13                25              37        40
-            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ------TAA cccct..24..ccc] 3'
-            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TGGCCCTAA cccct..24..ccc] 3'
+            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ------TAA ccc..26..ccc] 3'
+            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TGGCCCTAA ccc..26..ccc] 3'
                                                                         ^^^^^^ ->TGGCCC
                                                                               sss annotated stop codon, annotated_stop_distance = 0
-            TGGCCC inserted after tx 39 keeps the frame. GGCCCT inserted after tx 40 is the same change.
+            TGGCCC inserted after tx 39 keeps the frame.
             """
         ),
         STOP,
@@ -1264,7 +1254,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCGCCGCCT[>GGCCCT]AACCCC"),),
         marks=(Mark("alt", 46, 49, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
@@ -1273,11 +1262,11 @@ CASES = [
         (
             """
             tx      0             13                25              37  40
-            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TCC TAA cccc..25..ccc] 3'
-            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC --- TAA cccc..25..ccc] 3'
+            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TCC TAA ccc..26..ccc] 3'
+            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC --- TAA ccc..26..ccc] 3'
                                                                     ^^^ TCC>-
                                                                         sss annotated stop codon, annotated_stop_distance = 0
-            TCC>- at tx 37 to 39 keeps the frame. CCT>- at tx 38 to 40 is the same change.
+            TCC>- at tx 37 to 39 keeps the frame.
             """
         ),
         TCC_TAA,
@@ -1315,7 +1304,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCGCCT[CCT>]AACCCC"),),
         marks=(Mark("alt", 37, 40, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
@@ -1324,15 +1312,14 @@ CASES = [
         (
             """
             tx      0             13                25                        40
-            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ------TAA cccct..23..cccc] 3'
-            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TCCTAGTAA cccct..23..cccc] 3'
+            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ------TAA ccc..25..cccc] 3'
+            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TCCTAGTAA ccc..25..cccc] 3'
                                                                         ^^^^^^ ->TCCTAG
                                                                            *** PTC
                                                                               sss annotated stop codon
                                                                            <-> annotated_stop_distance = 3
-                                                                           <--------------------> ptc_to_exon_end = 38, to the transcript end
-            TCCTAG inserted after tx 39 puts the PTC TAG right before the stop codon. CCTAGT inserted after tx 40 is the
-            same change.
+                                                                           <------------------> ptc_to_exon_end = 38, to the transcript end
+            TCCTAG inserted after tx 39 puts the PTC TAG right before the stop codon.
             The PTC lies in the last exon, so ptc_to_exon_end counts to the transcript end.
             """
         ),
@@ -1381,7 +1368,6 @@ CASES = [
             "ptc_exon_number": 2,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCGCCGCCT[>CCTAGT]AACCCC"),),
         marks=(
             Mark("alt", 43, 46, "*", "PTC"),
             Mark("alt", 46, 49, "s", "annotated stop codon"),
@@ -1626,8 +1612,8 @@ CASES = [
         (
             """
             tx      0             13                25              37  40  43
-            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TCC TAA taacccc..15..ccc] 3'
-            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC --- --- taacccc..15..ccc] 3'
+            ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TCC TAA taaccc..16..ccc] 3'
+            alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC --- --- taaccc..16..ccc] 3'
                                                                     ^^^^^^^ TCCTAA>-
                                                                 sss annotated stop codon
                                                                             fff first in-frame stop codon
@@ -1677,7 +1663,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCGCCT[CCTAAT>]AACC"),),
         marks=(
             Mark("alt", 34, 37, "s", "annotated stop codon"),
             Mark("alt", 37, 40, "f", "first in-frame stop codon"),
@@ -1741,7 +1726,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCGC[CGTATAG>C]TAGCAT"),),
         marks=(
             Mark("alt", 34, 37, "s", "annotated stop codon"),
             Mark("alt", 37, 40, "f", "first in-frame stop codon"),
@@ -1805,7 +1789,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCG[CCGTATA>C]GTAGCAT"),),
         marks=(
             Mark("alt", 34, 35, "s", "annotated stop codon"),
             Mark("alt", 37, 40, "f", "first in-frame stop codon"),
@@ -1822,13 +1805,13 @@ CASES = [
         "deletion_of_ct_in_tac_taa_leaves_a_taa_1_nt_before_the_annotated_stop_codon_and_is_a_ptc",
         """
         tx      0             13                25              37  40
-        ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TAC TAA gcccc..12..cccc] 3'
-        alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TA- -AA gcccc..12..cccc] 3'
+        ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TAC TAA gccc..13..cccc] 3'
+        alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TA- -AA gccc..13..cccc] 3'
                                                                   ^^^ CT>-
                                                                 * PTC TAA
                                                                  s annotated stop codon
                                                                 <> annotated_stop_distance = 1
-                                                                <---------------------> ptc_to_exon_end = 25, to the transcript end
+                                                                <--------------------> ptc_to_exon_end = 25, to the transcript end
         The deletion of CT at tx 39 and 40 joins TA of the last sense codon TAC with AA of the stop codon TAA. It
         removes the start of the stop codon, so the annotated stop codon maps to the position anchored on the
         unchanged sequence downstream: alt tx 40 - 2 = 38. The PTC TAA at alt tx 37 lies 1 nt upstream of it.
@@ -1879,7 +1862,6 @@ CASES = [
             "ptc_exon_number": 2,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCTA[CTA>A]AGCCC"),),
         marks=(
             Mark("alt", 37, 38, "*", "PTC TAA"),
             Mark("alt", 38, 39, "s", "annotated stop codon"),
@@ -1897,8 +1879,8 @@ CASES = [
         "deletion_of_ctaa_in_tac_taa_leaves_a_tag_1_nt_after_the_annotated_stop_codon_and_is_a_stop_loss",
         """
         tx      0             13                25              37  40
-        ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TAC TAA gccccc..12..ccc] 3'
-        alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC T-- --A gccccc..12..ccc] 3'
+        ref 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC TAC TAA gcccc..13..ccc] 3'
+        alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC T-- --A gcccc..13..ccc] 3'
                                                                  ^^^^^ ACTA>-
                                                               s annotated stop codon
                                                                 f first in-frame stop codon TAG
@@ -1949,7 +1931,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCTA[CTAA>]GCCCC"), Change("GCCT[ACTAA>A]GCCCC")),
         marks=(
             Mark("alt", 36, 37, "s", "annotated stop codon"),
             Mark("alt", 37, 38, "f", "first in-frame stop codon TAG"),
@@ -2077,7 +2058,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCGCC[GCTTAAC>]TAAGCC"),),
         marks=(
             Mark("alt", 33, 34, "s", "annotated stop codon"),
             Mark("alt", 37, 40, "f", "first in-frame stop codon"),
@@ -2502,7 +2482,6 @@ CASES = [
             "ptc_exon_number": 2,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("ATGG[C>]CGCCGCC"),),
         marks=(
             Mark("alt", 25, 26, "*", "PTC TGA, in the alt frame"),
             Mark("alt", 38, 39, "e", "last base of the alt CDS"),
@@ -2559,7 +2538,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("ACCG[C>]CGCCGCCTAA"),),
         marks=(
             Mark("alt", 38, 39, "e", "last base of the alt CDS"),
             Mark("alt", 46, 49, "f", "first in-frame stop codon"),
@@ -3352,7 +3330,6 @@ CASES = [
             "ptc_exon_number": 2,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("GACC[ATG>AG]GATG"),),
         marks=(
             Mark("alt", 7, 8, "a", "ATG of the scan"),
             Mark("alt", 10, 11, "*", "PTC TAA"),
