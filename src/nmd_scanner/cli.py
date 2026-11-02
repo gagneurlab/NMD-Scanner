@@ -103,6 +103,8 @@ def annotate_variants(
     :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
     :param prediction: add the column nmd_efficiency_prediction (see annotate())
     :return: the table that annotate() returns
+    :raises ValueError: as rules.extract_ptc does, e.g. if a ref is null, or if a ref or alt is not a sequence of the
+        bases A, C, G, T and N
     """
 
     cds_df = annotation_df[annotation_df["Feature"] == "CDS"]

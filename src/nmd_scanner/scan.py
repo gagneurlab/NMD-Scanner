@@ -260,7 +260,7 @@ def read_gff3(gff3_path, fasta):
 def _check_strand_and_phase(df, gff3_path):
     """
     Raises a ValueError if an exon or CDS record has a strand other than + or -, or if a CDS
-    record has a phase (Frame) other than 0, 1 or 2. The analysis reads the strand of each
+    record has no phase (Frame) or one other than 0, 1 or 2. The analysis reads the strand of each
     transcript and the phase of its 5'-most CDS record, and GFF3 requires a phase on each CDS
     record. The error gives the count of such records and names the transcript of the first one,
     in file order.
@@ -284,9 +284,10 @@ def _check_strand_and_phase(df, gff3_path):
     unphased = cds[~cds["Frame"].isin(["0", "1", "2"])]
     if not unphased.empty:
         first = unphased.iloc[0]
+        phase = "without a phase" if pd.isna(first["Frame"]) else f"with phase {first['Frame']!r}"
         raise ValueError(
-            f"Cannot use {path!r}: {len(unphased)} CDS record(s) have a phase other than 0, 1 or 2. The first is "
-            f"{_where(first)}, with phase {first['Frame']!r}. GFF3 requires a phase on each CDS record."
+            f"Cannot use {path!r}: {len(unphased)} CDS record(s) have no phase or one other than 0, 1 or 2. The first "
+            f"is {_where(first)}, {phase}. GFF3 requires a phase on each CDS record."
         )
 
 
@@ -361,13 +362,13 @@ def _read_gff3_records(gff3_path):
 
     :param gff3_path: Path to the GFF3 file, plain or gzip-compressed
     :return: DataFrame with the columns Chromosome, Source, Feature (category), Start, End, Score
-        (float64, NaN if missing), Strand and Frame (text, "." if missing), and the attributes in
-        ``GFF3_ATTRIBUTES`` that have a value in at least one record, as text (NaN where a record
-        has none). Start and End are 0-based half-open int64. polars-bio reads Score as float32, so it
-        keeps about 7 significant digits. In attribute values, polars-bio percent-decodes only %3B,
-        %3D, %26, %2C and %09, with upper-case hex digits; it leaves every other escape, e.g. %25 or
-        %3b, as it is. A decoded %2C is a comma, so ``tag=a%2Ccds_end_NF`` reads as the two tags a and
-        cds_end_NF.
+        (float64, NaN if missing), Strand (text), Frame (the phase as text, null if missing), and
+        the attributes in ``GFF3_ATTRIBUTES`` that have a value in at least one record, as text (NaN
+        where a record has none). Start and End are 0-based half-open int64. polars-bio reads Score
+        as float32, so it keeps about 7 significant digits. In attribute values, polars-bio
+        percent-decodes only %3B, %3D, %26, %2C and %09, with upper-case hex digits; it leaves every
+        other escape, e.g. %25 or %3b, as it is. A decoded %2C is a comma, so ``tag=a%2Ccds_end_NF``
+        reads as the two tags a and cds_end_NF.
     :raises ValueError: if polars-bio cannot read the file, if it skips a data line of the file, or if
         a record has a start after its end
     """
@@ -389,7 +390,7 @@ def _read_gff3_records(gff3_path):
                         pl.col("end").cast(pl.Int64).alias("End"),
                         pl.col("score").cast(pl.Float64).alias("Score"),
                         pl.col("strand").alias("Strand"),
-                        pl.col("phase").cast(pl.String).fill_null(".").alias("Frame"),
+                        pl.col("phase").cast(pl.String).alias("Frame"),
                         *GFF3_ATTRIBUTES,
                     ]
                 )
