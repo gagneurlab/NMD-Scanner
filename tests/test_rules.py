@@ -1056,6 +1056,33 @@ def test_extract_ptc_rejects_alleles_that_are_not_bases(ref, alt, shown):
     )
 
 
+def test_extract_ptc_rejects_records_that_are_not_left_normalized(tmp_path):
+    """
+    chrT has AAA at 121-123 and AGAG at 125-128. AA>A at 122 deletes the A at 123, and G>GAG at 128 inserts AG after
+    128: both can shift left. The SNV, the insertion C>CAG at 124 and the record TA>T, whose REF does not match, pass.
+    The error counts the records that are not left-normalized and names the first.
+    """
+    (tmp_path / "genome.fa").write_text(">chrT\n" + "C" * 120 + "TAAACAGAGT" + "C" * 70 + "\n")
+    vcf = pd.DataFrame(
+        {
+            "chrom": ["chrT"] * 5,
+            "start": [110, 122, 124, 128, 122],
+            "end": [111, 124, 125, 129, 124],
+            "ref": ["C", "AA", "C", "G", "TA"],
+            "alt": ["G", "A", "CAG", "GAG", "T"],
+        }
+    )
+
+    with pytest.raises(ValueError) as error:
+        extract_ptc(_coding_region(), vcf, Fasta(str(tmp_path / "genome.fa")), exons_df=None)
+
+    assert str(error.value) == (
+        "2 variant(s) are not left-normalized: their deletion or insertion can shift left through a repeat, e.g. ref "
+        "'AA' and alt 'A' at chrom chrT, start 122, end 124. Left-normalize the VCF first, e.g. with "
+        "`bcftools norm -f <reference FASTA>`."
+    )
+
+
 # drop_symbolic_alleles: the records that extract_ptc skips
 
 

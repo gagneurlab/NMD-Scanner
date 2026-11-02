@@ -57,7 +57,7 @@ nmd-scanner --vcf input.vcf --annotation annotation.gff3.gz --fasta reference.fa
 
 Arguments:
 
-- `--vcf`: Path to input VCF, plain or gzip-compressed, with one ALT allele per record. Split multi-allelic records first, e.g. with `bcftools norm -m-`. Records with a symbolic, breakend, `.` or `*` ALT are skipped with a warning.
+- `--vcf`: Path to input VCF, plain or gzip-compressed, left-normalized and with one ALT allele per record. Split multi-allelic records and left-normalize the VCF first, e.g. with `bcftools norm -m- -f reference.fa`. Records with a symbolic, breakend, `.` or `*` ALT are skipped with a warning.
 - `--annotation`: Path to the gene annotation in GFF3 (GENCODE or Ensembl flavor), optionally gzip-compressed, with the suffix `.gff3` or `.gff`.
 - `--fasta`: Path to reference genome FASTA.
 - `--output`: Path to the output file. Extension selects the format: `.csv` for CSV, `.parquet` or `.pq` for Parquet.

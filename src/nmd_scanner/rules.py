@@ -11,7 +11,13 @@ from Bio.Seq import Seq
 from nmd_scanner import catch_sequence
 from nmd_scanner._polars_bio import pb
 from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table, records
-from nmd_scanner.variant_placement import ReferenceSequence, exon_boundaries, place_in_transcript, variant_placements
+from nmd_scanner.variant_placement import (
+    ReferenceSequence,
+    exon_boundaries,
+    is_left_normalized,
+    place_in_transcript,
+    variant_placements,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +58,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     :raises ValueError: if cds_df has no has_start_codon, has_stop_codon, transcript_type or transcript_tags column,
                         i.e. it is not the coding regions that scan.read_annotation returns, if vcf has no chrom,
                         start, end, ref or alt column, if a REF is null or a REF or ALT is not a sequence of bases (see
-                        ``check_alleles``), or if the FASTA has no sequence for a chromosome with variants and coding
-                        regions.
+                        ``check_alleles``), if the FASTA has no sequence for a chromosome with variants and coding
+                        regions, or if a record is not left-normalized (see ``check_left_normalized``).
     """
 
     required = ("has_start_codon", "has_stop_codon", "transcript_type", "transcript_tags")
@@ -329,6 +335,38 @@ def check_alleles(vcf):
         )
 
 
+def check_left_normalized(variants, reference):
+    """
+    Raises a ValueError if a record is not left-normalized (see ``variant_placement.is_left_normalized``). The
+    placements of a record start at the record and shift right only. A record with a reference mismatch is not
+    checked: extract_ptc skips it with a warning.
+
+    :param variants: VCF records (DataFrame) with the columns Chromosome, Start, End, Ref, Alt and Ref_matches
+    :param reference: Function that returns the ReferenceSequence of a chromosome
+    :raises ValueError: if a record is not left-normalized. The error gives the count of such records and names the
+        first one.
+    """
+
+    invalid = pd.Series(
+        [
+            matches and not is_left_normalized(int(start), str(ref), str(alt), reference(chromosome))
+            for chromosome, start, ref, alt, matches in zip(
+                variants["Chromosome"], variants["Start"], variants["Ref"], variants["Alt"], variants["Ref_matches"]
+            )
+        ],
+        index=variants.index,
+        dtype=bool,
+    )
+    if invalid.any():
+        first = variants[invalid].iloc[0]
+        raise ValueError(
+            f"{int(invalid.sum())} variant(s) are not left-normalized: their deletion or insertion can shift left "
+            f"through a repeat, e.g. ref {first['Ref']!r} and alt {first['Alt']!r} at chrom {first['Chromosome']}, "
+            f"start {first['Start']}, end {first['End']}. Left-normalize the VCF first, e.g. with "
+            "`bcftools norm -f <reference FASTA>`."
+        )
+
+
 def join_variants_to_cds(cds_df, vcf):
     """
     Joins every CDS record to the variants that overlap it.
@@ -406,6 +444,7 @@ def place_variants(vcf, chromosomes, reference):
     :return: Tuple (variants, placements). variants holds the kept records plus variant_row (a key into placements),
              Window_Start and Window_End (the union of the placements) and Ref_matches. Variants whose REF equals
              their ALT are dropped. placements maps variant_row to the list of Placement.
+    :raises ValueError: if a record is not left-normalized (see ``check_left_normalized``)
     """
 
     variants = vcf[vcf["Chromosome"].isin(chromosomes)].reset_index(drop=True)
@@ -426,6 +465,7 @@ def place_variants(vcf, chromosomes, reference):
     variants["Window_Start"] = pd.Series([start for start, _ in windows], index=variants.index, dtype="int64")
     variants["Window_End"] = pd.Series([end for _, end in windows], index=variants.index, dtype="int64")
     variants["Ref_matches"] = pd.Series(ref_matches, index=variants.index, dtype=bool)
+    check_left_normalized(variants, reference)
     has_placements = pd.Series([bool(placements[row]) for row in variants.index], index=variants.index, dtype=bool)
     return variants[has_placements], placements
 

@@ -47,7 +47,8 @@ def read_vcf(vcf_path):
     The VCF needs its header, at least the ``##fileformat`` and ``#CHROM`` lines. It must be
     left-normalized and single-allelic (one ALT allele per record), e.g. produced by
     ``bcftools norm -m- -f reference.fa``. Multi-allelic records are rejected because the
-    downstream variant application assumes exactly one ALT allele per record.
+    downstream variant application assumes exactly one ALT allele per record. ``rules.extract_ptc``
+    rejects a record that is not left-normalized.
 
     polars-bio rejects some files that VCF 4.3 allows, and so does read_vcf: a file with an empty
     last line, a file that starts with a UTF-8 byte order mark, and a record with POS 0.
