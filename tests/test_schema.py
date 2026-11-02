@@ -45,9 +45,9 @@ def test_output_columns_are_the_ptc_feature_rule_and_status_columns_in_order():
     assert len(set(parts)) == len(parts)
 
 
-def test_model_inputs_are_17_distinct_output_columns():
-    assert len(MODEL_INPUTS) == 17
-    assert len(set(MODEL_INPUTS)) == 17
+def test_model_inputs_are_19_distinct_output_columns():
+    assert len(MODEL_INPUTS) == 19
+    assert len(set(MODEL_INPUTS)) == 19
     assert set(MODEL_INPUTS) <= set(NMD_FEATURE_COLUMN_KINDS) | set(NMD_RULE_COLUMN_KINDS) | set(PTC_COLUMN_KINDS)
 
 
