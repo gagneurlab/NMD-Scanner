@@ -381,7 +381,7 @@ class Change:
     def left_normalized(self, transcript, strand):
         """
         Whether the VCF record on the strand is left-normalized, as annotate() requires. The changed bases are REF and
-        ALT without their shared first bases, then without their shared last bases. A deletion or an insertion is not
+        ALT without their shared last bases, then without their shared first bases. A deletion or an insertion is not
         left-normalized if the base before it equals its last base, because it can then shift left. A record that
         annotate() skips for another reason counts as left-normalized: a REF or ALT that is not a sequence of bases,
         or a REF that does not match the chromosome.
@@ -392,10 +392,10 @@ class Change:
         start = pos - 1
         if not re.fullmatch("[ACGTN]*", ref + alt) or genome[start : start + len(ref)] != ref:
             return True
-        prefix = len(os.path.commonprefix([ref, alt]))
-        start, ref, alt = start + prefix, ref[prefix:], alt[prefix:]
         suffix = len(os.path.commonprefix([ref[::-1], alt[::-1]]))
         ref, alt = ref[: len(ref) - suffix], alt[: len(alt) - suffix]
+        prefix = len(os.path.commonprefix([ref, alt]))
+        start, ref, alt = start + prefix, ref[prefix:], alt[prefix:]
         if bool(ref) == bool(alt):
             return True
         return start == 0 or genome[start - 1] != (ref or alt)[-1]

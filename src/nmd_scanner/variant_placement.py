@@ -163,20 +163,21 @@ class TranscriptEffect:
 
 def trim_alleles(start, ref, alt):
     """
-    Remove the bases that REF and ALT share at the start, then those they share at the end.
+    Remove the bases that REF and ALT share at the end, then those they share at the start. For a left-normalized
+    record, this gives the leftmost placement, also at POS 1, where the padding base of an indel follows it.
 
     :param start: 0-based position of the first REF base
     :return: (start, ref, alt) of the changed bases. ref is empty for an insertion, alt for a deletion.
     """
-    prefix = 0
-    while prefix < min(len(ref), len(alt)) and ref[prefix] == alt[prefix]:
-        prefix += 1
-    ref = ref[prefix:]
-    alt = alt[prefix:]
     suffix = 0
     while suffix < min(len(ref), len(alt)) and ref[-1 - suffix] == alt[-1 - suffix]:
         suffix += 1
-    return start + prefix, ref[: len(ref) - suffix], alt[: len(alt) - suffix]
+    ref = ref[: len(ref) - suffix]
+    alt = alt[: len(alt) - suffix]
+    prefix = 0
+    while prefix < min(len(ref), len(alt)) and ref[prefix] == alt[prefix]:
+        prefix += 1
+    return start + prefix, ref[prefix:], alt[prefix:]
 
 
 def equivalent_placements(start, ref, alt, reference):

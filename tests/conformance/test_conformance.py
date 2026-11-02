@@ -56,23 +56,9 @@ def test_description_that_is_not_left_normalized_is_rejected(case, change, stran
     check_rejected(case, change, strand, tmp_path)
 
 
-# An indel in a run that starts at the first chromosome base has no left-normalized VCF record: the record is anchored
-# on that base, so its indel can still shift left.
-RUN_AT_THE_CHROMOSOME_START = [
-    (
-        "insertion_in_an_a_run_that_starts_at_the_chromosome_edge_1_nt_before_the_transcript_start_is_exon_boundary_ambiguous",
-        "+",
-    ),
-    (
-        "insertion_in_an_a_run_that_ends_at_the_chromosome_edge_1_nt_past_the_transcript_end_is_exon_boundary_ambiguous",
-        "-",
-    ),
-    (
-        "deletion_in_an_a_run_that_ends_at_the_chromosome_edge_1_nt_past_the_transcript_end_is_exon_boundary_ambiguous",
-        "-",
-    ),
-    ("deletion_in_a_run_to_the_chromosome_end_makes_the_transcript_end_ambiguous", "-"),
-]
+# A deletion in a run that starts at the first chromosome base has its left-normalized VCF record at POS 1, anchored on
+# the base after the deletion. No description of this case gives that record.
+RUN_AT_THE_CHROMOSOME_START = [("deletion_in_a_run_to_the_chromosome_end_makes_the_transcript_end_ambiguous", "-")]
 
 
 def test_every_case_has_a_left_normalized_description_on_each_strand():
