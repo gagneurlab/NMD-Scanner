@@ -1,10 +1,11 @@
 """
 Place a variant relative to the exon boundaries of a transcript.
 
-A VCF record names one placement of a variant. An indel in a repeat has more placements that give the same alt
-sequence, and near an exon boundary they can disagree on whether the exon or the intron changes. A delins whose REF
-and ALT differ in length has two, because its bases can be matched from either end. The functions here use all
-placements and the splice dinucleotides to find the alt coding region, or to report why it is unknown.
+A left-normalized VCF record names the leftmost placement of a variant. An indel in a repeat has more placements that
+give the same alt sequence: it shifts right through the repeat. Near an exon boundary, these placements can disagree
+on whether the exon or the intron changes. A delins whose REF and ALT differ in length has two placements, because its
+bases can be matched from either end. The functions here use all placements and the splice dinucleotides to find the
+alt coding region, or to report why it is unknown.
 
 Coordinates are 0-based, half-open and on the plus strand. A boundary is a point between two bases: boundary x lies
 between base x - 1 and base x.
@@ -181,7 +182,8 @@ def trim_alleles(start, ref, alt):
 def equivalent_placements(start, ref, alt, reference):
     """
     All placements of a trimmed variant that give the same alt sequence, from left to right by where their length
-    change lies. A deletion or insertion shifts through a repeat. A delins whose REF and ALT differ in length has two
+    change lies. A deletion or insertion shifts right through a repeat, from the given placement on, so the given
+    placement must be the leftmost one (is_left_normalized). A delins whose REF and ALT differ in length has two
     placements: its bases matched from the right, then from the left. Any other variant has one placement.
 
     :param start, ref, alt: the changed bases, as returned by trim_alleles
@@ -196,19 +198,13 @@ def equivalent_placements(start, ref, alt, reference):
 
     if ref:
         length = len(ref)
-        first = start
-        while first > 0 and reference.base(first - 1) == reference.base(first + length - 1):
-            first -= 1
         last = start
         while reference.base(last + length) is not None and reference.base(last) == reference.base(last + length):
             last += 1
-        return [Placement(position, position + length, "") for position in range(first, last + 1)]
+        return [Placement(position, position + length, "") for position in range(start, last + 1)]
 
     inserted = alt
     position = start
-    while position > 0 and reference.base(position - 1) == inserted[-1]:
-        inserted = inserted[-1] + inserted[:-1]
-        position -= 1
     placements = [Placement(position, position, inserted)]
     while reference.base(position) == inserted[0]:
         inserted = inserted[1:] + inserted[0]
@@ -228,6 +224,20 @@ def variant_placements(start, ref, alt, reference):
     if not ref and not alt:
         return []
     return equivalent_placements(start, ref, alt, reference)
+
+
+def is_left_normalized(start, ref, alt, reference):
+    """
+    Whether a VCF record is left-normalized: its deletion or insertion cannot shift left through a repeat. It can if
+    the base before it equals its last base. Any other variant is left-normalized.
+
+    :param start: 0-based position of the first REF base
+    """
+    start, ref, alt = trim_alleles(start, ref.upper(), alt.upper())
+    if bool(ref) == bool(alt):
+        return True
+    last_base = reference.base(start + len(ref) - 1) if ref else alt[-1]
+    return start == 0 or reference.base(start - 1) != last_base
 
 
 def exon_boundaries(exons, reference):

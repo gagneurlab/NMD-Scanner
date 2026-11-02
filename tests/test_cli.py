@@ -921,13 +921,13 @@ def test_annotate_variants_takes_a_table_without_variant_id(chr18_annotation):
     assert results["variant_id"].isna().all()
 
 
-@pytest.mark.parametrize(("start", "end", "alt"), [(48000, 48002, ""), (48000, 48000, "GA")], ids=["del", "ins"])
+@pytest.mark.parametrize(("start", "end", "alt"), [(48000, 48002, ""), (48000, 48000, "AG")], ids=["del", "ins"])
 def test_annotate_variants_takes_empty_alleles(chr18_annotation, start, end, alt):
     """
-    An empty ref or alt is a valid allele. The deletion of 2 bases has alt "", and the insertion of GA has ref "" with
-    start equal to end. Both are in the CDS of a transcript on the minus strand. Each variant gives the same
-    variant-transcript pairs as its anchored form, which adds the base before start to ref and alt as a VCF does. Only
-    the variant columns differ.
+    An empty ref or alt is a valid allele. The deletion of 2 bases has alt "", and the insertion of AG has ref "" with
+    start equal to end. Both are left-normalized and in the CDS of a transcript on the minus strand. Each variant gives
+    the same variant-transcript pairs as its anchored form, which adds the base before start to ref and alt as a VCF
+    does. Only the variant columns differ.
     """
     fasta, annotation_df = chr18_annotation
     ref = str(fasta["chr18"][start:end]).upper()

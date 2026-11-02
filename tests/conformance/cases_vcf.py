@@ -1,7 +1,8 @@
 """
 Conformance cases of how the VCF describes a variant. A symbolic allele, a breakend, a missing ALT or the ALT "*" gives
-no result (SY). The same variant gives the same result in each of its VCF descriptions: left- or right-aligned, padded,
-as a delins, in lower case (VD). A REF equal to the ALT, or a REF that does not match the genome, gives no result.
+no result (SY). The same variant gives the same result in each of its left-normalized VCF descriptions: padded, as a
+delins, in lower case, and on both strands (VD). A description that is not left-normalized gives a ValueError. A REF
+equal to the ALT, or a REF that does not match the genome, gives no result.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
@@ -9,10 +10,10 @@ and `-` fills a gap. `[...]` is an exon and `|` is an exon junction. Upper case 
 annotated frame; lower case is UTR. A flank that a description of the change touches is drawn in lower case outside
 the brackets. `..N..` leaves out N bases. `^` marks the change as ref>alt. A mark line puts a character under bases,
 e.g. `***` under a stop codon, and `<-- label -->` spans a length. A ruler gives tx positions. A case lists the other
-descriptions of its variant in equivalent=; the runner checks that each gives the same result. The VCF record is on the
-plus strand, so on the minus strand a left-aligned record lies at the 3' end of the change in the transcript. In the
-VCF record, vcf_ref replaces the REF and vcf_alt replaces the ALT of the change text, e.g. by a symbolic allele. The
-layout block shows the change text.
+descriptions of its variant in equivalent=; the runner checks that each left-normalized one gives the same result.
+The VCF record is on the plus strand, so on the minus strand a left-normalized record lies at the 3' end of the change
+in the transcript. In the VCF record, vcf_ref replaces the REF and vcf_alt replaces the ALT of the change text, e.g. by
+a symbolic allele. The layout block shows the change text.
 """
 
 from .runner import (
@@ -509,7 +510,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
     ),
     # An in-frame deletion in a codon repeat, left- or right-aligned, shifted, or as a delins
     Case(
-        "inframe_deletion_in_a_codon_repeat_gives_one_result_for_each_alignment",
+        "inframe_deletion_in_a_codon_repeat_gives_one_result_for_each_left_normalized_description",
         """
         tx                         13      19
         ref 5' [gacc ATG CAA]|[CTG GCC GCC GCC TTC AAG]|[TGG TAA acg] 3'
@@ -560,7 +561,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
     # On the minus strand, the 3'-most description is anchored on a 3'UTR base. The record AC>C lies in the 3'UTR
     # on both strands.
     Case(
-        "deletion_of_one_a_in_the_run_from_the_stop_codon_into_the_3utr_gives_one_result_for_each_description",
+        "deletion_of_one_a_in_the_run_from_the_stop_codon_into_the_3utr_gives_one_result_for_each_left_normalized_description",
         """
         tx                                                       41 43
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC TGG TAA actgccc] 3'
@@ -595,7 +596,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
     # TCC inserted right before the stop codon TAA, described at each of its 4 positions. The 3'-most
     # placement is CCT inserted after the T of the stop codon.
     Case(
-        "tcc_inserted_right_before_the_stop_codon_gives_one_result_for_each_description",
+        "tcc_inserted_right_before_the_stop_codon_gives_one_result_for_each_left_normalized_description",
         """
         tx                                                  37     40
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC G---CC TAA cccctgacctagccc] 3'
@@ -637,7 +638,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
     ),
     # TGGCCC inserted right before the stop codon TAA, described at each of its 4 positions
     Case(
-        "tggccc_inserted_right_before_the_stop_codon_gives_one_result_for_each_description",
+        "tggccc_inserted_right_before_the_stop_codon_gives_one_result_for_each_left_normalized_description",
         """
         tx                                                  37        40
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ------TAA cccctgacctagccc] 3'
@@ -679,7 +680,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
     # The last sense codon TCC deleted, described at each of its 4 positions. The 3'-most placement
     # deletes CCT, with the T of the stop codon.
     Case(
-        "last_sense_codon_tcc_deleted_before_the_stop_codon_gives_one_result_for_each_description",
+        "last_sense_codon_tcc_deleted_before_the_stop_codon_gives_one_result_for_each_left_normalized_description",
         """
         tx                                               35  38
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC TCC TAA cccctgacctagccc] 3'
@@ -716,7 +717,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
     ),
     # A 5 nt deletion across the stop codon, described from the CDS or into the 3'UTR
     Case(
-        "deletion_across_the_stop_codon_gives_one_result_for_each_description",
+        "deletion_across_the_stop_codon_gives_one_result_for_each_left_normalized_description",
         """
         tx                                                   38   42   46
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TAA cctagccc] 3'

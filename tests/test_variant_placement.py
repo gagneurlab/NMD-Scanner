@@ -12,6 +12,7 @@ from nmd_scanner.variant_placement import (
     Placement,
     ReferenceSequence,
     equivalent_placements,
+    is_left_normalized,
     place_in_transcript,
     trim_alleles,
     variant_placements,
@@ -58,13 +59,12 @@ def test_equivalent_placements_deletion_in_repeat():
     reference = _Reference("GGCTGTGTAC")
     # deleting TG at 3, GT at 4, TG at 5 or GT at 6 gives GGCTGTAC
     assert equivalent_placements(3, "TG", "", reference) == [Placement(s, s + 2, "") for s in [3, 4, 5, 6]]
-    assert equivalent_placements(6, "GT", "", reference) == [Placement(s, s + 2, "") for s in [3, 4, 5, 6]]
 
 
 def test_equivalent_placements_insertion_in_repeat():
     reference = _Reference("CCAGAGTT")
     # inserting AG anywhere in AGAG gives CCAGAGAGTT
-    assert equivalent_placements(4, "", "AG", reference) == [
+    assert equivalent_placements(2, "", "AG", reference) == [
         Placement(2, 2, "AG"),
         Placement(3, 3, "GA"),
         Placement(4, 4, "AG"),
@@ -75,7 +75,7 @@ def test_equivalent_placements_insertion_in_repeat():
 
 def test_equivalent_placements_at_chromosome_ends():
     reference = _Reference("AAAC")
-    assert equivalent_placements(1, "A", "", reference) == [Placement(s, s + 1, "") for s in [0, 1, 2]]
+    assert equivalent_placements(0, "A", "", reference) == [Placement(s, s + 1, "") for s in [0, 1, 2]]
     reference = _Reference("CAAA")
     assert equivalent_placements(1, "A", "", reference) == [Placement(s, s + 1, "") for s in [1, 2, 3]]
 
@@ -88,6 +88,36 @@ def test_equivalent_placements_substitution():
         Placement(2, 4, "C", match_left=False),
         Placement(2, 4, "C"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("sequence", "start", "ref", "alt", "expected"),
+    [
+        ("GGCTGTGTAC", 3, "TG", "", True),
+        ("GGCTGTGTAC", 6, "GT", "", False),
+        ("CCAGAGTT", 2, "", "AG", True),
+        ("CCAGAGTT", 4, "", "AG", False),
+        # the padding base of an insertion after G, which can shift left
+        ("CCAGAGTT", 3, "G", "GAG", False),
+        # at the chromosome start
+        ("AAAC", 0, "A", "", True),
+        ("AAAC", 1, "A", "", False),
+        # a delins whose REF and ALT differ in length
+        ("AAAAAA", 2, "AA", "C", True),
+    ],
+    ids=[
+        "deletion",
+        "shifted_deletion",
+        "insertion",
+        "shifted_insertion",
+        "padded",
+        "start",
+        "shifted_start",
+        "delins",
+    ],
+)
+def test_is_left_normalized(sequence, start, ref, alt, expected):
+    assert is_left_normalized(start, ref, alt, _Reference(sequence)) is expected
 
 
 def test_variant_placements_without_change():
