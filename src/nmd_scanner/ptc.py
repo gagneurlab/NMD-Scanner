@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from Bio.Seq import Seq
 
-from nmd_scanner import catch_sequence
 from nmd_scanner._polars_bio import pb
 from nmd_scanner.schema import PTC_COLUMN_KINDS, apply_schema, empty_table, records
 from nmd_scanner.variant_placement import (
@@ -101,7 +100,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
             "name in the FASTA."
         )
 
-    # Join the variants with the coding regions and the splice dinucleotides at their exon edges
+    # The steps below read the FASTA through one ReferenceSequence per chromosome
     references = {}
 
     def reference(chromosome):
@@ -109,6 +108,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
             references[chromosome] = ReferenceSequence(fasta, chromosome)
         return references[chromosome]
 
+    # Join the variants with the coding regions and the splice dinucleotides at their exon edges
     variants, placements = place_variants(vcf, set(cds_df_adj["Chromosome"]), reference)
     intersection_cds_vcf = join_variant_windows(cds_df_adj, variants)
     logger.info("Joining variants with CDS records: done.")
@@ -148,8 +148,11 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     relevant_transcripts = intersection_cds_vcf["transcript_id"].unique()
     cds_df_adj = cds_df_adj[cds_df_adj["transcript_id"].isin(relevant_transcripts)].copy()
 
-    # Fetch reference sequence for all CDS records per (relevant) transcripts
-    cds_df_adj = catch_sequence.add_exon_cds_sequence(cds_df_adj, fasta)  # for faster access
+    # The bases of each CDS record of the relevant transcripts
+    cds_df_adj["Exon_CDS_seq"] = [
+        reference(chromosome).bases(int(start), int(end))
+        for chromosome, start, end in zip(cds_df_adj["Chromosome"], cds_df_adj["Start"], cds_df_adj["End"])
+    ]
 
     # get full reference CDS per transcript by stiching exon CDS regions, plus alternative CDS with CDS exon information for both ref and alt
     results_df = create_reference_cds(intersection_cds_vcf, cds_df_adj)
@@ -166,7 +169,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # annotation attributes are read as text; align with cds_df_adj so exon numbers are int
     # everywhere they end up together in a tuple (e.g. transcript_exons, *_stop_codon_exons).
     exons_df["exon_number"] = exons_df["exon_number"].astype(int)
-    exon_seqs = get_transcript_sequence(exons_df, fasta)
+    exon_seqs = get_transcript_sequence(exons_df, reference)
     logger.info("Get transcript sequence: done.")
 
     # Locate the coding region (CDS plus stop codon) in each transcript sequence
@@ -778,13 +781,13 @@ def utr_change(columns, row, utr):
     return columns[f"{utr}_Ref"][row], columns[f"{utr}_Alt"][row]
 
 
-def get_transcript_sequence(exons_df, fasta):
+def get_transcript_sequence(exons_df, reference):
     """
     Construct full transcript sequences by concatenating the exon sequences from the FASTA genome reference, grouped by transcript.
     Get transcript length and transcript information as well.
     :param exons_df: DataFrame with the exon records of the annotation.
                      Must include: transcript_id, strand, chromosome, start, end, exon_number
-    :param fasta: Fasta file, reference genome object
+    :param reference: Function that returns the ReferenceSequence of a chromosome
     :return: DataFrame with one row per transcript with full transcript sequence, start, end, strand, transcript sequence length, and
              per exon sequence length information for that transcript. Without exon records, it has no rows but the
              same columns.
@@ -818,12 +821,11 @@ def get_transcript_sequence(exons_df, fasta):
             starts.append(start)
             ends.append(end)
 
-            # Fetch exon sequence from fasta reference genome
-            exon_seq = fasta[chrom][start:end]  # .seq
-            exon_seq_str = str(exon_seq).upper()
-            seq_parts.append(exon_seq_str)
+            # Fetch the exon sequence from the reference genome
+            exon_seq = reference(chrom).bases(start, end)
+            seq_parts.append(exon_seq)
 
-            exon_info.append({"exon_number": exon_number, "length": len(exon_seq_str)})
+            exon_info.append({"exon_number": exon_number, "length": len(exon_seq)})
 
         # join exon sequences into a full transcript sequence
         joined_seq = "".join(seq_parts)

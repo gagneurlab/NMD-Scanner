@@ -8,7 +8,9 @@ features and the NMD escape rules with figures in the same style.
 """
 
 # Import dependencies
+import gc
 import logging
+import weakref
 from dataclasses import replace
 
 import pandas as pd
@@ -61,7 +63,7 @@ def run_pipeline_on_transcript(
 
     flank = "C" * 10
     intron = "C" * 20
-    chrom = f"chr_{tmp_path.name}"  # unique name, since catch_sequence caches sequences across tests
+    chrom = "chrT"
 
     # Lay out the transcript 5' to 3' and record each exon as (transcript start, layout start, length)
     layout = flank
@@ -963,6 +965,55 @@ def test_extract_ptc_skips_records_with_a_missing_alt_or_alt_star(tmp_path, stra
         'Skipping 2 variant(s) with a missing ALT or ALT "*". Such a record changes no base: "*" stands for the bases '
         "that an overlapping deletion removes, and that deletion comes from its own record."
     ]
+
+
+def test_extract_ptc_reads_the_bases_of_its_own_fasta(tmp_path):
+    """
+    Two runs of extract_ptc in one process read two FASTAs. Both FASTAs name their chromosome chrT, and their
+    transcripts differ only in the codon `y`. The missense variant GCT>GAT at `x`, transcript position 10, is the same
+    in both. Each run gives the sequences of its own FASTA. After the first run, nothing holds the first FASTA, so it
+    is freed before the second FASTA opens.
+
+    5' [uuu===yyy=x=sssuu] 3'   one exon
+    tx  0  3  6     12   17
+    """
+    annotation = pd.DataFrame(
+        [
+            {
+                "Chromosome": "chrT",
+                "Start": start,
+                "End": end,
+                "Strand": "+",
+                "Feature": gff3_type,
+                "exon_number": "1",
+                "transcript_id": "tx1",
+                "transcript_type": "protein_coding",
+                "transcript_tags": "basic",
+                "gene_id": "gene1",
+                "Frame": "0",
+            }
+            for gff3_type, start, end in [("exon", 10, 27), ("CDS", 13, 25)]
+        ]
+    )
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=True)
+    exons_df = annotation[annotation["Feature"] == "exon"]
+    vcf = pd.DataFrame([{"chrom": "chrT", "start": 20, "end": 21, "ref": "C", "alt": "A"}])
+
+    for name, codon in [("first", "AAA"), ("second", "CCC")]:
+        (tmp_path / f"{name}.fa").write_text(">chrT\n" + "C" * 10 + f"GACATG{codon}GCTTAAGC" + "C" * 10 + "\n")
+        fasta = Fasta(str(tmp_path / f"{name}.fa"))
+        pair = extract_ptc(coding, vcf, fasta, exons_df).iloc[0]
+
+        assert _values(pair, ["ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq"]) == {
+            "ref_cds_seq": f"ATG{codon}GCTTAA",
+            "alt_cds_seq": f"ATG{codon}GATTAA",
+            "transcript_seq": f"GACATG{codon}GCTTAAGC",
+            "alt_transcript_seq": f"GACATG{codon}GATTAAGC",
+        }
+        freed = weakref.ref(fasta)
+        del fasta
+        gc.collect()
+        assert freed() is None
 
 
 def test_extract_ptc_needs_the_coding_regions():
