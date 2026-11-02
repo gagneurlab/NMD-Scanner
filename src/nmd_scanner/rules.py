@@ -266,10 +266,11 @@ def drop_symbolic_alleles(vcf):
     the variant application needs.
 
     :param vcf: VCF records (DataFrame) with the column Alt
-    :return: The records of ``vcf`` whose ALT is a sequence, in their order and with their index
+    :return: The other records of ``vcf``, in their order and with their index
     """
 
-    symbolic = vcf["Alt"].astype(str).str.contains(SYMBOLIC_ALT_PATTERN, regex=True)
+    # The dtype "string" keeps a null as null. astype(str) can turn it into the text "<NA>", which matches the pattern.
+    symbolic = vcf["Alt"].astype("string").str.contains(SYMBOLIC_ALT_PATTERN, regex=True, na=False)
     if symbolic.any():
         logger.warning(
             "Skipping %d variant(s) with a symbolic ALT allele or a breakend, e.g. <DEL> or G]chr2:100]. "

@@ -1079,6 +1079,15 @@ def test_drop_symbolic_alleles_keeps_sequence_alleles(alt, caplog):
     assert caplog.text == ""
 
 
+# A null ALT is missing, not symbolic: drop_missing_alleles drops it
+@pytest.mark.parametrize("dtype", ["object", "string"])
+def test_drop_symbolic_alleles_keeps_a_null_alt(dtype, caplog):
+    vcf = pd.DataFrame({"Alt": pd.Series(["T", None], dtype=dtype)})
+
+    pd.testing.assert_frame_equal(drop_symbolic_alleles(vcf), vcf)
+    assert caplog.text == ""
+
+
 # drop_missing_alleles: the records with a missing ALT or ALT "*" that extract_ptc skips
 
 
