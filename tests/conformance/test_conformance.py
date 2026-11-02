@@ -19,18 +19,7 @@ import pytest
 from nmd_scanner import to_arrow
 from nmd_scanner.schema import CATEGORIES, OUTPUT_COLUMN_KINDS
 
-from .runner import (
-    NO_RESULT_REASONS,
-    NoResult,
-    Raises,
-    case_params,
-    check,
-    check_rejected,
-    expected_pair,
-    first_left_normalized,
-    render_case,
-    run,
-)
+from .runner import NO_RESULT_REASONS, NoResult, Raises, case_params, check, expected_pair, render_case, run
 
 CASE_MODULES = {
     path.stem: importlib.import_module(f".{path.stem}", __package__)
@@ -38,53 +27,11 @@ CASE_MODULES = {
 }
 CASES = [case for module in CASE_MODULES.values() for case in module.CASES]
 PARAMS = case_params(CASES)
-NOT_LEFT_NORMALIZED_PARAMS = case_params(CASES, left_normalized=False)
 
 
 @pytest.mark.parametrize(("case", "change", "strand"), PARAMS)
 def test_case(case, change, strand, tmp_path):
     check(case, change, strand, tmp_path)
-
-
-@pytest.mark.parametrize(("case", "change", "strand"), NOT_LEFT_NORMALIZED_PARAMS)
-def test_description_that_is_not_left_normalized_is_rejected(case, change, strand, tmp_path):
-    """
-    A description of the variant whose VCF record is not left-normalized on the strand gives a ValueError, e.g. an
-    indel shifted right in its repeat. On the minus strand, the left-normalized record lies at the 3' end of the
-    repeat in the transcript.
-    """
-    check_rejected(case, change, strand, tmp_path)
-
-
-# An indel in a run that starts at the first chromosome base has no left-normalized VCF record: the record is anchored
-# on that base, so its indel can still shift left.
-RUN_AT_THE_CHROMOSOME_START = [
-    (
-        "insertion_in_an_a_run_that_starts_at_the_chromosome_edge_1_nt_before_the_transcript_start_is_exon_boundary_ambiguous",
-        "+",
-    ),
-    (
-        "insertion_in_an_a_run_that_ends_at_the_chromosome_edge_1_nt_past_the_transcript_end_is_exon_boundary_ambiguous",
-        "-",
-    ),
-    (
-        "deletion_in_an_a_run_that_ends_at_the_chromosome_edge_1_nt_past_the_transcript_end_is_exon_boundary_ambiguous",
-        "-",
-    ),
-    ("deletion_in_a_run_to_the_chromosome_end_makes_the_transcript_end_ambiguous", "-"),
-]
-
-
-def test_every_case_has_a_left_normalized_description_on_each_strand():
-    """test_case runs a case on a strand only with the descriptions that are left-normalized there."""
-    missing = [
-        (case.name, strand)
-        for case in CASES
-        if case.change is not None
-        for strand in "+-"
-        if not any(change.left_normalized(case.layout.transcript, strand) for change in (case.change, *case.equivalent))
-    ]
-    assert sorted(missing) == sorted(RUN_AT_THE_CHROMOSOME_START)
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case.name for case in CASES])
@@ -109,12 +56,12 @@ def test_case_without_sequences(case, tmp_path):
     """
     With sequences=False, each case gives its expected result without the 4 sequence columns: its variant-transcript
     pairs, with the values and dtypes of the other columns, or zero rows with these columns, or its error. Once per
-    case, with its first left-normalized description (first_left_normalized).
+    case: on the plus strand, with the first description of the variant.
     """
     columns = {column: kind for column, kind in OUTPUT_COLUMN_KINDS.items() if column not in SEQUENCE_COLUMNS}
     assert len(columns) == len(OUTPUT_COLUMN_KINDS) - 4
 
-    check(case, *first_left_normalized(case), tmp_path, sequences=False, columns=columns)
+    check(case, case.change, "+", tmp_path, sequences=False, columns=columns)
 
 
 # The Arrow type of each column kind: see `schema.KIND_ARROW_TYPES`
@@ -141,11 +88,10 @@ def test_to_arrow_of_the_case_result(case, sequences, tmp_path):
     """
     to_arrow gives each column of the case result the Arrow type of its kind: with rows, without rows, in a column
     with only nulls, and without the sequence columns. The list columns hold the expected values, with the records as
-    structs. to_arrow leaves the result unchanged. Once per case, with its first left-normalized description
-    (first_left_normalized).
+    structs. to_arrow leaves the result unchanged. Once per case: on the plus strand, with the first
+    description of the variant.
     """
-    change, strand = first_left_normalized(case)
-    results, _ = run(case, change, strand, tmp_path, sequences=sequences)
+    results, _ = run(case, case.change, "+", tmp_path, sequences=sequences)
     original = results.copy()
 
     table = to_arrow(results)
@@ -158,7 +104,7 @@ def test_to_arrow_of_the_case_result(case, sequences, tmp_path):
     if isinstance(case.expected, NoResult):
         assert table.num_rows == 0
         return
-    expected_pairs = [expected_pair(case, strand, more) for more in ({}, *case.more_pairs)]
+    expected_pairs = [expected_pair(case, "+", more) for more in ({}, *case.more_pairs)]
     by_key = {(pair["transcript_id"], pair["variant_id"]): pair for pair in expected_pairs}
     assert table.num_rows == len(by_key) == len(expected_pairs)
     keys = zip(table.column("transcript_id").to_pylist(), table.column("variant_id").to_pylist())
@@ -174,9 +120,9 @@ def test_list_columns_keep_their_shape_through_parquet(case, tmp_path):
     arguments have elements of the same shape: a record stays a dict with the same keys and values, and an exon
     number stays an int. Only the container changes, from a list to a numpy array, and an int becomes a numpy int. So
     code that reads the fields by name works on both. polars reads the records as structs with the same field names.
-    Once per case, with its first left-normalized description (first_left_normalized).
+    Once per case: on the plus strand, with the first description of the variant.
     """
-    results, _ = run(case, *first_left_normalized(case), tmp_path)
+    results, _ = run(case, case.change, "+", tmp_path)
     path = tmp_path / "results.parquet"
     pq.write_table(to_arrow(results), path)
 

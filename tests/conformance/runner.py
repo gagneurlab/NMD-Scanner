@@ -4,7 +4,7 @@ Runner of the conformance cases.
 A case pins one constellation: one transcript layout and one variant. A few cases have more variants or none. The
 runner writes a GFF3 (GENCODE or Ensembl flavor), a FASTA and a VCF file for the case, runs annotate() on them and
 compares the result with the expected value of every output column. A case on input that annotate() rejects expects
-an error instead.
+an error instead. The VCF holds each record left-normalized, as annotate() requires.
 Each case runs on both strands. The layout is given 5' to 3', in transcript orientation, and on the minus strand the
 chromosome holds its reverse complement. A column in genomic coordinates has one expected value per strand.
 
@@ -326,7 +326,8 @@ class Change:
     once in the layout of the transcript, and ref becomes alt. ref is empty for an insertion, and alt for a deletion.
 
     The VCF record is on the plus strand. An insertion or a deletion gets a padding base on its left in the genome,
-    which on the minus strand is the base 3' of the change in the transcript.
+    which on the minus strand is the base 3' of the change in the transcript. The runner writes the record
+    left-normalized on the strand (record).
 
     :param vcf_ref: the REF of the VCF record in transcript orientation, if it differs from ref, e.g. for a reference
         mismatch
@@ -355,8 +356,11 @@ class Change:
         assert len(starts) == 1, f"{self.text} occurs {len(starts)} times in the layout"
         return starts[0] + len(left)
 
-    def record(self, transcript, strand):
-        """(POS, REF, ALT) of the VCF record."""
+    def record(self, transcript, strand, normalize=True):
+        """
+        (POS, REF, ALT) of the VCF record that the runner writes: left-normalized on the strand (left_normalize), except
+        a record with vcf_ref or vcf_alt. With normalize=False, the record as the change gives it.
+        """
         _, ref, alt, _ = self.parse()
         start = self.locate(transcript)
         if self.vcf_ref is not None:
@@ -370,6 +374,8 @@ class Change:
             start -= 1
             ref = genome[start] + ref
             alt = genome[start] + alt
+        if normalize and self.vcf_ref is None and self.vcf_alt is None:
+            start, ref, alt = left_normalize(start, ref, alt, genome)
         if "ref" in self.lower_case:
             ref = ref.lower()
         if "alt" in self.lower_case:
@@ -378,27 +384,30 @@ class Change:
             alt = self.vcf_alt.format(ref=ref)
         return start + 1, ref, alt
 
-    def left_normalized(self, transcript, strand):
-        """
-        Whether the VCF record on the strand is left-normalized, as annotate() requires. The changed bases are REF and
-        ALT without their shared first bases, then without their shared last bases. A deletion or an insertion is not
-        left-normalized if the base before it equals its last base, because it can then shift left. A record that
-        annotate() skips for another reason counts as left-normalized: a REF or ALT that is not a sequence of bases,
-        or a REF that does not match the chromosome.
-        """
-        pos, ref, alt = self.record(transcript, strand)
-        ref, alt = ref.upper(), alt.upper()
-        genome = transcript.chromosome(strand).upper()
-        start = pos - 1
-        if not re.fullmatch("[ACGTN]*", ref + alt) or genome[start : start + len(ref)] != ref:
-            return True
-        prefix = len(os.path.commonprefix([ref, alt]))
-        start, ref, alt = start + prefix, ref[prefix:], alt[prefix:]
-        suffix = len(os.path.commonprefix([ref[::-1], alt[::-1]]))
-        ref, alt = ref[: len(ref) - suffix], alt[: len(alt) - suffix]
-        if bool(ref) == bool(alt):
-            return True
-        return start == 0 or genome[start - 1] != (ref or alt)[-1]
+
+def left_normalize(start, ref, alt, genome):
+    """
+    The VCF record (start, REF, ALT) left-normalized, as `bcftools norm -f` writes it. start is 0-based. The changed
+    bases are REF and ALT without their shared last bases, then without their shared first bases. A deletion or an
+    insertion shifts left while the base before it equals its last base. It is then anchored on the base before it, or
+    on the base after it at the first chromosome base. Any other record stays as it is.
+    """
+    suffix = len(os.path.commonprefix([ref[::-1], alt[::-1]]))
+    changed_ref, changed_alt = ref[: len(ref) - suffix], alt[: len(alt) - suffix]
+    prefix = len(os.path.commonprefix([changed_ref, changed_alt]))
+    position, changed_ref, changed_alt = start + prefix, changed_ref[prefix:], changed_alt[prefix:]
+    if bool(changed_ref) == bool(changed_alt):
+        return start, ref, alt
+    while position > 0 and genome[position - 1] == (changed_ref or changed_alt)[-1]:
+        position -= 1
+        if changed_ref:
+            changed_ref = genome[position] + changed_ref[:-1]
+        else:
+            changed_alt = changed_alt[-1] + changed_alt[:-1]
+    if position == 0:
+        after = genome[len(changed_ref)]
+        return 0, changed_ref + after, changed_alt + after
+    return position - 1, genome[position - 1] + changed_ref, genome[position - 1] + changed_alt
 
 
 @dataclasses.dataclass(frozen=True)
@@ -509,9 +518,9 @@ class Case:
         explain the constellation
     :param change: the variant, or None for a VCF without a record
     :param expected: the expected values, NoResult if the variant gives no result, or Raises for an error of annotate()
-    :param equivalent: other descriptions of the same variant. On each strand, each description whose VCF record is
-        left-normalized gives the same result, except for the columns that echo the VCF record. annotate() rejects the
-        other descriptions (check_rejected).
+    :param equivalent: other descriptions of the same variant. Each gives the same result, except for the columns that
+        echo the VCF record. The runner writes each description left-normalized on the strand, and runs the descriptions
+        with the same VCF record once.
     :param bug: the id and a short description of a known bug that makes the case fail. The case then runs as a
         strict xfail and keeps the documented or decided result as the expected one.
     :param more_changes: further variants in the same VCF, each with its own vcf_id
@@ -550,34 +559,25 @@ def _column_difference(columns, expected):
     return f"missing: {[c for c in expected if c not in columns]}, unknown: {[c for c in columns if c not in expected]}"
 
 
-def case_params(cases, left_normalized=True):
+def case_params(cases):
     """
-    pytest params (case, change, strand) of each case on each strand, for its change and each equivalent description
-    whose VCF record is left-normalized on the strand, or with left_normalized=False, whose record is not. A case with
-    a known bug is a strict xfail where annotate() takes the record.
+    pytest params (case, change, strand) of each case on each strand, for its change and each equivalent description.
+    The descriptions whose VCF records are the same on a strand run once there, with the label of the first one. A case
+    with a known bug is a strict xfail.
     """
     params = []
     for case in cases:
-        marks = [pytest.mark.xfail(reason=case.bug, strict=True)] if case.bug and left_normalized else []
+        marks = [pytest.mark.xfail(reason=case.bug, strict=True)] if case.bug else []
         changes = [("vcf", case.change)] + [(f"equivalent{i}", change) for i, change in enumerate(case.equivalent, 1)]
+        records = {"+": set(), "-": set()}
         for label, change in changes:
             for strand, strand_name in [("+", "plus"), ("-", "minus")]:
-                if (change is None or change.left_normalized(case.layout.transcript, strand)) != left_normalized:
+                record = None if change is None else change.record(case.layout.transcript, strand)
+                if record in records[strand]:
                     continue
+                records[strand].add(record)
                 params.append(pytest.param(case, change, strand, id=f"{case.name}-{strand_name}-{label}", marks=marks))
     return params
-
-
-def first_left_normalized(case):
-    """
-    (change, strand) of the first description of the variant of the case whose VCF record is left-normalized on the
-    plus strand, else on the minus strand. The change is None for a case without a variant.
-    """
-    for strand in "+-":
-        for change in (case.change, *case.equivalent):
-            if change is None or change.left_normalized(case.layout.transcript, strand):
-                return change, strand
-    raise AssertionError(f"{case.name} has no description that is left-normalized on a strand")
 
 
 def plain(value):
@@ -612,8 +612,9 @@ def write_inputs(transcript, changes, strand, directory):
 def run(case, change, strand, directory, sequences=True):
     """
     Run annotate() on the case, with the given description of its variant and the further variants of the case.
-    Return the result table and the VCF record of the given description, None without one. The cases pin the columns
-    of OUTPUT_COLUMN_KINDS, so annotate() runs with prediction=False. tests/test_model.py tests nmd_efficiency_prediction.
+    Return the result table and the VCF record that the runner writes for the description, None without one. The cases
+    pin the columns of OUTPUT_COLUMN_KINDS, so annotate() runs with prediction=False. tests/test_model.py tests
+    nmd_efficiency_prediction.
 
     :param sequences: the sequences argument of annotate()
     """
@@ -621,20 +622,6 @@ def run(case, change, strand, directory, sequences=True):
     paths, records = write_inputs(case.layout.transcript, changes, strand, directory)
     results = annotate(*paths, reassign_exons=case.reassign_exons, sequences=sequences, prediction=False)
     return results, (records[0] if change is not None else None)
-
-
-def check_rejected(case, change, strand, directory):
-    """
-    Run the case with a description of its variant whose VCF record is not left-normalized on the strand, and check
-    that annotate() rejects it with a ValueError that names the record.
-    """
-    pos, ref, alt = change.record(case.layout.transcript, strand)
-    start = pos - 1
-    record = (
-        f"ref {ref!r} and alt {alt!r} at chrom {case.layout.transcript.contig}, start {start}, end {start + len(ref)}."
-    )
-    with pytest.raises(ValueError, match=rf"(?s)not left-normalized.*{re.escape(record)}"):
-        run(case, change, strand, directory)
 
 
 def on_strand(value, strand):
@@ -681,9 +668,9 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
         return
 
     expected_pairs = [expected_pair(case, strand, more) for more in ({}, *case.more_pairs)]
-    if change is not case.change:
-        # Another description of the variant: the columns that echo the VCF record take it from the record, unless a
-        # further pair gives them
+    if record is not None and record != case.change.record(case.layout.transcript, strand, normalize=False):
+        # A VCF record other than the one that the case gives: the columns that echo the VCF record take it from the
+        # record, unless a further pair gives them
         pos, ref, alt = record
         echo = {"ref": ref, "alt": alt, "start": pos - 1, "end": pos - 1 + len(ref)}
         for pair, more in zip(expected_pairs, ({}, *case.more_pairs)):

@@ -52,7 +52,10 @@ def test_trim_alleles():
     assert trim_alleles(10, "TG", "CG") == (10, "T", "C")
     # shared bases on both sides
     assert trim_alleles(10, "ATCATG", "ATTTG") == (12, "CA", "T")
-    assert trim_alleles(10, "A", "A") == (11, "", "")
+    assert trim_alleles(10, "A", "A") == (10, "", "")
+    # at POS 1, the padding base follows the indel, which stays at 0
+    assert trim_alleles(0, "A", "AA") == (0, "", "A")
+    assert trim_alleles(0, "AA", "A") == (0, "A", "")
 
 
 def test_equivalent_placements_deletion_in_repeat():
@@ -102,6 +105,9 @@ def test_equivalent_placements_substitution():
         # at the chromosome start
         ("AAAC", 0, "A", "", True),
         ("AAAC", 1, "A", "", False),
+        # at POS 1, the padding base follows the indel
+        ("AAAC", 0, "AA", "A", True),
+        ("AAAC", 0, "A", "AA", True),
         # a delins whose REF and ALT differ in length
         ("AAAAAA", 2, "AA", "C", True),
     ],
@@ -113,11 +119,20 @@ def test_equivalent_placements_substitution():
         "padded",
         "start",
         "shifted_start",
+        "pos_1_deletion",
+        "pos_1_insertion",
         "delins",
     ],
 )
 def test_is_left_normalized(sequence, start, ref, alt, expected):
     assert is_left_normalized(start, ref, alt, _Reference(sequence)) is expected
+
+
+def test_variant_placements_at_pos_1():
+    # The padding base of an indel at POS 1 follows it. Its placements start at position 0.
+    reference = _Reference("AAAC")
+    assert variant_placements(0, "AA", "A", reference) == [Placement(s, s + 1, "") for s in [0, 1, 2]]
+    assert variant_placements(0, "A", "AA", reference) == [Placement(s, s, "A") for s in [0, 1, 2, 3]]
 
 
 def test_variant_placements_without_change():
