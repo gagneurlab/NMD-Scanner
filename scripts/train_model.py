@@ -96,7 +96,7 @@ def save_onnx(estimator: RandomForestRegressor, path: Path) -> None:
     # Without a name, skl2onnx names the graph at random, so each export of the same random forest gives another file
     model = convert_sklearn(
         estimator,
-        "nmd_efficiency_rf",
+        name="nmd_efficiency_rf",
         initial_types=[("input", FloatTensorType([None, len(MODEL_INPUTS)]))],
         target_opset=15,
     )
