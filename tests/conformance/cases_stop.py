@@ -1226,8 +1226,7 @@ CASES = [
             alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TGGCCCTAA cccct..24..ccc] 3'
                                                                         ^^^^^^ ->TGGCCC
                                                                               sss annotated stop codon, annotated_stop_distance = 0
-            TGGCCC inserted after tx 39 keeps the frame. CCTGGC inserted after tx 37 and GGCCCT inserted after tx 40
-            are the same change.
+            TGGCCC inserted after tx 39 keeps the frame. GGCCCT inserted after tx 40 is the same change.
             """
         ),
         STOP,
@@ -1265,7 +1264,7 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCGCCG[>CCTGGC]CCTAACCCC"), Change("GCCGCCGCCT[>GGCCCT]AACCCC")),
+        equivalent=(Change("GCCGCCGCCT[>GGCCCT]AACCCC"),),
         marks=(Mark("alt", 46, 49, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
@@ -1278,7 +1277,7 @@ CASES = [
             alt 5' [ccgccgccaccgc ATG GCC GCC GCC]|[CTG ACC GCC GCC --- TAA cccc..25..ccc] 3'
                                                                     ^^^ TCC>-
                                                                         sss annotated stop codon, annotated_stop_distance = 0
-            TCC>- at tx 37 to 39 keeps the frame. CCT>- at tx 35 to 37 and CCT>- at tx 38 to 40 are the same change.
+            TCC>- at tx 37 to 39 keeps the frame. CCT>- at tx 38 to 40 is the same change.
             """
         ),
         TCC_TAA,
@@ -1316,7 +1315,7 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCG[CCT>]CCTAACCCC"), Change("GCCGCCT[CCT>]AACCCC")),
+        equivalent=(Change("GCCGCCT[CCT>]AACCCC"),),
         marks=(Mark("alt", 37, 40, "s", "annotated stop codon, annotated_stop_distance = 0"),),
         ruler=Ruler((0, 13, 25, 37, 40)),
     ),
