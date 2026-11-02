@@ -95,7 +95,9 @@ def annotate_variants(
     4. Add the NMD efficiency prediction
 
     :param vcf_df: VCF records with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
-        returns them (see rules.extract_ptc)
+        returns them (see rules.extract_ptc). start and end are 0-based half-open. An empty ref or alt is a valid
+        allele: alt "" is a deletion without its anchor base, and ref "" with start equal to end is an insertion. A
+        null alt is a missing ALT, and such a record gives no result.
     :param annotation_df: gene annotation, as ``scan.read_annotation`` returns it
     :param fasta: reference genome (pyfaidx.Fasta), the one that ``read_annotation`` took
     :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())

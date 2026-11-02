@@ -921,6 +921,29 @@ def test_annotate_variants_takes_a_table_without_variant_id(chr18_annotation):
     assert results["variant_id"].isna().all()
 
 
+@pytest.mark.parametrize(("start", "end", "alt"), [(48000, 48002, ""), (48000, 48000, "GA")], ids=["del", "ins"])
+def test_annotate_variants_takes_empty_alleles(chr18_annotation, start, end, alt):
+    """
+    An empty ref or alt is a valid allele. The deletion of 2 bases has alt "", and the insertion of GA has ref "" with
+    start equal to end. Both are in the CDS of a transcript on the minus strand. Each variant gives the same
+    variant-transcript pairs as its anchored form, which adds the base before start to ref and alt as a VCF does. Only
+    the variant columns differ.
+    """
+    fasta, annotation_df = chr18_annotation
+    ref = str(fasta["chr18"][start:end]).upper()
+    anchor = str(fasta["chr18"][start - 1 : start]).upper()
+    vcf_df = pd.DataFrame({"chrom": ["chr18"], "start": [start], "end": [end], "ref": [ref], "alt": [alt]})
+    expected = annotate_variants(
+        vcf_df.assign(start=start - 1, ref=anchor + ref, alt=anchor + alt), annotation_df, fasta
+    )
+
+    results = annotate_variants(vcf_df, annotation_df, fasta)
+
+    assert not results.empty
+    variant_columns = ["chrom", "start", "end", "ref", "alt"]
+    pd.testing.assert_frame_equal(results.drop(columns=variant_columns), expected.drop(columns=variant_columns))
+
+
 def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     fasta_path = "resources/chr18.fa.gz"
     ref = str(Fasta(fasta_path)["chr18"][48000:48001]).upper()

@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 # An ALT allele that names a structural variant instead of giving its sequence: a symbolic allele such as <DEL>,
 # <DUP:TANDEM> or <*>, a breakend such as G]chr2:100] or [chr2:100[G, or a single breakend such as G. or .G
 SYMBOLIC_ALT_PATTERN = r"^<[^>]*>$|[\[\]]|^\.[A-Za-z]+$|^[A-Za-z]+\.$"
-# An ALT allele that changes no base: "." says that the record has no alternate allele, and "*" stands for the bases
-# that an overlapping deletion removes. That deletion has its own record.
+# An ALT allele that changes no base: "*" stands for the bases that an overlapping deletion removes, and that deletion
+# has its own record. "." is how a VCF writes a missing ALT. scan.read_vcf gives null for it, but a table from another
+# source may hold the text.
 MISSING_ALT_PATTERN = r"^[.*]$"
 # The names that the steps of extract_ptc give the variant columns of scan.read_vcf
 VCF_COLUMNS = {"chrom": "Chromosome", "start": "Start", "end": "End", "variant_id": "ID", "ref": "Ref", "alt": "Alt"}
@@ -37,9 +38,10 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    coding region of the transcript starts with an annotated start codon and ends in an annotated stop
                    codon. ``scan.read_annotation`` returns the coding regions as its CDS records.
     :param vcf: VCF records (DataFrame) with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
-                returns them. Without the variant_id column, each record has a null ID. A record with a symbolic ALT
-                allele or a breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with ALT "." or "*"
-                (see ``drop_missing_alleles``).
+                returns them. Without the variant_id column, each record has a null ID. An empty REF or ALT is a valid
+                allele, e.g. ALT "" for a deletion without its anchor base. A record with a symbolic ALT allele or a
+                breakend is skipped (see ``drop_symbolic_alleles``), and so is a record with a missing ALT (null) or
+                ALT "*" (see ``drop_missing_alleles``).
     :param fasta: Reference genome sequence (pyfaidx.Fasta object)
     :param exons_df: Exon records of the annotation (DataFrame)
     :return: analyze_transcript_df: Annotated dataframe with ref and alt CDS information, PTC analysis, start & stop loss analysis and transcript information.
@@ -80,7 +82,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     # annotation attributes are read as text; exon numbers are int in the output tuples (e.g. ref_cds_exons)
     cds_df_adj["exon_number"] = cds_df_adj["exon_number"].astype(int)
 
-    # The variant application below cannot apply a structural variant, and "." or "*" changes no base
+    # The variant application below cannot apply a structural variant, and a missing ALT or "*" changes no base
     vcf = drop_missing_alleles(drop_symbolic_alleles(vcf))
 
     # The variants on a chromosome with coding regions are placed on its FASTA sequence
@@ -278,21 +280,23 @@ def drop_symbolic_alleles(vcf):
 
 def drop_missing_alleles(vcf):
     """
-    Returns the variants without the records whose ALT is "." or "*" (see MISSING_ALT_PATTERN), and logs a warning
-    with their count. Such a record changes no base. "*" stands for the bases that an overlapping deletion removes, e.g.
-    after bcftools norm -m- splits a joint-called site. The deletion comes from its own record and gives its own
-    variant-transcript pairs. The variant application would insert the character into the sequence, e.g. "*" into the
-    alt CDS.
+    Returns the variants without the records whose ALT is missing (null) or "*", and logs a warning with their count.
+    Such a record changes no base. "*" stands for the bases that an overlapping deletion removes, e.g. after bcftools
+    norm -m- splits a joint-called site. The deletion comes from its own record and gives its own variant-transcript
+    pairs. An ALT "." counts as missing too, because it is how a VCF writes a missing ALT (see MISSING_ALT_PATTERN). The
+    variant application would insert the character into the sequence, e.g. "*" into the alt CDS.
 
     :param vcf: VCF records (DataFrame) with the column Alt
-    :return: The records of ``vcf`` whose ALT is not "." or "*", in their order and with their index
+    :return: The other records of ``vcf``, in their order and with their index
     """
 
-    missing = vcf["Alt"].astype(str).str.contains(MISSING_ALT_PATTERN, regex=True)
+    # The dtype "string" keeps a null as null, so the pattern sees only alleles
+    alt = vcf["Alt"].astype("string")
+    missing = alt.isna() | alt.str.contains(MISSING_ALT_PATTERN, regex=True, na=False)
     if missing.any():
         logger.warning(
-            'Skipping %d variant(s) with ALT "." or "*". Such a record changes no base: "*" stands for the bases '
-            "that an overlapping deletion removes, and that deletion comes from its own record.",
+            'Skipping %d variant(s) with a missing ALT or ALT "*". Such a record changes no base: "*" stands for the '
+            "bases that an overlapping deletion removes, and that deletion comes from its own record.",
             int(missing.sum()),
         )
     return vcf[~missing]
