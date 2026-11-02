@@ -3,14 +3,10 @@ import pandas as pd
 import pytest
 
 from nmd_scanner import cli
-from nmd_scanner.extra_features import (
-    add_features_and_rules,
-    add_nmd_features,
-    evaluate_nmd_escape_rules,
-    nmd_efficiency_prediction_status,
-)
 from nmd_scanner.model import add_nmd_efficiency_prediction
-from nmd_scanner.rules import extract_ptc
+from nmd_scanner.nmd_features import add_nmd_features
+from nmd_scanner.nmd_rules import add_features_and_rules, evaluate_nmd_escape_rules, nmd_efficiency_prediction_status
+from nmd_scanner.ptc import extract_ptc
 from nmd_scanner.schema import (
     KIND_ARROW_TYPES,
     KIND_DTYPES,

@@ -16,9 +16,10 @@ import pytest
 from Bio.Seq import Seq
 from pyfaidx import Fasta
 
-import nmd_scanner.rules
-from nmd_scanner.extra_features import add_nmd_features, evaluate_nmd_escape_rules
-from nmd_scanner.rules import (
+import nmd_scanner.ptc
+from nmd_scanner.nmd_features import add_nmd_features
+from nmd_scanner.nmd_rules import evaluate_nmd_escape_rules
+from nmd_scanner.ptc import (
     VCF_COLUMNS,
     SpliceRow,
     StartCodonRow,
@@ -1245,8 +1246,8 @@ def test_join_variants_to_cds_order(monkeypatch, reverse):
     """
     if reverse:
         # polars-bio gives the ties in VCF order already, so only reversed pairs test the last sort key
-        overlap = nmd_scanner.rules.pb.overlap
-        monkeypatch.setattr(nmd_scanner.rules.pb, "overlap", lambda *args, **kwargs: overlap(*args, **kwargs).reverse())
+        overlap = nmd_scanner.ptc.pb.overlap
+        monkeypatch.setattr(nmd_scanner.ptc.pb, "overlap", lambda *args, **kwargs: overlap(*args, **kwargs).reverse())
     vcf = _join_vcf(
         [
             ("chr1", 150, 151, "last"),

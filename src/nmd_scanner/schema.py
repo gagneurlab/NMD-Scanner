@@ -42,7 +42,7 @@ PREDICTION_STATUSES = (
     "ok",
 )
 
-# The values of stop_classification: the path of rules.analyze_transcript that set alt_has_ptc, stop_loss and
+# The values of stop_classification: the path of ptc.analyze_transcript that set alt_has_ptc, stop_loss and
 # annotated_stop_distance. alt_transcript: the first in-frame stop codon of the alt transcript. start_loss_scan: the
 # rescued ORF after a start loss. alt_cds: the codon scan of the alt CDS, for a variant-transcript pair that keeps the
 # flags from the CDS.
@@ -320,7 +320,7 @@ def records(table, record_type):
     value of the column of the same name, as a plain value (see plain_value). The other columns are not read.
 
     :param table: DataFrame with a column for each field of ``record_type``
-    :param record_type: The dataclass, e.g. rules.SpliceRow
+    :param record_type: The dataclass, e.g. ptc.SpliceRow
     :return: list with one ``record_type`` per row
     :raises KeyError: if ``table`` has no column for a field of ``record_type``
     """
@@ -336,7 +336,7 @@ def record(row, record_type):
     Return one row as an instance of the dataclass ``record_type``, as records does for each row of a table.
 
     :param row: A row of a table, as a pandas Series or a dict, with a value for each field of ``record_type``
-    :param record_type: The dataclass, e.g. extra_features.FeatureRow
+    :param record_type: The dataclass, e.g. nmd_features.FeatureRow
     :raises KeyError: if ``row`` has no value for a field of ``record_type``
     """
 

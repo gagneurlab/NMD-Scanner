@@ -47,7 +47,7 @@ def read_vcf(vcf_path):
     The VCF needs its header, at least the ``##fileformat`` and ``#CHROM`` lines. It must be
     left-normalized and single-allelic (one ALT allele per record), e.g. produced by
     ``bcftools norm -m- -f reference.fa``. Multi-allelic records are rejected because the
-    downstream variant application assumes exactly one ALT allele per record. ``rules.extract_ptc``
+    downstream variant application assumes exactly one ALT allele per record. ``ptc.extract_ptc``
     rejects a record that is not left-normalized.
 
     polars-bio rejects some files that VCF 4.3 allows, and so does read_vcf: a file with an empty
@@ -125,7 +125,7 @@ def detect_annotation_format(path):
 def read_annotation(path, fasta, reassign_exons=False):
     """
     Reads a GFF3 gene annotation file into a pandas DataFrame with the exon records and the coding
-    regions that ``rules.extract_ptc`` takes (see ``read_gff3``).
+    regions that ``ptc.extract_ptc`` takes (see ``read_gff3``).
 
     The coding regions are the CDS records: they include the stop codon, one row per transcript and
     exon. On them, the column has_start_codon says whether the coding region of the transcript
@@ -152,7 +152,7 @@ def read_annotation(path, fasta, reassign_exons=False):
 def read_gff3(gff3_path, fasta):
     """
     Reads a GFF3 file into a pandas DataFrame with the exon records and the coding regions that
-    ``rules.extract_ptc`` takes.
+    ``ptc.extract_ptc`` takes.
 
     Two GFF3 flavors are supported. The flavor is detected from the attributes of the records that
     ``_read_gff3_records`` reads, so gene_type and transcript_type (GENCODE) or biotype (Ensembl) must

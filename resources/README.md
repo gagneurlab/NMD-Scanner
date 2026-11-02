@@ -19,7 +19,7 @@ The VCFs contain edge-case variants such as start and stop-loss mutations, frame
 
 ### `test_output_files/`
 
-The input and the expected output of `rules.create_reference_cds`, for a test in `../tests/test_rules.py`.
+The input and the expected output of `ptc.create_reference_cds`, for a test in `../tests/test_ptc.py`.
 
 ---
 

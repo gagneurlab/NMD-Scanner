@@ -600,7 +600,7 @@ def cli_stderr(tmp_path_factory):
 
 def test_main_cli_logs_the_info_messages_of_nmd_scanner_in_its_format(cli_stderr):
     assert "INFO nmd_scanner.cli: Reading VCF file" in cli_stderr
-    assert "WARNING nmd_scanner.rules: Skipping 88 variant-transcript pairs" in cli_stderr
+    assert "WARNING nmd_scanner.ptc: Skipping 88 variant-transcript pairs" in cli_stderr
     # polars-bio's Rust code logs at INFO too
     info = [line for line in cli_stderr.splitlines() if " INFO " in line]
     assert all(" INFO nmd_scanner." in line for line in info)
