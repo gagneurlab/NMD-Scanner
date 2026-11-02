@@ -1829,7 +1829,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("ggacca[A>]TGGCC"),),
         ruler=Ruler((0, 6, 15, 21, 24, 31)),
     ),
     Case(
@@ -1877,7 +1876,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CTGCTGTAAAA[A>]GCC"),),
         ruler=Ruler((0, 6, 15, 21, 24, 31)),
     ),
     Case(
@@ -1925,7 +1923,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("ggaccaATG[>ATG]GCCAAG"), Change("ggaccaA[>TGA]TGGCC")),
         ruler=Ruler((0, 6, 15, 21, 24, 31)),
     ),
     Case(

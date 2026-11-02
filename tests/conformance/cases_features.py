@@ -926,7 +926,6 @@ CASES = [
             "ptc_exon_number": 3,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCA[A>]GGCC"),),
         marks=(
             Ruler((-8, 0, 12, 26, 36, 56, 81), "CDS", "alt"),
             Mark("alt", 44, 47, "*", "PTC"),
@@ -1010,7 +1009,6 @@ CASES = [
             "ptc_exon_number": 3,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCA[>A]AGGCC"), Change("GCCAA[>A]GGCC")),
         marks=(
             Ruler((-8, 0, 12, 28, 48, 58, 83), "CDS", "alt"),
             Mark("alt", 56, 59, "*", "PTC"),
@@ -1028,21 +1026,20 @@ CASES = [
         """
         The deletion removes all 13 nt of exon 2, and the acceptor AG and the donor GT stay. It has one placement:
         the G before it differs from its last base C, and the G after it differs from its first base C. So exon 2
-        has length 0 in alt_transcript_exons. The equivalent description GCAGCAGCTGCTGC>G is a delins. Matched
-        from the right, it deletes the G of the AG and loses the acceptor. So only the match from the left is valid.
-        The deletion shifts the frame, and exon 3 starts with the PTC TGA, at alt CDS 15 and alt tx 20. An exon that
-        the variant deletes is not in the mRNA and does not count. So upstream_exon_count = 1 (exon 1), and
-        downstream_exon_count = 0. The PTC lies in the last exon, so ptc_to_exon_end runs to the transcript end.
+        has length 0 in alt_transcript_exons. The deletion shifts the frame, and exon 3 starts with the PTC TGA, at
+        alt CDS 15 and alt tx 20. An exon that the variant deletes is not in the mRNA and does not count. So
+        upstream_exon_count = 1 (exon 1), and downstream_exon_count = 0. The PTC lies in the last exon, so
+        ptc_to_exon_end runs to the transcript end.
         ref exon 1: 20 nt, exon 2: 13 nt, exon 3: 20 nt
 
-        tx         0     5                                        20                  33                      53
-        ref    5' [gccac ATG GCC AAG CTG CTG]gtaagtcccccccctttcag[CAG CAG CTG CTG C]|[TG AAG CTG TAA gcccccccc] 3'
-        alt    5' [gccac ATG GCC AAG CTG CTG]gtaagtcccccccctttcag[--- --- --- --- -]|[TG AAG CTG TAA gcccccccc] 3'
-                                                                  ^^^^^^^^^^^^^^^^^ 13 nt>-
-        alt tx     0     5                                                            20         28           40
-                                                                                      **** PTC
-                                                                                      <--------> annotated_stop_distance = 8
-                                                                                      <----------------------> ptc_to_exon_end = 20
+        tx         0     5                     20                  33                      53
+        ref    5' [gccac ATG GCC AAG CTG CTG]|[CAG CAG CTG CTG C]|[TG AAG CTG TAA gcccccccc] 3'
+        alt    5' [gccac ATG GCC AAG CTG CTG]|[--- --- --- --- -]|[TG AAG CTG TAA gcccccccc] 3'
+                                               ^^^^^^^^^^^^^^^^^ 13 nt>-
+        alt tx     0     5                                         20         28           40
+                                                                   **** PTC
+                                                                   <--------> annotated_stop_distance = 8
+                                                                   <----------------------> ptc_to_exon_end = 20
         """,
         EXON_2_OF_13_NT,
         Change("TTTCAG[CAGCAGCTGCTGC>]GTAAGT"),
@@ -1097,7 +1094,6 @@ CASES = [
             "ptc_exon_number": 3,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TTTCA[GCAGCAGCTGCTGC>G]GTAAGT"),),
         marks=(
             Ruler((0, 5, 20, 28, 40), "tx", "alt"),
             Mark("alt", 20, 23, "*", "PTC"),

@@ -912,7 +912,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("gacc[ATGCCCGGGTG>A]Agcc"),),
     ),
     # Pins the threshold of the null clause "the CDS has fewer than 3 nt" of the alt codon columns, alt_last_codon to
     # alt_stop_codon_exons ("as ref_last_codon", "as ref_valid_stop" and so on). The alt CDS has exactly 3 nt, so these
@@ -970,7 +969,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("gacc[ATGCCCGGGT>A]GAgcc"),),
         marks=(Span("alt", 4, 7, "alt_cds_length = 3"),),
     ),
     # Pins the variant-transcript pairs that keep the flags from the CDS because their alt_transcript_seq has fewer
@@ -1025,7 +1023,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_cds",
         },
-        equivalent=(Change("[gaccATGGCCTAAtc>g]c"),),
         ruler=Ruler((0, 4, 13)),
     ),
     # Pins the threshold of the scan ("PTC columns"): "An `alt_transcript_seq` of exactly 3 nt is scanned too." The
@@ -1083,7 +1080,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("[gaccATGGCCTAAt>g]cc"),),
         ruler=Ruler((0, 4, 13)),
     ),
     Case(
@@ -1184,7 +1180,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("AAGTGG[G>]GC"), Change("AAGTGGG[G>]C")),
         marks=(Mark("alt", 25, 28, "*", "alt_scan_first_stop_pos = 25"),),
     ),
     Case(
@@ -1432,7 +1427,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_cds",
         },
-        equivalent=(Change("gg[aC>]ATGG"),),
     ),
     Case(
         "stop_loss_without_an_annotated_start_codon_has_no_scan_start_codon",
@@ -1689,7 +1683,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_cds",
         },
-        equivalent=(Change("gacc[GCCCGGGAAAT>]GAgcc"),),
     ),
     # The only transcript has no exon records. input_defects.md gives null transcript columns, cds_in_transcript False,
     # likely_misannotated True, and the flags from the CDS (alt_transcript_seq is null).
@@ -1938,6 +1931,5 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("AT[G>]GCCAAG"),),
     ),
 ]

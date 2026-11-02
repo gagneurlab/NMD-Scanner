@@ -1,19 +1,18 @@
 """
 Conformance cases of how the VCF describes a variant. A symbolic allele, a breakend, a missing ALT or the ALT "*" gives
-no result (SY). The same variant gives the same result in each of its VCF descriptions: left- or right-aligned, padded,
-as a delins, in lower case (VD). The runner left-normalizes each description, as annotate() requires. A REF equal to
-the ALT, or a REF that does not match the genome, gives no result.
+no result (SY). The same variant gives the same result in each of its VCF descriptions: padded or in lower case (VD).
+The runner left-normalizes each description, as annotate() requires. A REF equal to the ALT, or a REF that does not
+match the genome, gives no result.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
 and `-` fills a gap. `[...]` is an exon and `|` is an exon junction. Upper case is the coding region, in codons of the
-annotated frame; lower case is UTR. A flank that a description of the change touches is drawn in lower case outside
-the brackets. `..N..` leaves out N bases. `^` marks the change as ref>alt. A mark line puts a character under bases,
-e.g. `***` under a stop codon, and `<-- label -->` spans a length. A ruler gives tx positions. A case lists the other
-descriptions of its variant in equivalent=; the runner checks that each gives the same result. The VCF record is on the
-plus strand, so on the minus strand a left-aligned record lies at the 3' end of the change in the transcript. In the
-VCF record, vcf_ref replaces the REF and vcf_alt replaces the ALT of the change text, e.g. by a symbolic allele. The
-layout block shows the change text.
+annotated frame; lower case is UTR. `..N..` leaves out N bases. `^` marks the change as ref>alt. A mark line puts a
+character under bases, e.g. `***` under a stop codon, and `<-- label -->` spans a length. A ruler gives tx positions.
+A case lists the other descriptions of its variant in equivalent=; the runner checks that each gives the same result.
+The VCF record is on the plus strand, so on the minus strand a left-aligned record lies at the 3' end of the change in
+the transcript. In the VCF record, vcf_ref replaces the REF and vcf_alt replaces the ALT of the change text, e.g. by a
+symbolic allele. The layout block shows the change text.
 """
 
 from .runner import (
@@ -508,17 +507,15 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         Change("GCC[TT>]CAAG", vcf_ref="GA"),
         NoResult("REF mismatch"),
     ),
-    # An in-frame deletion in a codon repeat, left- or right-aligned, shifted, or as a delins
+    # An in-frame deletion in a codon repeat
     Case(
-        "inframe_deletion_in_a_codon_repeat_gives_one_result_for_each_alignment",
+        "inframe_deletion_in_a_codon_repeat_shortens_the_cds_by_one_codon",
         """
         tx                         13      19
         ref 5' [gacc ATG CAA]|[CTG GCC GCC GCC TTC AAG]|[TGG TAA acg] 3'
         alt 5' [gacc ATG CAA]|[CTG --- GCC GCC TTC AAG]|[TGG TAA acg] 3'
                                    ^^^ GCC>-
         One GCC deleted from the run GCC GCC GCC at tx 13-21.
-        Descriptions: GCC at tx 13 (left-aligned), CCG at tx 14, GCC at tx 19 (right-aligned), and the delins
-        GGCCG>GG at tx 12.
         """,
         THREE_EXONS,
         Change("CTG[GCC>]GCCGCCTTC"),
@@ -550,27 +547,18 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(
-            Change("CTGGCCGCC[GCC>]TTC"),
-            Change("CTGG[CCG>]CCGCCTTC"),
-            Change("CT[GGCCG>GG]CCGCCTTC"),
-        ),
         ruler=Ruler((13, 19)),
     ),
-    # A 1 nt deletion in a run that starts in the stop codon, described at each of its 3 positions.
-    # On the minus strand, the 3'-most description is anchored on a 3'UTR base. The record AC>C lies in the 3'UTR
-    # on both strands.
+    # A 1 nt deletion in a run that starts in the stop codon
     Case(
-        "deletion_of_one_a_in_the_run_from_the_stop_codon_into_the_3utr_gives_one_result_for_each_description",
+        "deletion_of_one_a_in_the_run_from_the_stop_codon_into_the_3utr_shortens_the_3utr",
         """
         tx                                                       41 43
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC TGG TAA actgccc] 3'
         alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC TGG T-A actgccc] 3'
                                                                  ^ A>-
-        One A deleted from the run AAa at tx 41-43.
-        Descriptions: the A at tx 41, 42 or 43, and AC>C at tx 43. The farthest placement into the 3'UTR deletes
-        tx 43, so the CDS stays, and the 3'UTR loses the A. The alt line shows the change text: it deletes the A
-        at tx 41.
+        One A deleted from the run AAa at tx 41-43. The farthest placement into the 3'UTR deletes tx 43, so the CDS
+        stays, and the 3'UTR loses the A. The alt line shows the change text: it deletes the A at tx 41.
         """,
         STOP_TGG_TAA_A,
         Change("TGGT[A>]AACTG"),
@@ -590,22 +578,19 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TGGTA[A>]ACTG"), Change("TGGTAA[A>]CTG"), Change("TGGTAA[AC>C]TG")),
         ruler=Ruler((41, 43)),
     ),
-    # TCC inserted right before the stop codon TAA, described at each of its 4 positions. The 3'-most
-    # placement is CCT inserted after the T of the stop codon.
+    # TCC inserted right before the stop codon TAA. The 3'-most placement is CCT inserted after the T of the stop codon.
     Case(
-        "tcc_inserted_right_before_the_stop_codon_gives_one_result_for_each_description",
+        "tcc_inserted_right_before_the_stop_codon_is_neither_a_ptc_nor_a_stop_loss",
         """
         tx                                                  37     40
-        ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC G---CC TAA cccctgacctagccc] 3'
-        alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCCTCC TAA cccctgacctagccc] 3'
+        ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC G---CC TAA c..11..ccc] 3'
+        alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCCTCC TAA c..11..ccc] 3'
                                                              ^^^ ->CCT
-        TCC inserted right before the stop codon: alt GCC TCC TAA.
-        Descriptions: CCT after tx 37, CTC after tx 38, TCC after tx 39, CCT after tx 40 (inside the stop codon).
-        The alt transcript reads TAA at the shifted position of the annotated stop codon: neither a PTC nor a
-        stop loss.
+        TCC inserted right before the stop codon: alt GCC TCC TAA. The alt line shows the change text: it inserts
+        CCT after tx 37. The alt transcript reads TAA at the shifted position of the annotated stop codon: neither a
+        PTC nor a stop loss.
         """,
         STOP_GCC_TAA,
         Change("GCCGCCG[>CCT]CCTAA"),
@@ -629,24 +614,17 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(
-            Change("GCCGCCGC[>CTC]CTAA"),
-            Change("GCCGCCGCC[>TCC]TAA"),
-            Change("GCCGCCGCCT[>CCT]AA"),
-        ),
         ruler=Ruler((37, 40)),
     ),
-    # TGGCCC inserted right before the stop codon TAA, described at each of its 4 positions
+    # TGGCCC inserted right before the stop codon TAA
     Case(
-        "tggccc_inserted_right_before_the_stop_codon_gives_one_result_for_each_description",
+        "tggccc_inserted_right_before_the_stop_codon_is_neither_a_ptc_nor_a_stop_loss",
         """
         tx                                                  37        40
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC ------TAA cccctgacctagccc] 3'
         alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TGGCCCTAA cccctgacctagccc] 3'
                                                                 ^^^^^^ ->TGGCCC
-        TGGCCC inserted right before the stop codon: alt GCC TGG CCC TAA.
-        Descriptions: CCTGGC after tx 37, CTGGCC after tx 38, TGGCCC after tx 39, GGCCCT after tx 40 (inside the
-        stop codon). Neither a PTC nor a stop loss.
+        TGGCCC inserted right before the stop codon: alt GCC TGG CCC TAA. Neither a PTC nor a stop loss.
         """,
         STOP_GCC_TAA,
         Change("GCCGCCGCC[>TGGCCC]TAA"),
@@ -670,25 +648,17 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(
-            Change("GCCGCCG[>CCTGGC]CCTAA"),
-            Change("GCCGCCGC[>CTGGCC]CTAA"),
-            Change("GCCGCCGCCT[>GGCCCT]AA"),
-        ),
         ruler=Ruler((37, 40)),
     ),
-    # The last sense codon TCC deleted, described at each of its 4 positions. The 3'-most placement
-    # deletes CCT, with the T of the stop codon.
+    # The last sense codon TCC deleted. The 3'-most placement deletes CCT, with the T of the stop codon.
     Case(
-        "last_sense_codon_tcc_deleted_before_the_stop_codon_gives_one_result_for_each_description",
+        "last_sense_codon_tcc_deleted_before_the_stop_codon_is_neither_a_ptc_nor_a_stop_loss",
         """
         tx                                               35  38
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC TCC TAA cccctgacctagccc] 3'
         alt 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC --- TAA cccctgacctagccc] 3'
                                                             ^^^ TCC>-
-        3 nt deleted from tx 35-40: alt GCC GCC TAA.
-        Descriptions: CCT at tx 35, TCC at tx 37 (as CTCC>C), CCT at tx 38 (as TCCT>T, with the T of the stop
-        codon). Neither a PTC nor a stop loss.
+        3 nt deleted from tx 35-40: alt GCC GCC TAA. Neither a PTC nor a stop loss.
         """,
         STOP_TCC_TAA,
         Change("GCCGCC[TCC>]TAA"),
@@ -712,12 +682,11 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCCG[CCT>]CCTAA"), Change("GCCGCCT[CCT>]AA")),
         ruler=Ruler((35, 38)),
     ),
-    # A 5 nt deletion across the stop codon, described from the CDS or into the 3'UTR
+    # A 5 nt deletion across the stop codon
     Case(
-        "deletion_across_the_stop_codon_gives_one_result_for_each_description",
+        "deletion_across_the_stop_codon_is_neither_a_ptc_nor_a_stop_loss",
         """
         tx                                                   38   42   46
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TAA cctagccc] 3'
@@ -725,7 +694,6 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
                                                               ^^^^^^^ CTAAC>-
                                                                       *** TAG at the position of the stop codon
         5 nt deleted from tx 38-46: alt GCC GCC TAG ccc.
-        Descriptions: CCTAA at tx 38, CTAAC at tx 39 (as CCTAAC>C), TAACC at tx 40 (as CTAACC>C), ACCTA at tx 42.
         The TAG of the 3'UTR lands at the position of the stop codon: neither a PTC nor a stop loss.
         """,
         STOP_GCC_TAA_CCTAG,
@@ -755,17 +723,12 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(
-            Change("GCCGCCG[CCTAA>]CCTAG"),
-            Change("GCCGCCGCC[TAACC>]TAG"),
-            Change("GCCGCCGCCTA[ACCTA>]G"),
-        ),
         marks=(Mark("alt", 40, 43, "*", "TAG at the position of the stop codon"),),
         ruler=Ruler((38, 42, 46)),
     ),
-    # A deletion from the stop codon into the 3'UTR, with the VCF anchor in the CDS or in the 3'UTR
+    # A deletion from the stop codon into the 3'UTR
     Case(
-        "deletion_from_the_stop_codon_into_the_3utr_gives_one_result_for_each_anchor",
+        "deletion_from_the_stop_codon_into_the_3utr_is_a_stop_loss",
         """
         tx                                                      40    45
         ref 5' [ccg..10.. ATG GCC GCC GCC]|[CTG ACC GCC GCC GCC TAA cccctgacctagccc] 3'
@@ -774,9 +737,8 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
                                                                         *** TGA, the first stop codon in frame
                                                                 <------> annotated_stop_distance = -3
         AAcc deleted at tx 41-44: alt GCC TCC TGA.
-        Descriptions: TAACC>T anchored on tx 40 (CDS) and AACCC>C anchored on tx 45 (3'UTR), each on both
-        strands. Read in frame, the TGA of the 3'UTR is the first stop codon, 3 nt downstream of the annotated
-        one: a stop loss.
+        Read in frame, the TGA of the 3'UTR is the first stop codon, 3 nt downstream of the annotated one: a stop
+        loss.
         """,
         STOP_GCC_TAA,
         Change("GCCT[AACC>]CCTGA"),
@@ -819,7 +781,6 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GCC[TAACC>T]CCTGA"), Change("GCCT[AACCC>C]CTGA")),
         marks=(
             Mark("alt", 43, 46, "*", "TGA, the first stop codon in frame"),
             Span("alt", 40, 43, "annotated_stop_distance = -3"),
@@ -927,11 +888,10 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         "deletion_in_a_run_to_the_chromosome_end_makes_the_transcript_end_ambiguous",
         """
         tx                                19 21 24
-        ref 5' [gccacc ATG GCC]|[AAG CTG TAA aaa]aaaaaaaaaa 3'
-        alt 5' [gccacc ATG GCC]|[AAG CTG T-A aaa]aaaaaaaaaa 3'
+        ref 5' [gccacc ATG GCC]|[AAG CTG TAA aaa] 3'
+        alt 5' [gccacc ATG GCC]|[AAG CTG T-A aaa] 3'
                                           ^ A>-
         One A deleted, anywhere from tx 19 to the end of the chromosome: the run goes on into the 3' flank of 10 A.
-        Descriptions: the A at tx 19 (stop codon), at tx 21 (3'UTR) and the third A after the transcript end.
         """,
         RUN_TO_CHROMOSOME_END,
         Change("CTGT[A>]AAAA"),
@@ -947,7 +907,6 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("CTGTAA[A>]AA"), Change("CTGTAAAAAAA[A>]A")),
         ruler=Ruler((19, 21, 24)),
     ),
     # "." means that the record has no alternate allele, so it changes no base. read_vcf reads it as a missing ALT

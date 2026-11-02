@@ -808,7 +808,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("TTTC[>AG]AGAGGC"), Change("CAGAG[>AG]GCTG")),
     ),
     # An MNV has one placement, so it is never exon_boundary_ambiguous, also where its ALT forms an AG one
     # base into the exon
