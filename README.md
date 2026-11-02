@@ -74,7 +74,7 @@ Output:
   - reconstructed reference / alternative CDS and transcript sequences (+ metadata); `--no-sequences` leaves out the sequences
   - PTC detection and start / stop-loss flags
   - NMD escape rules
-  - extra features such as UTR lengths, exon counts, distances, etc.
+  - NMD features such as UTR lengths, exon counts, distances, etc.
   - `nmd_efficiency_prediction_status` and `nmd_efficiency_prediction`: whether the NMD efficiency model can predict the variant-transcript pair, and the NMD efficiency it predicts (see [NMD efficiency prediction](#nmd-efficiency-prediction))
 
 [Output columns](Technical%20Notes.md#output-columns) in the Technical Notes gives the meaning of each column and says when it is null.

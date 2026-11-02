@@ -11,7 +11,7 @@ NMD-Scanner rejects, the misannotations that it accepts, and the null cases that
 - `scan.read_gff3` raises a ValueError for an Ensembl transcript without an mRNA record: "Could not resolve
   transcript_id via the ID/Parent hierarchy for N record(s)." Its exon and CDS records get their `transcript_id` from
   that record only.
-- `rules.extract_ptc` raises a ValueError if the CDS records lack the column `has_start_codon`, `has_stop_codon`,
+- `ptc.extract_ptc` raises a ValueError if the CDS records lack the column `has_start_codon`, `has_stop_codon`,
   `transcript_type` or `transcript_tags`, i.e. are not the coding regions that `scan.read_annotation` returns. It also
   raises one if the FASTA has no sequence for a chromosome with variants and CDS records, and the error names these
   chromosomes.

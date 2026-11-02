@@ -10,9 +10,9 @@ import pyarrow.parquet as pq
 import tqdm
 from pyfaidx import Fasta
 
-from nmd_scanner.extra_features import add_features_and_rules
 from nmd_scanner.model import add_nmd_efficiency_prediction
-from nmd_scanner.rules import extract_ptc
+from nmd_scanner.nmd_rules import add_features_and_rules
+from nmd_scanner.ptc import extract_ptc
 from nmd_scanner.scan import detect_annotation_format, read_annotation, read_vcf
 from nmd_scanner.schema import OUTPUT_COLUMN_KINDS, SEQUENCE_COLUMNS, to_arrow
 
@@ -95,7 +95,7 @@ def annotate_variants(
     4. Add the NMD efficiency prediction
 
     :param vcf_df: VCF records with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
-        returns them (see rules.extract_ptc). start and end are 0-based half-open. An empty ref or alt is a valid
+        returns them (see ptc.extract_ptc). start and end are 0-based half-open. An empty ref or alt is a valid
         allele: alt "" is a deletion without its anchor base, and ref "" with start equal to end is an insertion. A
         null alt is a missing ALT, and such a record gives no result.
     :param annotation_df: gene annotation, as ``scan.read_annotation`` returns it
@@ -103,7 +103,7 @@ def annotate_variants(
     :param sequences: keep the sequence columns of SEQUENCE_COLUMNS (see annotate())
     :param prediction: add the column nmd_efficiency_prediction (see annotate())
     :return: the table that annotate() returns
-    :raises ValueError: as rules.extract_ptc does, e.g. if a ref is null, if a ref or alt is not a sequence of the
+    :raises ValueError: as ptc.extract_ptc does, e.g. if a ref is null, if a ref or alt is not a sequence of the
         bases A, C, G, T and N, or if a record is not left-normalized
     """
 
