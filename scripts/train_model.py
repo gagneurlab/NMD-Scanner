@@ -28,9 +28,10 @@ import numpy as np
 import onnx
 import onnxruntime
 import polars as pl
-from onnx import TensorProto, helper, numpy_helper
+from onnx import helper
 from pyfaidx import Fasta
-from skl2onnx.common.tree_ensemble import add_tree_to_attribute_pairs, get_default_tree_regressor_attribute_pairs
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.inspection import permutation_importance
@@ -63,6 +64,9 @@ N_PERMUTATIONS = 10
 LEARNING_CURVE_SIZES = np.linspace(0.1, 1.0, 8)
 # The out-of-bag error curve fits the final hyperparameters with these numbers of trees
 OOB_TREES = [50, 100, 200, 300, 400, 500]
+# The ONNX model holds and sums the leaf values in float32, so its predictions may differ from the random forest by up
+# to this much
+ONNX_TOLERANCE = 1e-6
 
 
 def chromosome_folds(y: np.ndarray, chrom: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -85,44 +89,18 @@ def tune(x_df: pl.DataFrame, y: np.ndarray, chrom: np.ndarray) -> GridSearchCV:
 
 def save_onnx(estimator: RandomForestRegressor, path: Path) -> None:
     """
-    Write the random forest as one ONNX TreeEnsembleRegressor node (ai.onnx.ml opset 3). The input "input" has type
-    double and shape [N, len(MODEL_INPUTS)], with the columns of MODEL_INPUTS in that order. By the ONNX specification,
-    the output "variable" has type float and shape [N, 1]. The metadata key feature_names holds MODEL_INPUTS as a JSON
-    list.
-
-    The RandomForestRegressor converter of skl2onnx would store the split thresholds and leaf values as float32. This
-    function uses the tree helpers of the converter, but keeps them as float64.
+    Write the random forest as one ONNX TreeEnsembleRegressor node, with the skl2onnx converter. The input "input" has
+    type float and shape [N, len(MODEL_INPUTS)], with the columns of MODEL_INPUTS in that order. The output "variable"
+    has type float and shape [N, 1]. The metadata key feature_names holds MODEL_INPUTS as a JSON list.
     """
-    attrs = get_default_tree_regressor_attribute_pairs()
-    attrs["n_targets"] = 1
-    n_trees = len(estimator.estimators_)
-    for tree_id, tree in enumerate(estimator.estimators_):
-        add_tree_to_attribute_pairs(
-            attrs,
-            False,
-            tree.tree_,
-            tree_id,
-            1 / n_trees,
-            0,
-            False,
-            adjust_threshold_for_sklearn=True,
-            dtype=np.float64,
-        )
-    attrs["nodes_values_as_tensor"] = numpy_helper.from_array(np.array(attrs.pop("nodes_values"), dtype=np.float64))
-    attrs["target_weights_as_tensor"] = numpy_helper.from_array(np.array(attrs.pop("target_weights"), dtype=np.float64))
-    del attrs["nodes_hitrates"]
-    node = helper.make_node("TreeEnsembleRegressor", ["input"], ["variable"], domain="ai.onnx.ml", **attrs)
-    graph = helper.make_graph(
-        [node],
+    # Without a name, skl2onnx names the graph at random, so each export of the same random forest gives another file
+    model = convert_sklearn(
+        estimator,
         "nmd_efficiency_rf",
-        [helper.make_tensor_value_info("input", TensorProto.DOUBLE, [None, len(MODEL_INPUTS)])],
-        [helper.make_tensor_value_info("variable", TensorProto.FLOAT, [None, 1])],
-    )
-    model = helper.make_model(
-        graph, opset_imports=[helper.make_opsetid("", 15), helper.make_opsetid("ai.onnx.ml", 3)], ir_version=8
+        initial_types=[("input", FloatTensorType([None, len(MODEL_INPUTS)]))],
+        target_opset=15,
     )
     helper.set_model_props(model, {"feature_names": json.dumps(list(MODEL_INPUTS))})
-    onnx.checker.check_model(model)
     onnx.save(model, path)
 
 
@@ -205,9 +183,10 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
     onnx_path = out_dir / "nmd_efficiency_rf.onnx"
     save_onnx(final.best_estimator_, onnx_path)
     session = onnxruntime.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-    onnx_prediction = session.run(None, {"input": x_df.to_numpy()})[0].ravel()
-    if (onnx_prediction != final.predict(x_df).astype(np.float32)).any():
-        raise ValueError(f"{onnx_path} predicts other values than the random forest")
+    onnx_prediction = session.run(None, {"input": x_df.cast(pl.Float32).to_numpy()})[0].ravel()
+    difference = np.abs(onnx_prediction - final.predict(x_df)).max()
+    if difference > ONNX_TOLERANCE:
+        raise ValueError(f"{onnx_path} predicts values up to {difference:.2g} away from the random forest")
 
     results = {
         "variant_sample_pairs": len(training_df),
