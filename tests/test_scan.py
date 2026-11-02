@@ -936,8 +936,8 @@ def test_read_gff3_raises_for_a_cds_record_with_phase_dot(tmp_path, gff3, line, 
         nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
 
     assert str(error.value) == (
-        f"Cannot use {gff3_path!r}: 1 CDS record(s) have a phase other than 0, 1 or 2. The first is the CDS record "
-        f"of transcript {transcript} at {location}, with phase '.'. GFF3 requires a phase on each CDS record."
+        f"Cannot use {gff3_path!r}: 1 CDS record(s) have no phase or one other than 0, 1 or 2. The first is the CDS "
+        f"record of transcript {transcript} at {location}, without a phase. GFF3 requires a phase on each CDS record."
     )
 
 
