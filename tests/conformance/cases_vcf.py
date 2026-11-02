@@ -1,6 +1,6 @@
 """
-Conformance cases of how the VCF describes a variant. A symbolic allele, a breakend or the ALT "." or "*" gives no
-result (SY). The same variant gives the same result in each of its VCF descriptions: left- or right-aligned, padded,
+Conformance cases of how the VCF describes a variant. A symbolic allele, a breakend, a missing ALT or the ALT "*" gives
+no result (SY). The same variant gives the same result in each of its VCF descriptions: left- or right-aligned, padded,
 as a delins, in lower case (VD). A REF equal to the ALT, or a REF that does not match the genome, gives no result.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
@@ -949,8 +949,8 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         equivalent=(Change("CTGTAA[A>]AA"), Change("CTGTAAAAAAA[A>]A")),
         ruler=Ruler((19, 21, 24)),
     ),
-    # "." means that the record has no alternate allele, so it changes no base. The docs skip a record with
-    # the ALT "." or "*" with a warning ("Output columns").
+    # "." means that the record has no alternate allele, so it changes no base. read_vcf reads it as a missing ALT
+    # (null). The docs skip a record with a missing ALT or the ALT "*" with a warning ("Output columns").
     Case(
         "alt_dot_without_an_alternate_allele_gives_no_result",
         """
@@ -961,10 +961,10 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         """,
         TWO_EXONS,
         Change("AAG[C>A]TAA", vcf_alt="."),
-        NoResult('ALT "." or "*"'),
+        NoResult('missing ALT or ALT "*"'),
     ),
     # "*" stands for the bases that an overlapping deletion removes, and that deletion has its own record. So
-    # the "*" record changes no base itself. The docs skip a record with the ALT "." or "*" with a warning.
+    # the "*" record changes no base itself. The docs skip a record with a missing ALT or the ALT "*" with a warning.
     Case(
         "alt_star_of_an_overlapping_deletion_gives_no_result",
         """
@@ -975,7 +975,7 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         """,
         TWO_EXONS,
         Change("AAG[C>A]TAA", vcf_alt="*"),
-        NoResult('ALT "." or "*"'),
+        NoResult('missing ALT or ALT "*"'),
     ),
     # Two VCF records with the same CHROM, POS, REF and ALT, and the IDs var1 and var2. Each record gives its own
     # variant-transcript pair, with the ID of the record as variant_id ("Output columns").

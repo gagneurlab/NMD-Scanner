@@ -443,7 +443,7 @@ NO_RESULT_REASONS = (
     "touches no coding region",
     "symbolic allele",
     "breakend",
-    'ALT "." or "*"',
+    'missing ALT or ALT "*"',
     "REF mismatch",
     "no record",
 )

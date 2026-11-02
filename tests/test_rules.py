@@ -827,7 +827,7 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
     :param has_stop_codon: whether the coding region ends in the stop codon. Without it, the transcript ends with its
         CDS, as one tagged cds_end_NF does.
     :param variants: {variant_id: (position, alt)}: SNVs at a 0-based position in the coding region (CDS plus stop
-        codon), with the alt base in transcript orientation
+        codon), with the alt base in transcript orientation, or None for a missing ALT
     :param split_stop_codon: split the stop codon across an intron. Its first 2 bases end exon 2, its last base
         starts exon 3 and is the only base of the CDS record of exon 3.
     """
@@ -862,7 +862,10 @@ def _extract_ptc_synthetic(tmp_path, strand, has_stop_codon, variants, split_sto
         length = len(genome)
         genome = str(Seq(genome).reverse_complement())
         gff3_records = [(f, e, length - end, length - start) for f, e, start, end in gff3_records]
-        snvs = [(v, length - 1 - g, str(Seq(r).complement()), str(Seq(a).complement())) for v, g, r, a in snvs]
+        snvs = [
+            (v, length - 1 - g, str(Seq(r).complement()), None if a is None else str(Seq(a).complement()))
+            for v, g, r, a in snvs
+        ]
 
     (tmp_path / "genome.fa").write_text(f">chrT\n{genome}\n")
     annotation = pd.DataFrame(
@@ -934,12 +937,11 @@ def test_extract_ptc_gives_a_result_per_vcf_record(tmp_path, strand):
 
 
 @pytest.mark.parametrize("strand", ["+", "-"])
-def test_extract_ptc_skips_records_with_alt_dot_or_star(tmp_path, strand, caplog):
+def test_extract_ptc_skips_records_with_a_missing_alt_or_alt_star(tmp_path, strand, caplog):
     """
-    Three VCF records change TGG at `x`, CDS position 46: var1 has ALT ".", var2 has ALT "*", and var3 is TGG>TAG.
-    ALT "." means no alternate allele, and "*" stands for the bases that an overlapping deletion removes. So var1 and
-    var2 change no base. They give no result, and a warning counts them. var3 gives the PTC TAG at 45, upstream of the
-    stop codon `s` at 48.
+    Three VCF records change TGG at `x`, CDS position 46: var1 has a missing ALT (null), var2 has ALT "*", and var3 is
+    TGG>TAG. "*" stands for the bases that an overlapping deletion removes. So var1 and var2 change no base. They give
+    no result, and a warning counts them. var3 gives the PTC TAG at 45, upstream of the stop codon `s` at 48.
 
             39 nt            36 nt
     5' [uuu==========]|[======x=sssuuuu] 3'
@@ -949,7 +951,7 @@ def test_extract_ptc_skips_records_with_alt_dot_or_star(tmp_path, strand, caplog
     """
     with caplog.at_level(logging.WARNING):
         result = _extract_ptc_synthetic(
-            tmp_path, strand, True, {"var1": (46, "."), "var2": (46, "*"), "var3": (46, "A")}
+            tmp_path, strand, True, {"var1": (46, None), "var2": (46, "*"), "var3": (46, "A")}
         )
 
     assert list(result.index) == ["var3"]
@@ -957,8 +959,8 @@ def test_extract_ptc_skips_records_with_alt_dot_or_star(tmp_path, strand, caplog
     assert result.loc["var3", "alt_first_stop_pos"] == 45
     warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
     assert [message for message in warnings if "ALT" in message] == [
-        'Skipping 2 variant(s) with ALT "." or "*". Such a record changes no base: "*" stands for the bases that an '
-        "overlapping deletion removes, and that deletion comes from its own record."
+        'Skipping 2 variant(s) with a missing ALT or ALT "*". Such a record changes no base: "*" stands for the bases '
+        "that an overlapping deletion removes, and that deletion comes from its own record."
     ]
 
 
@@ -1044,18 +1046,20 @@ def test_drop_symbolic_alleles_keeps_sequence_alleles(alt, caplog):
     assert caplog.text == ""
 
 
-# drop_missing_alleles: the records with ALT "." or "*" that extract_ptc skips
+# drop_missing_alleles: the records with a missing ALT or ALT "*" that extract_ptc skips
 
 
-@pytest.mark.parametrize("alt", [".", "*"])
-def test_drop_missing_alleles_drops_alt_dot_and_star(alt):
+# "." is how a VCF writes a missing ALT
+@pytest.mark.parametrize("alt", [None, ".", "*"])
+def test_drop_missing_alleles_drops_a_missing_alt_and_alt_star(alt):
     vcf = pd.DataFrame({"Alt": ["T", alt, "GT"]}, index=[10, 11, 12])
 
     assert drop_missing_alleles(vcf)["Alt"].tolist() == ["T", "GT"]
     assert drop_missing_alleles(vcf).index.tolist() == [10, 12]
 
 
-@pytest.mark.parametrize("alt", ["T", "GT", "ACGTN", "<*>", ".G", "G."])
+# "" is a valid ALT: a deletion without its anchor base
+@pytest.mark.parametrize("alt", ["T", "GT", "ACGTN", "", "<*>", ".G", "G."])
 def test_drop_missing_alleles_keeps_other_alleles(alt, caplog):
     vcf = pd.DataFrame({"Alt": [alt]})
 
