@@ -29,8 +29,7 @@ class SyntheticTranscript:
 
     def __init__(self, tmp_path, strand, exons, cds_start, stop_codon, frame=0, start_codon=True):
         """
-        :param tmp_path: directory for the input files. Its name names the chromosome, because catch_sequence
-            caches sequences by chromosome across tests.
+        :param tmp_path: directory for the input files
         :param strand: "+" or "-"
         :param exons: exon sequences in transcript order
         :param cds_start: transcript position of the first CDS base
@@ -40,7 +39,7 @@ class SyntheticTranscript:
         """
         self.tmp_path = tmp_path
         self.strand = strand
-        self.chrom = f"chr_{tmp_path.name}"
+        self.chrom = "chrT"
         # The layout is the chromosome in transcript orientation: the flanks, the exons and the introns
         self.layout = self.flank + self.intron.join(exons) + self.flank
         self.genome = self.layout if strand == "+" else str(Seq(self.layout).reverse_complement())
