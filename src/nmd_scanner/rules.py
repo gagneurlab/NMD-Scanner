@@ -18,10 +18,8 @@ logger = logging.getLogger(__name__)
 # An ALT allele that names a structural variant instead of giving its sequence: a symbolic allele such as <DEL>,
 # <DUP:TANDEM> or <*>, a breakend such as G]chr2:100] or [chr2:100[G, or a single breakend such as G. or .G
 SYMBOLIC_ALT_PATTERN = r"^<[^>]*>$|[\[\]]|^\.[A-Za-z]+$|^[A-Za-z]+\.$"
-# An ALT allele that changes no base: "*" stands for the bases that an overlapping deletion removes, and that deletion
-# has its own record. "." is how a VCF writes a missing ALT. scan.read_vcf gives null for it, but a table from another
-# source may hold the text.
-MISSING_ALT_PATTERN = r"^[.*]$"
+# A REF or ALT allele that is a sequence of bases: A, C, G, T or N in either case, as in VCF 4.3. It may be empty.
+BASES_PATTERN = r"[ACGTNacgtn]*"
 # The names that the steps of extract_ptc give the variant columns of scan.read_vcf
 VCF_COLUMNS = {"chrom": "Chromosome", "start": "Start", "end": "End", "variant_id": "ID", "ref": "Ref", "alt": "Alt"}
 
@@ -53,8 +51,9 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
              is skipped or has a reference mismatch.
     :raises ValueError: if cds_df has no has_start_codon, has_stop_codon, transcript_type or transcript_tags column,
                         i.e. it is not the coding regions that scan.read_annotation returns, if vcf has no chrom,
-                        start, end, ref or alt column, or if the FASTA has no sequence for a chromosome with variants
-                        and coding regions.
+                        start, end, ref or alt column, if a REF is null or a REF or ALT is not a sequence of bases (see
+                        ``check_alleles``), or if the FASTA has no sequence for a chromosome with variants and coding
+                        regions.
     """
 
     required = ("has_start_codon", "has_stop_codon", "transcript_type", "transcript_tags")
@@ -84,6 +83,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
 
     # The variant application below cannot apply a structural variant, and a missing ALT or "*" changes no base
     vcf = drop_missing_alleles(drop_symbolic_alleles(vcf))
+    # The variant application puts REF and ALT into the sequences as they are
+    check_alleles(vcf)
 
     # The variants on a chromosome with coding regions are placed on its FASTA sequence
     unsequenced = sorted((set(vcf["Chromosome"]) & set(cds_df_adj["Chromosome"])) - set(fasta.keys()))
@@ -261,8 +262,8 @@ MAX_JOIN_COORDINATE = 2**31 - 1
 def drop_symbolic_alleles(vcf):
     """
     Returns the variants without the records whose ALT is a symbolic allele or a breakend (see SYMBOLIC_ALT_PATTERN),
-    and logs a warning with their count. Such an ALT names a structural variant instead of giving its sequence. The
-    variant application would insert its text into the sequence, e.g. "<DEL>" into the alt CDS.
+    and logs a warning with their count. Such an ALT names a structural variant instead of giving its sequence, which
+    the variant application needs.
 
     :param vcf: VCF records (DataFrame) with the column Alt
     :return: The records of ``vcf`` whose ALT is a sequence, in their order and with their index
@@ -283,16 +284,13 @@ def drop_missing_alleles(vcf):
     Returns the variants without the records whose ALT is missing (null) or "*", and logs a warning with their count.
     Such a record changes no base. "*" stands for the bases that an overlapping deletion removes, e.g. after bcftools
     norm -m- splits a joint-called site. The deletion comes from its own record and gives its own variant-transcript
-    pairs. An ALT "." counts as missing too, because it is how a VCF writes a missing ALT (see MISSING_ALT_PATTERN). The
-    variant application would insert the character into the sequence, e.g. "*" into the alt CDS.
+    pairs.
 
     :param vcf: VCF records (DataFrame) with the column Alt
     :return: The other records of ``vcf``, in their order and with their index
     """
 
-    # The dtype "string" keeps a null as null, so the pattern sees only alleles
-    alt = vcf["Alt"].astype("string")
-    missing = alt.isna() | alt.str.contains(MISSING_ALT_PATTERN, regex=True, na=False)
+    missing = vcf["Alt"].isna() | (vcf["Alt"] == "*")
     if missing.any():
         logger.warning(
             'Skipping %d variant(s) with a missing ALT or ALT "*". Such a record changes no base: "*" stands for the '
@@ -300,6 +298,34 @@ def drop_missing_alleles(vcf):
             int(missing.sum()),
         )
     return vcf[~missing]
+
+
+def check_alleles(vcf):
+    """
+    Raises a ValueError if a REF is null, or if a REF or ALT is not a sequence of bases (see BASES_PATTERN). An empty
+    allele is valid: ALT "" is a deletion without its anchor base, and REF "" with Start equal to End is an insertion.
+    extract_ptc runs it on the records that drop_symbolic_alleles and drop_missing_alleles keep. So it rejects e.g. a
+    REF ".", and the ALT text "." or "-", which other formats write for a missing or an empty allele.
+
+    :param vcf: VCF records (DataFrame) with the columns Chromosome, Start, End, Ref and Alt
+    :raises ValueError: if a record has such a REF or ALT. The error gives the count of such records and names the
+        first one.
+    """
+
+    def shown(allele):
+        return "null" if pd.isna(allele) else repr(str(allele))
+
+    # A null REF or ALT does not match
+    ref = vcf["Ref"].astype("string").str.fullmatch(BASES_PATTERN, na=False)
+    alt = vcf["Alt"].astype("string").str.fullmatch(BASES_PATTERN, na=False)
+    invalid = ~(ref & alt)
+    if invalid.any():
+        first = vcf[invalid].iloc[0]
+        raise ValueError(
+            f"{int(invalid.sum())} variant(s) have a REF or ALT that is not a sequence of the bases A, C, G, T and N, "
+            f"e.g. ref {shown(first['Ref'])} and alt {shown(first['Alt'])} at chrom {first['Chromosome']}, start "
+            f'{first["Start"]}, end {first["End"]}. Use null for a missing ALT and "" for an empty allele.'
+        )
 
 
 def join_variants_to_cds(cds_df, vcf):

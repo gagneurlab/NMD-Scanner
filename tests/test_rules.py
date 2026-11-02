@@ -999,8 +999,9 @@ def test_extract_ptc_needs_the_transcript_type_and_the_transcript_tags():
         extract_ptc(coding, vcf=None, fasta=None, exons_df=None)
 
 
-def test_extract_ptc_names_the_missing_vcf_columns():
-    coding = pd.DataFrame(
+def _coding_region():
+    """The coding region of one transcript: one CDS record with the columns that extract_ptc needs"""
+    return pd.DataFrame(
         {
             "Chromosome": ["chrT"],
             "Start": [100],
@@ -1015,12 +1016,44 @@ def test_extract_ptc_names_the_missing_vcf_columns():
             "transcript_tags": ["basic"],
         }
     )
+
+
+def test_extract_ptc_names_the_missing_vcf_columns():
+    coding = _coding_region()
     vcf = pd.DataFrame({"chrom": ["chrT"], "start": [120], "end": [121], "ref": ["A"], "alt": ["G"]})
     with pytest.raises(ValueError, match=r"^vcf has no alt column\."):
         extract_ptc(coding, vcf.drop(columns="alt"), fasta=None, exons_df=None)
     # The internal names of VCF_COLUMNS do not count
     with pytest.raises(ValueError, match="^vcf has no chrom and no start and no end and no ref and no alt column"):
         extract_ptc(coding, vcf.rename(columns=VCF_COLUMNS), fasta=None, exons_df=None)
+
+
+@pytest.mark.parametrize(
+    ("ref", "alt", "shown"),
+    [
+        ("A", ".", "ref 'A' and alt '.'"),
+        ("A", "-", "ref 'A' and alt '-'"),
+        (".", "A", "ref '.' and alt 'A'"),
+        (None, "G", "ref null and alt 'G'"),
+    ],
+    ids=["alt_dot", "alt_dash", "ref_dot", "ref_null"],
+)
+def test_extract_ptc_rejects_alleles_that_are_not_bases(ref, alt, shown):
+    """
+    "." and "-" are how other formats write a missing or an empty allele. In the table, a missing ALT is null and an
+    empty allele is "". The first record is valid, so the error names the second.
+    """
+    vcf = pd.DataFrame(
+        {"chrom": ["chrT", "chrT"], "start": [119, 120], "end": [120, 121], "ref": ["C", ref], "alt": ["G", alt]}
+    )
+
+    with pytest.raises(ValueError) as error:
+        extract_ptc(_coding_region(), vcf, fasta=None, exons_df=None)
+
+    assert str(error.value) == (
+        f"1 variant(s) have a REF or ALT that is not a sequence of the bases A, C, G, T and N, e.g. {shown} at chrom "
+        'chrT, start 120, end 121. Use null for a missing ALT and "" for an empty allele.'
+    )
 
 
 # drop_symbolic_alleles: the records that extract_ptc skips
@@ -1049,8 +1082,7 @@ def test_drop_symbolic_alleles_keeps_sequence_alleles(alt, caplog):
 # drop_missing_alleles: the records with a missing ALT or ALT "*" that extract_ptc skips
 
 
-# "." is how a VCF writes a missing ALT
-@pytest.mark.parametrize("alt", [None, ".", "*"])
+@pytest.mark.parametrize("alt", [None, "*"])
 def test_drop_missing_alleles_drops_a_missing_alt_and_alt_star(alt):
     vcf = pd.DataFrame({"Alt": ["T", alt, "GT"]}, index=[10, 11, 12])
 
@@ -1058,8 +1090,8 @@ def test_drop_missing_alleles_drops_a_missing_alt_and_alt_star(alt):
     assert drop_missing_alleles(vcf).index.tolist() == [10, 12]
 
 
-# "" is a valid ALT: a deletion without its anchor base
-@pytest.mark.parametrize("alt", ["T", "GT", "ACGTN", "", "<*>", ".G", "G."])
+# "" is a valid ALT: a deletion without its anchor base. check_alleles rejects the text ".".
+@pytest.mark.parametrize("alt", ["T", "GT", "ACGTN", "", ".", "<*>", ".G", "G."])
 def test_drop_missing_alleles_keeps_other_alleles(alt, caplog):
     vcf = pd.DataFrame({"Alt": [alt]})
 
