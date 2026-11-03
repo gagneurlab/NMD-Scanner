@@ -15,8 +15,10 @@ logger = logging.getLogger(__name__)
 
 # Both tables of NMDEff (https://github.com/hjkng/nmdeff) were last changed in this commit, which is also its tag v1.0
 NMDEFF_URL = "https://raw.githubusercontent.com/hjkng/nmdeff/08c92768fcb689236a833db6a2f2d9bcbe919f12/"
+# The columns of the variant of a measurement
+VARIANT_COLUMNS = ["chrom", "start", "end", "ref", "alt"]
 # The columns of every benchmark table, in order. tissue, if a table has it, and source_row follow them.
-COLUMNS = ["chrom", "start", "end", "ref", "alt", "transcript", "gene", "NMD_efficiency"]
+COLUMNS = [*VARIANT_COLUMNS, "transcript", "gene", "NMD_efficiency"]
 HGVSC_SUBSTITUTION = r"^(?:[^:]+:)?c\.\d+(?P<ref>[ACGT])>(?P<alt>[ACGT])$"
 COMPLEMENT = {"A": "T", "C": "G", "G": "C", "T": "A"}
 

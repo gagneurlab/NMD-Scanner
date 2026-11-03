@@ -40,12 +40,11 @@ import polars as pl
 
 import nmd_scanner
 from nmd_scanner.benchmark.datasets import geuvadis, gtex, mmrf_target, tcga
+from nmd_scanner.benchmark.sources import VARIANT_COLUMNS
 
 logger = logging.getLogger(__name__)
 
 DATASETS = {"tcga": tcga, "geuvadis": geuvadis, "gtex": gtex, "mmrf_target": mmrf_target}
-# The columns of the variant of a measurement
-VARIANT_COLUMNS = ["chrom", "start", "end", "ref", "alt"]
 # The columns that join a measurement to the NMD-Scanner result of its variant-transcript pair
 KEY = ["transcript", *VARIANT_COLUMNS]
 
