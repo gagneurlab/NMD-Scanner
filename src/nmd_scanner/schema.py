@@ -17,7 +17,7 @@ from nmd_scanner.variant_placement import EXON_BOUNDARY_AMBIGUOUS, SPLICE_SITE_D
 
 # The values of nmd_efficiency_prediction_status, in the order they are checked. A variant-transcript pair gets the
 # first value whose condition holds:
-# - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 13 of the 17 model
+# - unknown_effect: unknown_reason is set. The alt transcript is unknown, so alt_has_ptc and 12 of the 16 model
 #   inputs are null. unknown_reason says why.
 # - no_ptc: alt_has_ptc is not True, so there is no PTC to predict.
 # - ref_ptc: ref_has_ptc is True. The reference has a PTC already, so the variant does not create it.
@@ -168,7 +168,6 @@ NMD_FEATURE_COLUMN_KINDS = {
     "upstream_exon_count": "int",
     "downstream_exon_count": "int",
     "ptc_to_start_codon": "int",
-    "ptc_less_than_150nt_to_start": "bool",
     "ptc_exon_length": "int",
     "annotated_stop_distance": "int",
     "ptc_to_exon_end": "int",
@@ -210,11 +209,10 @@ PREDICTION_COLUMN_KINDS = {"nmd_efficiency_prediction": "float"}
 # annotate(..., sequences=False) and the CLI flag --no-sequences leave them out (see output_column_kinds).
 SEQUENCE_COLUMNS = ("ref_cds_seq", "alt_cds_seq", "transcript_seq", "alt_transcript_seq")
 
-# The 17 inputs of the NMD efficiency model (see nmd_scanner.model and scripts/train_model.py), in the order that
+# The 16 inputs of the NMD efficiency model (see nmd_scanner.model and scripts/train_model.py), in the order that
 # the model takes them. The model cannot predict a variant-transcript pair in which one of them is null.
 MODEL_INPUTS = [
     "total_exon_count",
-    "ptc_less_than_150nt_to_start",
     "nmd_long_exon_rule",
     "nmd_start_proximal_rule",
     "nmd_single_exon_rule",
