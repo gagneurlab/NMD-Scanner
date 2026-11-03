@@ -44,7 +44,7 @@ def evaluate_nmd_escape_rules(row):
     2. 50nt penultimate rule: The PTC is within 50 nucleotides upstream of the last exon junction
     3. Long exon rule: The PTC is in an exon with >407 nucleotides
     4. Start proximal rule: The PTC is within 150 nucleotides of the start codon
-    5. Single exon rule: The transcript where the PTC lays consists only of a single exon
+    5. Single exon rule: The transcript in which the PTC lies consists only of a single exon
     A PTC is considered to escape NMD if it satisfies any of the above rules. "Technical Notes.md" has figures of the
     rules.
 

@@ -167,7 +167,8 @@ class TranscriptEffect:
 def trim_alleles(start, ref, alt):
     """
     Remove the bases that REF and ALT share at the end, then those they share at the start. For a left-normalized
-    record, this gives the leftmost placement, also at POS 1, where the padding base of an indel follows it.
+    record, this gives the leftmost placement. This holds also at POS 1, where the padding base of an indel follows the
+    indel.
 
     :param start: 0-based position of the first REF base
     :return: (start, ref, alt) of the changed bases. ref is empty for an insertion, alt for a deletion.

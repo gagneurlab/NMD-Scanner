@@ -68,7 +68,7 @@ After a start loss, translation starts at the next ATG, the one that the scan of
 
 Three kinds of variant-transcript pairs keep the flags from the CDS. Their `alt_has_ptc` comes from the codon scan of the alt CDS, as `ref_has_ptc` does from the ref CDS. Their `stop_loss` is True if `ref_valid_stop` is True and `alt_valid_stop` is not.
 
-- Pairs where `alt_transcript_seq` or `cds_start_in_transcript` is null, except pairs with `unknown_reason`. On those, both flags are null.
+- Pairs where `alt_transcript_seq` or `cds_start_in_transcript` is null and `unknown_reason` is not set. A pair with `unknown_reason` has both flags null.
 - Pairs whose `alt_transcript_seq` has fewer than 3 nt, e.g. after a deletion that leaves 2 nt of the transcript. Such a sequence holds no codon, so it is neither classified nor scanned, also after a start loss. Its alt CDS has fewer than 3 nt too. So `alt_has_ptc` is null, and `stop_loss` is True if `ref_valid_stop` is True.
 - Pairs without a start loss whose `transcript_seq`, read in frame from `cds_start_in_transcript` + `cds_frame`, does not read its first stop codon at the annotated stop codon. A selenocysteine TGA upstream of the annotated stop codon gives such a pair, because the pipeline does not read selenocysteine annotations.
 
