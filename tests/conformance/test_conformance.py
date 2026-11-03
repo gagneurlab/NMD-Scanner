@@ -316,7 +316,7 @@ RULES = (
     "nmd_single_exon_rule",
 )
 NULL_CASES = [
-    # A variant-transcript pair does not show the ID of its record, and a null variant_id has no other cause
+    # A variant-transcript pair does not show the ID of its record. In annotate(), a null variant_id has no other cause.
     ("variant_id", "the ID of the VCF record is `.`", lambda pair: True),
     # transcript_type and transcript_tags come from the transcript record. If one of them is set, the transcript
     # has a transcript record.
@@ -564,6 +564,11 @@ CDS_RECORD_OUTSIDE_ITS_EXONS = (
 UNREACHABLE_NULL_CASES = [
     ("cds_start_in_transcript", "the 5' CDS base lies outside the exons", CDS_RECORD_OUTSIDE_ITS_EXONS),
     ("cds_end_in_transcript", "the 5' CDS base lies outside the exons", CDS_RECORD_OUTSIDE_ITS_EXONS),
+    (
+        "variant_id",
+        "the input of `annotate_variants` has no `variant_id` column",
+        "annotate() reads the VCF with read_vcf(), which always gives the variant_id column",
+    ),
 ]
 
 
