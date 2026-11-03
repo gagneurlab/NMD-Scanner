@@ -241,7 +241,7 @@ def is_left_normalized(start, ref, alt, reference):
     if bool(ref) == bool(alt):
         return True
     last_base = reference.base(start + len(ref) - 1) if ref else alt[-1]
-    return start == 0 or reference.base(start - 1) != last_base
+    return reference.base(start - 1) != last_base
 
 
 def exon_boundaries(exons, reference):
