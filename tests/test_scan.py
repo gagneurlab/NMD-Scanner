@@ -1026,6 +1026,42 @@ def test_read_gff3_raises_for_a_cds_record_that_reaches_past_the_transcript_end(
     _assert_raises_for_a_cds_record_outside_the_exons(tmp_path, gff3, line, column, value, transcript, location)
 
 
+# The Ensembl fixture with the CDS record of the 3' exon of ENSTE001 moved into the intron, to 1300-1400. It overlaps
+# no exon record of its transcript.
+_ENSEMBL_GFF3_WITH_A_CDS_RECORD_IN_THE_INTRON = _ENSEMBL_GFF3.replace(
+    "chr1\tensembl\tCDS\t1500\t2000\t", "chr1\tensembl\tCDS\t1300\t1400\t"
+)
+
+
+def test_read_gff3_raises_for_an_ensembl_cds_record_that_overlaps_no_exon_record(tmp_path):
+    gff3_path = _write(tmp_path, "in_the_intron.gff3", _ENSEMBL_GFF3_WITH_A_CDS_RECORD_IN_THE_INTRON)
+
+    with pytest.raises(ValueError) as error:
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    assert str(error.value) == (
+        f"Cannot use {gff3_path!r}: 1 CDS record(s) do not lie inside an exon record of their transcript. The first "
+        "is the CDS record of transcript ENSTE001 at chr1:1300-1400. NMD-Scanner needs each CDS record inside an "
+        "exon record of its transcript."
+    )
+
+
+def test_read_gff3_gives_no_exon_number_to_an_ensembl_cds_record_that_overlaps_no_exon_record(tmp_path, monkeypatch):
+    """
+    read_gff3 numbers CDS records by their order only in a transcript without exon records. A CDS record that overlaps
+    no exon record of its transcript keeps a null exon_number, so it cannot take the number of an exon. The CDS-in-exon
+    check rejects such a record, so this test turns the check off.
+    """
+    monkeypatch.setattr(nmd_scanner.scan, "_check_cds_in_exons", lambda df, gff3_path: None)
+    gff3_path = _write(tmp_path, "in_the_intron.gff3", _ENSEMBL_GFF3_WITH_A_CDS_RECORD_IN_THE_INTRON)
+
+    annotation = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    cds = annotation[(annotation["Feature"] == "CDS") & (annotation["transcript_id"] == "ENSTE001")]
+    assert cds["Start"].tolist() == [1050, 1299]
+    assert [None if pd.isna(number) else number for number in cds["exon_number"]] == [1, None]
+
+
 # The columns that do not depend on the strand, for a variant-transcript pair whose transcript has no exon records: a
 # missense variant C>A that changes no stop codon. The GENCODE fixture has no start_codon records, so the transcript has
 # no annotated start codon.

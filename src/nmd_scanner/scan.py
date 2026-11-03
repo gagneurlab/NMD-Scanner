@@ -776,8 +776,13 @@ def _normalize_ensembl_gff3(df):
         child_df = compute_exon_numbers(child_df)
 
     # The CDS records of a transcript without exon records get no number above. They are numbered 1, 2, ... in the
-    # direction of transcription, as compute_exon_numbers numbers exon records.
-    unnumbered = child_df[(child_df["Feature"] == "CDS") & child_df["exon_number"].isna()]
+    # direction of transcription, as compute_exon_numbers numbers exon records. In a transcript with exon records, a
+    # CDS record that overlaps no exon record keeps a null number. So it cannot take the number of an exon, and
+    # _check_cds_in_exons rejects it.
+    with_exons = child_df.loc[child_df["Feature"] == "exon", "transcript_id"].unique()
+    unnumbered = child_df[
+        (child_df["Feature"] == "CDS") & ~child_df["transcript_id"].isin(with_exons) & child_df["exon_number"].isna()
+    ]
     child_df.loc[unnumbered.index, "exon_number"] = _numbers_in_transcription_order(unnumbered)
     return child_df
 
