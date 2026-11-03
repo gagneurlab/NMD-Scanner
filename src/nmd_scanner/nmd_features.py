@@ -245,10 +245,6 @@ def calculate_ptc_to_start_distance(row):
     if start is None or stop is None:
         return None
 
-    # PTC codon position: is PTC_to_start_codon / 3 --> leave it out
-    # offset = stop - start
-    # return offset // 3 if offset >= 0 else None
-
     # Without a start loss, the start codon lies at CDS position 0, so only a stop codon as start codon gives a PTC at
     # the start. After a start loss, the scan reads the stop codons after the ATG.
     if stop <= start:
