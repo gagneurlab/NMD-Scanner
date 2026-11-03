@@ -11,8 +11,8 @@ uv run --extra scripts python scripts/validate_model.py.py
 They read and write `data/` by default: the GFF3 `data/gencode.v42.annotation.gff3.gz` and the FASTA `data/GRCh38.fa` with its `.fai` index go in, and `data/benchmarks/`, `data/train/` and `data/validate/` come out.
 
 - `build_benchmarks.py` downloads the study tables at pinned versions and writes one table per dataset of `nmd_scanner.benchmark.DATASETS`. A new dataset needs one module in `nmd_scanner.benchmark.datasets` and one `DATASETS` entry.
-- `train_model.py` trains the random forest that the package ships as `src/nmd_scanner/nmd_efficiency_rf.onnx`. It also saves the forest as a joblib pickle, a copy of which is `nmd_efficiency_rf.pkl` at the repo root.
-- `validate_model.py.py` writes `validation.json`, and it draws the figures of the training and the validation into `data/validate/figures/`. It sets its paths in its first cell. The main README shows one of these figures, and after a rerun `git add -f` updates that PNG.
+- `train_model.py` trains the random forest and writes it to `data/train/nmd_efficiency_rf.onnx`, and as a joblib pickle to `data/train/nmd_efficiency_rf.pkl`. To ship the model, copy the ONNX to `src/nmd_scanner/` and the pickle to the repo root. `validate_model.py.py` fails if the ONNX in `data/train/` differs from the one in `src/nmd_scanner/`.
+- `validate_model.py.py` writes `validation.json`, and it draws the figures of the training and the validation into `data/validate/figures/`. It sets its paths in its first code cell. The main README shows one of these figures, and after a rerun `git add -f` updates that PNG.
 
 `validate_model.py.py` is also a jupytext notebook. To render it to HTML:
 

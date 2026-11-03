@@ -1,6 +1,6 @@
 # Resources
 
-This directory contains datasets, reference files, and test resources used for the development of the NMD-Scanner.
+This directory contains test resources and example input files used for the development of the NMD-Scanner.
 The files in this directory are not required for normal usage of the NMD-Scanner package, but are provided for reproducibility, testing and example analyses.
 
 ---

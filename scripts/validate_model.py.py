@@ -17,7 +17,7 @@
 # # Model validation
 #
 # This notebook draws the figures of the training run of scripts/train_model.py, and it computes the numbers behind the
-# figures of the section "Model validation" of the main README: how well nmd_efficiency_rf.onnx and nmd_escape alone
+# figure of the section "Model validation" of the main README: how well nmd_efficiency_rf.onnx and nmd_escape alone
 # rank the measured NMD efficiency in the benchmarks of nmd_scanner.benchmark. It writes validation.json and figures/,
 # with each figure as PNG and PDF, to OUT_DIR. scripts/README.md shows how to run it.
 #

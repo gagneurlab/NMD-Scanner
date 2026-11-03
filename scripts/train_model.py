@@ -59,8 +59,8 @@ RF_GRID = {
 }
 # The permutation importance permutes each input this many times
 N_PERMUTATIONS = 10
-# The learning curve fits the final hyperparameters on these shares of the training variant-sample pairs of the fold
-# with the fewest, in every fold
+# In every fold, the learning curve fits the final hyperparameters on these shares. A share is of the training
+# variant-sample pairs of the fold with the fewest.
 LEARNING_CURVE_SIZES = np.linspace(0.1, 1.0, 8)
 # The out-of-bag error curve fits the final hyperparameters with these numbers of trees
 OOB_TREES = [50, 100, 200, 300, 400, 500]

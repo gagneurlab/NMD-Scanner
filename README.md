@@ -102,7 +102,7 @@ The model predicts `NMD_efficiency` of the NMDEff TCGA benchmark (Kim et al. 202
 
 ## Model validation
 
-The figure gives the Spearman correlation of the prediction with the measured NMD efficiency, with 95% CIs from a bootstrap over genes. "Canonical rules" ranks the same measurements by `nmd_escape` alone. [scripts/README.md](scripts/README.md) shows how to reproduce the figures.
+The figure gives the Spearman correlation of the prediction with the measured NMD efficiency, with 95% CIs from a bootstrap over genes. "Canonical rules" ranks the same measurements by `nmd_escape` alone. [scripts/README.md](scripts/README.md) shows how to reproduce the figure.
 
 | Cohort                                                                                 | Variant origin     |
 | -------------------------------------------------------------------------------------- | ------------------ |
