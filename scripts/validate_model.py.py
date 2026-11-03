@@ -365,38 +365,6 @@ plot = (
 save_figure(plot, "target_histogram", 6, 3.5)
 
 # %% [markdown]
-# The scatter shows the measured NMD efficiency of each TCGA variant-sample pair over its out-of-fold prediction, with
-# Spearman and R2 over all variant-sample pairs. The gray line marks equal values.
-
-# %%
-oof_measured = oof_df["NMD_efficiency"].to_numpy()
-oof_spearman = spearmanr(oof_df["prediction"].to_numpy(), oof_measured).statistic
-oof_r2 = r2_score(oof_measured, oof_df["prediction"].to_numpy())
-plot = (
-    pn.ggplot(oof_df, pn.aes("prediction", "NMD_efficiency"))
-    + pn.geom_point(color=BLUE, alpha=0.3, size=1.5, stroke=0)
-    + pn.geom_abline(color=GRAY)
-    + pn.labs(
-        title=f"TCGA, out of fold, {len(oof_df):,} variant-sample pairs\nSpearman {oof_spearman:.2f}, R2 {oof_r2:.2f}",
-        x="Predicted NMD efficiency",
-        y="Measured NMD efficiency",
-    )
-)
-save_figure(plot, "tcga_measured_vs_predicted", 5, 4.5)
-
-# %% [markdown]
-# The dots show the mean measured over the mean predicted NMD efficiency in each quantile bin of the out-of-fold
-# prediction, with the 95% CI of the measured mean. The blue line is the least-squares fit of measured on predicted over
-# all variant-sample pairs, and the gray line marks equal values.
-
-# %%
-bins_df, slope, intercept = calibration(oof_df)
-plot = calibration_plot(bins_df.with_columns(slope=slope, intercept=intercept)) + pn.labs(
-    title=f"TCGA, out of fold, {len(oof_df):,} variant-sample pairs\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
-)
-save_figure(plot, "calibration_oof", 5, 6)
-
-# %% [markdown]
 # The bars show the impurity importance and the permutation importance of the model inputs in the final random forest.
 # The permutation importance is the loss in R2 on the training variant-sample pairs when one input is permuted, with the
 # standard deviation over the permutations.
