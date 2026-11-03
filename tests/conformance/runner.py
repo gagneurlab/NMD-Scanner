@@ -372,6 +372,7 @@ class Change:
             ref = reverse_complement(ref)
             alt = reverse_complement(alt)
         if not ref or not alt:
+            assert start >= 1, f"{self.text}: the padding base of the record would lie before the first chromosome base"
             start -= 1
             ref = genome[start] + ref
             alt = genome[start] + alt
