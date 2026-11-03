@@ -288,7 +288,14 @@ def test_parquet_schema_is_the_same_for_every_run(tmp_path):
     pytest.importorskip("pyarrow")
     import pyarrow as pa
 
-    schema_without, _ = _results_schema(tmp_path, "resources/test_files/test_variants.vcf", "without.parquet")
+    # a frameshift in the GREB1L CDS
+    without_loss = tmp_path / "without_loss.vcf"
+    without_loss.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383522\tv1\tG\tGT\t.\t.\t.\n"
+    )
+    schema_without, loaded_without = _results_schema(tmp_path, str(without_loss), "without.parquet")
+    assert not loaded_without.empty
+    assert not (loaded_without["start_loss"].any() or loaded_without["stop_loss"].any())
     schema_with, loaded = _results_schema(tmp_path, "resources/test_files/variants.vcf", "with.parquet")
     assert loaded["start_loss"].any() or loaded["stop_loss"].any()
 
@@ -440,6 +447,15 @@ def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, ca
             fasta_path="resources/chr18.fa.gz",
             output=str(tmp_path / "out.csv"),
         )
+    assert not results.empty
+    assert "reference mismatches" not in caplog.text
+
+
+@pytest.mark.parametrize("vcf", ["resources/test_files/test_variants.vcf", "resources/test_files/variants.vcf"])
+def test_the_bundled_test_vcfs_have_no_reference_mismatch(vcf, caplog):
+    with caplog.at_level(logging.INFO):
+        results = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", prediction=False)
+
     assert not results.empty
     assert "reference mismatches" not in caplog.text
 
@@ -600,7 +616,8 @@ def cli_stderr(tmp_path_factory):
 
 def test_main_cli_logs_the_info_messages_of_nmd_scanner_in_its_format(cli_stderr):
     assert "INFO nmd_scanner.cli: Reading VCF file" in cli_stderr
-    assert "WARNING nmd_scanner.ptc: Skipping 88 variant-transcript pairs" in cli_stderr
+    assert "WARNING nmd_scanner.ptc: 12 variant-transcript pairs get no prediction" in cli_stderr
+    assert "reference mismatches" not in cli_stderr
     # polars-bio's Rust code logs at INFO too
     info = [line for line in cli_stderr.splitlines() if " INFO " in line]
     assert all(" INFO nmd_scanner." in line for line in info)
@@ -859,9 +876,11 @@ def test_annotate_sets_nmd_efficiency_prediction_status_ok_exactly_for_the_pairs
     results = annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
     new_ptc = results["alt_has_ptc"].fillna(False) & ~results["ref_has_ptc"].fillna(False)
-    scorable = new_ptc & results[MODEL_INPUTS].notna().all(axis=1)
+    start_loss = results["start_loss"].fillna(False)
+    scorable = new_ptc & ~start_loss & results[MODEL_INPUTS].notna().all(axis=1)
     assert (results["nmd_efficiency_prediction_status"] == "ok").tolist() == scorable.tolist()
     assert scorable.any()
+    assert (new_ptc & start_loss).any()
     assert set(results["nmd_efficiency_prediction_status"]) <= set(PREDICTION_STATUSES)
 
 
