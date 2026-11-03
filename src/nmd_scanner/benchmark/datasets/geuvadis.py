@@ -68,5 +68,8 @@ def build(raw: tuple[pl.DataFrame, pl.DataFrame], transcripts_df: pl.DataFrame, 
         {"CHROM": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt", "TranscriptID": "transcript"}
     )
     return finish_table(
-        table_df.with_columns(NMD_efficiency=-(pl.col("VAF_mean") / GERMLINE_VAF_DNA).log(2)), transcripts_df, fasta
+        table_df.with_columns(NMD_efficiency=-(pl.col("VAF_mean") / GERMLINE_VAF_DNA).log(2)),
+        transcripts_df,
+        fasta,
+        NAME,
     )

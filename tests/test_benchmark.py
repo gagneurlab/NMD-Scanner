@@ -41,15 +41,15 @@ def fasta(tmp_path):
 
 def kim_table(**columns) -> pl.DataFrame:
     """
-    A table of Kim et al. 2024 with 4 measurements: a plus-strand transcript, a minus-strand transcript, and two
-    measurements on a transcript missing from the GFF3, whose REF matches the FASTA on the minus and on the plus strand.
+    A table of Kim et al. 2024 with 4 measurements: one on a plus-strand transcript, two on a minus-strand transcript,
+    and one on a transcript missing from the GFF3, whose REF differs from the FASTA.
     """
     return pl.DataFrame(
         {
             "chromosome": ["chr1"] * 4,
             "start": [2, 3, 4, 5],
-            "Transcript_ID": ["ENST1", "ENST2", "ENST3", "ENST3"],
-            "HGVSc": ["c.10C>T", "ENST2:c.7C>A", "c.1A>G", "c.2A>G"],
+            "Transcript_ID": ["ENST1", "ENST2", "ENST3", "ENST2"],
+            "HGVSc": ["c.10C>T", "ENST2:c.7C>A", "c.1A>G", "c.2T>C"],
             "NMD_efficiency": [1.5, 0.5, 2.0, -0.25],
             **columns,
         }
@@ -60,19 +60,19 @@ def benchmark(columns: dict, extra_schema: dict | None = None) -> pl.DataFrame:
     return pl.DataFrame(columns, schema={**SCHEMA, **(extra_schema or {}), "source_row": pl.UInt32})
 
 
-def test_hgvsc_alleles_on_both_strands(fasta):
-    table_df = hgvsc_alleles(kim_table(), TRANSCRIPTS, fasta)
+def test_hgvsc_alleles_on_both_strands():
+    table_df = hgvsc_alleles(kim_table(), TRANSCRIPTS)
     assert table_df.select("chrom", "pos", "transcript", "ref", "alt").rows() == [
         ("chr1", 2, "ENST1", "C", "T"),
         ("chr1", 3, "ENST2", "G", "T"),
-        ("chr1", 4, "ENST3", "T", "C"),
-        ("chr1", 5, "ENST3", "A", "G"),
+        ("chr1", 4, "ENST3", "A", "G"),
+        ("chr1", 5, "ENST2", "A", "G"),
     ]
 
 
-def test_hgvsc_alleles_fail_on_other_variants(fasta):
+def test_hgvsc_alleles_fail_on_other_variants():
     with pytest.raises(ValueError, match="c.10del .ENST1. is not a single-base substitution"):
-        hgvsc_alleles(kim_table().with_columns(HGVSc=pl.lit("c.10del")), TRANSCRIPTS, fasta)
+        hgvsc_alleles(kim_table().with_columns(HGVSc=pl.lit("c.10del")), TRANSCRIPTS)
 
 
 def test_build_fails_on_ref_mismatch(fasta):
@@ -81,21 +81,24 @@ def test_build_fails_on_ref_mismatch(fasta):
 
 
 @pytest.mark.parametrize("dataset", [tcga, mmrf_target])
-def test_build_nmdeff_tables(dataset, fasta):
+def test_build_nmdeff_tables(dataset, fasta, caplog):
+    """build drops the measurement on ENST3 before it checks the REF."""
+    caplog.set_level(logging.INFO)
     expected_df = benchmark(
         {
-            "chrom": ["chr1"] * 4,
-            "start": [1, 2, 3, 4],
-            "end": [2, 3, 4, 5],
-            "ref": ["C", "G", "T", "A"],
-            "alt": ["T", "T", "C", "G"],
-            "transcript": ["ENST1", "ENST2", "ENST3", "ENST3"],
-            "gene": ["ENSG1", "ENSG2", None, None],
-            "NMD_efficiency": [1.5, 0.5, 2.0, -0.25],
-            "source_row": [0, 1, 2, 3],
+            "chrom": ["chr1"] * 3,
+            "start": [1, 2, 4],
+            "end": [2, 3, 5],
+            "ref": ["C", "G", "A"],
+            "alt": ["T", "T", "G"],
+            "transcript": ["ENST1", "ENST2", "ENST2"],
+            "gene": ["ENSG1", "ENSG2", "ENSG2"],
+            "NMD_efficiency": [1.5, 0.5, -0.25],
+            "source_row": [0, 1, 3],
         }
     )
     assert_frame_equal(dataset.build(kim_table(), TRANSCRIPTS, fasta), expected_df)
+    assert f"{dataset.NAME}: 1 of 4 measurements are on transcripts missing from the GFF3" in caplog.text
 
 
 def test_build_gtex(fasta, caplog):
@@ -108,8 +111,8 @@ def test_build_gtex(fasta, caplog):
             "end": [2, 5],
             "ref": ["C", "A"],
             "alt": ["T", "G"],
-            "transcript": ["ENST1", "ENST3"],
-            "gene": ["ENSG1", None],
+            "transcript": ["ENST1", "ENST2"],
+            "gene": ["ENSG1", "ENSG2"],
             "NMD_efficiency": [1.5, -0.25],
             "tissue": ["Cells - EBV-transformed lymphocytes", "Whole Blood"],
             "source_row": [0, 3],
@@ -209,13 +212,13 @@ def test_join_features(caplog):
     caplog.set_level(logging.INFO)
     table_df = pl.DataFrame(
         {
-            "transcript": ["ENST1", "ENST1", "ENST2", "ENST3"],
-            "chrom": ["chr1"] * 4,
-            "start": [0, 1, 2, 3],
-            "end": [1, 2, 3, 4],
-            "ref": ["A"] * 4,
-            "alt": ["T"] * 4,
-            "gene": ["ENSG1", "ENSG1", "ENSG2", None],
+            "transcript": ["ENST1", "ENST1", "ENST2"],
+            "chrom": ["chr1"] * 3,
+            "start": [0, 1, 2],
+            "end": [1, 2, 3],
+            "ref": ["A"] * 3,
+            "alt": ["T"] * 3,
+            "gene": ["ENSG1", "ENSG1", "ENSG2"],
         }
     )
     # The result of annotate_variants has transcript_id with version
@@ -233,8 +236,8 @@ def test_join_features(caplog):
     kept_df = join_features(table_df, results_df, "Test")
     assert kept_df.select("transcript", "start", "nmd_efficiency_prediction_status").rows() == [("ENST1", 0, "ok")]
     assert (
-        "Test: 2 of 4 measurements have no NMD-Scanner result for their variant-transcript pair: 1 on transcripts"
-        " missing from the GFF3, 1 with a variant that touches no coding region of its transcript (ENST2)"
+        "Test: 1 of 3 measurements have no NMD-Scanner result for their variant-transcript pair, because their"
+        " variant touches no coding region of their transcript (ENST2)"
     ) in caplog.text
     assert (
         "Test: 1 of the 2 joined measurements have an nmd_efficiency_prediction_status other than ok: 1 ref_ptc"

@@ -104,4 +104,4 @@ def build(raw_df: pl.DataFrame, transcripts_df: pl.DataFrame, fasta: Fasta) -> p
         "%s: %d of %d variant-tissue pairs lack ASE_altered or have 0", NAME, len(raw_df) - len(table_df), len(raw_df)
     )
     table_df = table_df.with_columns(tissue=pl.col("Tissue_type").replace_strict(TISSUE_NAMES))
-    return finish_table(hgvsc_alleles(table_df, transcripts_df, fasta), transcripts_df, fasta)
+    return finish_table(hgvsc_alleles(table_df, transcripts_df), transcripts_df, fasta, NAME)

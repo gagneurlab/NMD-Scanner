@@ -16,9 +16,9 @@ of the benchmark in logs and figures, and two functions:
 Every benchmark table has these columns, with one row per measurement:
 - chrom, start, end, ref and alt: the variant on GRCh38, with the names and the coordinates of the NMD-Scanner
   output. start and end are 0-based half-open, and ref and alt are on the forward strand.
-- transcript: the Ensembl ID of the measured transcript, as the study gives it.
-- gene: the Ensembl ID without version of the gene of the transcript in the GFF3. It is null for a transcript missing
-  from the GFF3.
+- transcript: the Ensembl ID of the measured transcript, as the study gives it. A benchmark table leaves out the
+  measurements on transcripts missing from the GFF3.
+- gene: the Ensembl ID without version of the gene of the transcript in the GFF3.
 - NMD_efficiency: the NMD efficiency that the study measured. 0 means no NMD, and 1 means that the variant allele
   fraction in the RNA is half of that in the DNA.
 - tissue: the GTEx v8 name (SMTSD) of the tissue of the measurement, only in a table with one row per variant and
@@ -28,7 +28,7 @@ Every benchmark table has these columns, with one row per measurement:
 nmd_scanner.annotate_variants takes the unique VARIANT_COLUMNS of a benchmark table as its vcf_df, in pandas.
 join_features joins the result of annotate_variants to the benchmark table, and it keeps the measurements that the NMD
 efficiency model can predict. Read the annotation_df of annotate_variants from the GFF3 of the benchmark tables, so
-that a null gene marks a transcript missing from it.
+that it has the transcript of every measurement.
 """
 
 import logging
@@ -55,8 +55,8 @@ def join_features(table_df: pl.DataFrame, results_df: pd.DataFrame, dataset: str
     Keep the measurements with nmd_efficiency_prediction_status "ok". Log the measurements that this drops, and why,
     with dataset as the name of the table. The rows of the result have no fixed order.
 
-    A measurement has no variant-transcript pair in results_df if the GFF3 lacks its transcript, or if its variant
-    touches no coding region of the transcript (see "Technical Notes.md").
+    A measurement has no variant-transcript pair in results_df if its variant touches no coding region of the
+    transcript (see "Technical Notes.md").
     """
     # transcript is transcript_id without version
     features_df = pl.DataFrame(nmd_scanner.to_arrow(results_df)).with_columns(
@@ -64,17 +64,14 @@ def join_features(table_df: pl.DataFrame, results_df: pd.DataFrame, dataset: str
     )
     joined_df = table_df.join(features_df, on=KEY, validate="m:1")
     unmatched_df = table_df.join(features_df, on=KEY, how="anti")
-    missing = unmatched_df["gene"].is_null()
     if len(unmatched_df) > 0:
         logger.info(
-            "%s: %d of %d measurements have no NMD-Scanner result for their variant-transcript pair: %d on transcripts"
-            " missing from the GFF3, %d with a variant that touches no coding region of its transcript (%s)",
+            "%s: %d of %d measurements have no NMD-Scanner result for their variant-transcript pair, because their"
+            " variant touches no coding region of their transcript (%s)",
             dataset,
             len(unmatched_df),
             len(table_df),
-            missing.sum(),
-            (~missing).sum(),
-            " ".join(unmatched_df.filter(~missing)["transcript"].unique().sort()) or "none",
+            " ".join(unmatched_df["transcript"].unique().sort()),
         )
     status = joined_df["nmd_efficiency_prediction_status"]
     dropped_df = status.filter(status != "ok").value_counts(sort=True)
