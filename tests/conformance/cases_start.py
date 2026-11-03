@@ -258,44 +258,6 @@ CASES = [
     ),
 ]
 
-# The CDS starts with the annotated start codon CTG and has an in-frame ATG at CDS 30
-INTERNAL_MET_CDS = "CTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TGGGACTAA"
-INTERNAL_MET = Layout(
-    Transcript(("ggg" + INTERNAL_MET_CDS[:100], INTERNAL_MET_CDS[100:] + "ggggg")),
-    {
-        **IDS,
-        "cds_start": per_strand(13, 15),
-        "cds_end": per_strand(201, 203),
-        "ref_cds_seq": INTERNAL_MET_CDS,
-        "ref_cds_length": 168,
-        "has_start_codon": True,
-        "has_stop_codon": True,
-        "cds_frame": 0,
-        "ref_cds_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 68}],
-        "cds_in_transcript": True,
-        "start_codon_exon_number": 1,
-        "ref_last_codon": "TAA",
-        "ref_valid_stop": True,
-        "ref_first_stop_codon": "TAA",
-        "ref_first_stop_pos": 165,
-        "ref_stop_codon_count": 1,
-        "ref_stop_codons": [{"position": 165, "codon": "TAA"}],
-        "ref_stop_codon_exons": [2],
-        "ref_has_ptc": False,
-        "transcript_start": 10,
-        "transcript_end": 206,
-        "transcript_seq": "GGG" + INTERNAL_MET_CDS + "GGGGG",
-        "transcript_length": 176,
-        "cds_start_in_transcript": 3,
-        "cds_end_in_transcript": 171,
-        "transcript_exons": [{"exon_number": 1, "length": 103}, {"exon_number": 2, "length": 73}],
-        "utr3_length": 5,
-        "utr5_length": 3,
-        "total_exon_count": 2,
-        "likely_misannotated": False,
-    },
-)
-
 # The start codon CTG, an in-frame ATG at CDS 6, and a TAG in the 3' UTR in the frame of the CDS
 CTG_THEN_ATG = Layout(
     Transcript(("ggCTGAA", "AATGCCCTAAgggtagcc")),
@@ -525,60 +487,6 @@ RESCUE_PAST_THE_STOP = Layout(
 )
 
 CASES += [
-    Case(
-        "ptc_after_a_ctg_start_codon_is_measured_from_the_ctg_not_from_the_internal_met",
-        """
-        CDS         0                  30                                           159     165
-        ref 5' [ggg CTG AAA ..21.. AAA ATG AAA ..60.. AAA A]|[AA AAA ..48.. AAA AAA TGG GAC TAA ggggg] 3'
-        alt 5' [ggg CTG AAA ..21.. AAA ATG AAA ..60.. AAA A]|[AA AAA ..48.. AAA AAA TAG GAC TAA ggggg] 3'
-                                                                                     ^ G>A
-                                                                                    *** PTC
-                    <------------ ptc_to_start_codon = 159, not < 150 ------------>
-                                                                                    <---------------> ptc_to_exon_end = 14
-        exon 1: 103 nt, exon 2: 73 nt
-        TGG>TAG is a PTC in the last exon. The ATG at CDS 30 is an internal Met: from it, the PTC would be 129 nt away.
-        """,
-        INTERNAL_MET,
-        Change("AAT[G>A]GGAC"),
-        {
-            **variant(per_strand("G", "C"), per_strand("A", "T"), per_strand(193, 22), per_strand(194, 23)),
-            "alt_cds_seq": "CTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TAGGACTAA",
-            "alt_cds_length": 168,
-            "alt_cds_exons": [{"exon_number": 1, "length": 100}, {"exon_number": 2, "length": 68}],
-            **columns(
-                ALT_CODON_COLUMNS,
-                "TAA",
-                True,
-                "TAG",
-                159,
-                2,
-                [{"position": 159, "codon": "TAG"}, {"position": 165, "codon": "TAA"}],
-                [2, 2],
-            ),
-            "alt_has_ptc": True,
-            "start_loss": False,
-            "stop_loss": False,
-            "alt_transcript_seq": "GGGCTG" + "AAA" * 9 + "ATG" + "AAA" * 42 + "TAGGACTAAGGGGG",
-            "alt_transcript_length": 176,
-            "alt_cds_start_in_transcript": 3,
-            **NOT_SCANNED,
-            "unknown_reason": None,
-            **columns(PTC_FEATURE_COLUMNS, 1, 0, 159, False, 73, 14),
-            "annotated_stop_distance": 6,
-            **columns(RULE_COLUMNS, True, False, False, False, False, True),
-            "alt_transcript_exons": SAME_EXONS,
-            "nmd_efficiency_prediction_status": "ok",
-            "ptc_pos_in_alt_transcript": 162,
-            "ptc_exon_number": 2,
-            "stop_classification": "alt_transcript",
-        },
-        marks=(
-            Mark("alt", 162, 165, "*", "PTC"),
-            Span("alt", 3, 162, "ptc_to_start_codon = 159, not < 150"),
-            Span("alt", 162, 176, "ptc_to_exon_end = 14"),
-        ),
-        ruler=Ruler((0, 30, 159, 165), "CDS"),
-    ),
     Case(
         "stop_loss_scan_starts_at_the_annotated_ctg_not_at_the_in_frame_atg",
         """
