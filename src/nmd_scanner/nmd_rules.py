@@ -3,12 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from nmd_scanner.nmd_features import (
-    FeatureRow,
-    add_nmd_features,
-    calculate_ptc_to_start_distance,
-    ptc_in_alt_transcript,
-)
+from nmd_scanner.nmd_features import FeatureRow, add_nmd_features, ptc_in_alt_transcript
 from nmd_scanner.schema import (
     KIND_DTYPES,
     MODEL_INPUTS,
@@ -24,23 +19,20 @@ from nmd_scanner.schema import (
 @dataclass(frozen=True, slots=True)
 class RuleRow:
     """
-    A variant-transcript pair with the columns of extract_ptc that evaluate_nmd_escape_rules reads, and 3 columns that
+    A variant-transcript pair with the columns of extract_ptc that evaluate_nmd_escape_rules reads, and 4 columns that
     add_nmd_features adds, see schema.records.
     """
 
-    has_start_codon: bool
-    ref_cds_seq: str
-    alt_cds_seq: str | None
     alt_first_stop_pos: int | None
     alt_has_ptc: bool | None
     start_loss: bool | None
-    alt_scan_start_codon_pos: int | None
     alt_scan_first_stop_pos: int | None
     alt_cds_start_in_transcript: int | None
     alt_transcript_exons: list[dict] | None
     total_exon_count: int | None
     downstream_exon_count: int | None
     ptc_exon_length: int | None
+    ptc_to_start_codon: int | None
 
 
 def evaluate_nmd_escape_rules(row):
@@ -63,8 +55,8 @@ def evaluate_nmd_escape_rules(row):
     :param row: A variant-transcript pair of extract_ptc with the features of add_nmd_features: a RuleRow, or a
                 pandas Series or a dict with a value for each field of RuleRow. These are alt_has_ptc (bool), the
                 columns that ptc_in_alt_transcript reads (the PTC position and alt_transcript_exons),
-                total_exon_count, downstream_exon_count and ptc_exon_length (see add_nmd_features), and the columns
-                that calculate_ptc_to_start_distance reads.
+                total_exon_count, downstream_exon_count, ptc_exon_length and ptc_to_start_codon (see
+                add_nmd_features).
     :return: A dictionary with a flag or None for each rule and for the overall NMD escape
     """
 
@@ -101,7 +93,7 @@ def evaluate_nmd_escape_rules(row):
 
     # Start-proximal rule (closer than 150nt from the start codon). Without a known start codon, the distance and the
     # rule are unknown. After a start loss, the start codon is the ATG of the scan.
-    ptc_to_start_codon = calculate_ptc_to_start_distance(row)
+    ptc_to_start_codon = row.ptc_to_start_codon
     rule_start_proximal = None if ptc_to_start_codon is None else ptc_to_start_codon < 150
 
     # NMD escape if any rule is true, unknown if no rule is true and one is unknown (three-valued OR)

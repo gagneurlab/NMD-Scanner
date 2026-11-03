@@ -161,7 +161,6 @@ def add_nmd_features(row):
         "ptc_exon_number": ptc_exon_number,
         "upstream_exon_count": upstream_exon_count,
         "downstream_exon_count": downstream_exon_count,
-        # "ptc_pos_codon": ptc_pos_codon,
         "ptc_to_start_codon": ptc_to_start_codon,
         "ptc_less_than_150nt_to_start": ptc_less_than_150nt_to_start,
         "ptc_exon_length": ptc_exon_length,

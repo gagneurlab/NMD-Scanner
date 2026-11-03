@@ -71,7 +71,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
             "scan.read_annotation returns them."
         )
 
-    missing = [column for column in ("chrom", "start", "end", "ref", "alt") if column not in vcf.columns]
+    missing = [column for column in VCF_COLUMNS if column != "variant_id" and column not in vcf.columns]
     if missing:
         raise ValueError(
             f"vcf has no {' and no '.join(missing)} column. extract_ptc takes VCF records with chrom, start, end, ref, "
