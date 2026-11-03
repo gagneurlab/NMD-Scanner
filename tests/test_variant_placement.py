@@ -123,6 +123,8 @@ def test_equivalent_placements_substitution():
         ("AAAC", 0, "A", "AA", True),
         # a delins whose REF and ALT differ in length
         ("AAAAAA", 2, "AA", "C", True),
+        # lower-case alleles, as "padded"
+        ("CCAGAGTT", 3, "g", "gag", False),
     ],
     ids=[
         "deletion",
@@ -135,6 +137,7 @@ def test_equivalent_placements_substitution():
         "pos_1_deletion",
         "pos_1_insertion",
         "delins",
+        "lower_case",
     ],
 )
 def test_is_left_normalized(sequence, start, ref, alt, expected):

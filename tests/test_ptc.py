@@ -1131,13 +1131,17 @@ def test_extract_ptc_names_the_missing_vcf_columns():
         ("A", "-", "ref 'A' and alt '-'"),
         (".", "A", "ref '.' and alt 'A'"),
         (None, "G", "ref null and alt 'G'"),
+        ("A", "R", "ref 'A' and alt 'R'"),
+        ("A", "X", "ref 'A' and alt 'X'"),
+        ("A*", "A", "ref 'A*' and alt 'A'"),
     ],
-    ids=["alt_dot", "alt_dash", "ref_dot", "ref_null"],
+    ids=["alt_dot", "alt_dash", "ref_dot", "ref_null", "alt_iupac_code", "alt_x", "ref_star"],
 )
 def test_extract_ptc_rejects_alleles_that_are_not_bases(ref, alt, shown):
     """
     "." and "-" are how other formats write a missing or an empty allele. In the table, a missing ALT is null and an
-    empty allele is "". The first record is valid, so the error names the second.
+    empty allele is "". An IUPAC code such as R, another letter such as X, and "*" in REF are no bases either. The first
+    record is valid, so the error names the second.
     """
     vcf = pd.DataFrame(
         {"chrom": ["chrT", "chrT"], "start": [119, 120], "end": [120, 121], "ref": ["C", ref], "alt": ["G", alt]}
@@ -1154,18 +1158,19 @@ def test_extract_ptc_rejects_alleles_that_are_not_bases(ref, alt, shown):
 
 def test_extract_ptc_rejects_records_that_are_not_left_normalized(tmp_path):
     """
-    chrT has AAA at 121-123 and AGAG at 125-128. AA>A at 122 deletes the A at 123, and G>GAG at 128 inserts AG after
-    128: both can shift left. The SNV, the insertion C>CAG at 124 and the record TA>T, whose REF does not match, pass.
-    The error counts the records that are not left-normalized and names the first.
+    chrT has AAA at 121-123 and AGAG at 125-128. AA>A at 122 deletes the A at 123, G>GAG at 128 inserts AG after 128,
+    and the lower-case a>aga at 127 inserts GA after 127: all three can shift left. The SNV, the insertion C>CAG at 124
+    and the record TA>T, whose REF does not match, pass. The error counts the records that are not left-normalized and
+    names the first.
     """
     (tmp_path / "genome.fa").write_text(">chrT\n" + "C" * 120 + "TAAACAGAGT" + "C" * 70 + "\n")
     vcf = pd.DataFrame(
         {
-            "chrom": ["chrT"] * 5,
-            "start": [110, 122, 124, 128, 122],
-            "end": [111, 124, 125, 129, 124],
-            "ref": ["C", "AA", "C", "G", "TA"],
-            "alt": ["G", "A", "CAG", "GAG", "T"],
+            "chrom": ["chrT"] * 6,
+            "start": [110, 122, 124, 128, 122, 127],
+            "end": [111, 124, 125, 129, 124, 128],
+            "ref": ["C", "AA", "C", "G", "TA", "a"],
+            "alt": ["G", "A", "CAG", "GAG", "T", "aga"],
         }
     )
 
@@ -1173,7 +1178,7 @@ def test_extract_ptc_rejects_records_that_are_not_left_normalized(tmp_path):
         extract_ptc(_coding_region(), vcf, Fasta(str(tmp_path / "genome.fa")), exons_df=None)
 
     assert str(error.value) == (
-        "2 variant(s) are not left-normalized: their deletion or insertion can shift left through a repeat, e.g. ref "
+        "3 variant(s) are not left-normalized: their deletion or insertion can shift left through a repeat, e.g. ref "
         "'AA' and alt 'A' at chrom chrT, start 122, end 124. Left-normalize the VCF first, e.g. with "
         "`bcftools norm -f <reference FASTA>`."
     )

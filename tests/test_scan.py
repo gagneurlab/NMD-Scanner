@@ -617,6 +617,8 @@ def test_read_gff3_gives_the_coding_regions_and_exons_of_the_fixture(
     pd.testing.assert_index_equal(annotation.index, pd.RangeIndex(len(annotation)))
     assert annotation["exon_number"].dtype == "Int64"
     assert _records(annotation) == (expected_records, expected_transcripts)
+    # The phase "." of an exon record is null
+    assert annotation.loc[annotation["Feature"] == "exon", "Frame"].isna().all()
 
 
 def test_read_gff3_stop_codon_from_sequence(tmp_path):
