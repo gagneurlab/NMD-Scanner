@@ -1,8 +1,8 @@
 """
 Conformance cases of how the VCF describes a variant. A symbolic allele, a breakend, a missing ALT or the ALT "*" gives
 no result (SY). The same variant gives the same result in each of its VCF descriptions: padded or in lower case (VD).
-The runner left-normalizes each description, as annotate() requires. A REF equal to the ALT, or a REF that does not
-match the genome, gives no result.
+The runner left-normalizes each deletion and insertion, as annotate() requires, and writes any other description with
+its padding. A REF equal to the ALT, or a REF that does not match the genome, gives no result.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
