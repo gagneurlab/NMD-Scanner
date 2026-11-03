@@ -222,8 +222,9 @@ def calculate_ptc_to_start_distance(row):
     """
     Calculate the distance in nt from the start codon to the PTC.
     The start codon is the annotated one at CDS position 0, and the PTC lies at alt_first_stop_pos, a CDS position. The
-    alt CDS must start with the annotated start codon (see ptc.starts_with_annotated_start_codon). The distance is None if the transcript has no annotated start codon (e.g.
-    cds_start_NF: the true start lies upstream of the CDS, at an unknown distance).
+    alt CDS must start with the annotated start codon (see ptc.starts_with_annotated_start_codon). The distance is None
+    if the transcript has no annotated start codon (e.g. cds_start_NF: the true start lies upstream of the CDS, at an
+    unknown distance).
     After a start loss, translation starts at the ATG that the scan of the alt transcript found. So the distance runs
     from that ATG (alt_scan_start_codon_pos) to the first in-frame stop codon after it (alt_scan_first_stop_pos),
     both alt transcript positions. Such a variant-transcript pair is a PTC variant only if the scan found both (see
@@ -250,7 +251,7 @@ def calculate_ptc_to_start_distance(row):
     if stop <= start:
         return None
 
-    return stop - start  # distance between the PTC to start codon in nt
+    return stop - start  # distance in nt from the start codon to the PTC
 
 
 def calculate_ptc_exon_number(row):
