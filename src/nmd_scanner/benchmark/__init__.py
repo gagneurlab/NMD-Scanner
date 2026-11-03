@@ -3,8 +3,10 @@ The NMD efficiency benchmarks: tables of the NMD efficiency that public studies 
 scripts/build_benchmarks.py builds them. scripts/train_model.py trains the NMD efficiency model on TCGA, and
 scripts/validate_model.py.py tests it on all of them.
 
-DATASETS maps the name of each benchmark to its module in nmd_scanner.benchmark.datasets. A module has NAME, the name
-of the benchmark in logs and figures, and two functions:
+DATASETS maps the name of each benchmark to its module in nmd_scanner.benchmark.datasets. A module has two constants
+and two functions:
+- NAME is the name of the benchmark in logs and figures.
+- MEASUREMENTS is what logs and figures call the measurements of the benchmark table, such as "variant-sample pairs".
 - download(downloads) returns the raw tables of the study. It downloads them with sources.fetch, which keeps the files
   in the directory downloads.
 - build(raw, transcripts_df, fasta) returns the benchmark table of the raw tables, without network. fasta is a

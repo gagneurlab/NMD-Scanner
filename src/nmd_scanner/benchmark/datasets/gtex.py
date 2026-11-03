@@ -20,6 +20,7 @@ from nmd_scanner.benchmark.sources import fetch, finish_table, hgvsc_alleles
 logger = logging.getLogger(__name__)
 
 NAME = "GTEx"
+MEASUREMENTS = "variant-tissue pairs"
 # Supplementary Data 1 to 12 of Kim et al. 2024, one sheet each
 URL = (
     "https://static-content.springer.com/esm/art%3A10.1038%2Fs42003-024-07136-y/MediaObjects/"

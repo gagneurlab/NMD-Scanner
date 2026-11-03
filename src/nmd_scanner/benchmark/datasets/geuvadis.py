@@ -18,6 +18,7 @@ from nmd_scanner.benchmark.sources import fetch, finish_table
 logger = logging.getLogger(__name__)
 
 NAME = "Geuvadis"
+MEASUREMENTS = "variants"
 # Zenodo record 16666299 has one file, NMD-rules.zip
 ZENODO_URL = "https://zenodo.org/api/records/16666299/files/NMD-rules.zip/content"
 NONSENSE_LIST = "NMD-rules/Datasets/Nonsense_list.txt"

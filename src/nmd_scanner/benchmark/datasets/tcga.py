@@ -14,6 +14,7 @@ from pyfaidx import Fasta
 from nmd_scanner.benchmark.sources import NMDEFF_URL, fetch, finish_table, hgvsc_alleles
 
 NAME = "TCGA"
+MEASUREMENTS = "variant-sample pairs"
 SHA256 = "7458af15a699a643de3638114af99a17d7eb95b3f80bce187e45347b9c1dc3ca"
 
 

@@ -14,6 +14,7 @@ from pyfaidx import Fasta
 from nmd_scanner.benchmark.sources import NMDEFF_URL, fetch, finish_table, hgvsc_alleles
 
 NAME = "MMRF-TARGET"
+MEASUREMENTS = "variant-sample pairs"
 SHA256 = "c063914da054292c6c6b867eb58650d5378c74d5c852f54c874eab8e51cb4a19"
 
 
