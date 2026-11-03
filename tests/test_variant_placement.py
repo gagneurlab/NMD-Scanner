@@ -44,6 +44,19 @@ def test_reference_sequence_keeps_at_most_max_chunks(tmp_path):
     assert reference.base(4096) is None
 
 
+def test_reference_sequence_reads_up_to_the_chromosome_end_with_strict_bounds(tmp_path):
+    # 1200 bases: the last chunk holds 176 of 1024 bases. pyfaidx with strict_bounds=True raises for a read past them.
+    sequence = "ACGT" * 300
+    (tmp_path / "genome.fa").write_text(f">chrR\n{sequence}\n")
+    reference = ReferenceSequence(Fasta(str(tmp_path / "genome.fa"), strict_bounds=True), "chrR")
+    assert reference.bases(1100, 1105) == sequence[1100:1105]
+    assert reference.bases(1190, 1300) == sequence[1190:]
+    assert reference.base(1199) == "T"
+    assert reference.base(1200) is None
+    assert reference.base(5000) is None
+    assert reference.bases(2048, 2100) == ""
+
+
 def test_trim_alleles():
     # VCF padding base of an indel
     assert trim_alleles(10, "CAG", "C") == (11, "AG", "")

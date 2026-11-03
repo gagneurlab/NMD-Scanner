@@ -34,6 +34,7 @@ class ReferenceSequence:
 
     def __init__(self, fasta, chromosome, max_chunks=_MAX_CHUNKS):
         self._sequence = fasta[chromosome]
+        self._length = len(self._sequence)
         self._chunks = OrderedDict()
         self._max_chunks = max_chunks
 
@@ -42,7 +43,9 @@ class ReferenceSequence:
             self._chunks.move_to_end(index)
             return self._chunks[index]
         start = index * _CHUNK_SIZE
-        chunk = self._sequence[start : start + _CHUNK_SIZE].seq.upper()
+        # The read ends at the chromosome end: a pyfaidx.Fasta with strict_bounds=True raises for a read past it
+        end = min(start + _CHUNK_SIZE, self._length)
+        chunk = self._sequence[start:end].seq.upper() if start < end else ""
         self._chunks[index] = chunk
         if len(self._chunks) > self._max_chunks:
             self._chunks.popitem(last=False)
