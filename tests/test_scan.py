@@ -755,12 +755,7 @@ def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected
 
 
 def test_read_gff3_drops_id_and_parent_columns(tmp_path):
-    """
-    GFF3's own ID/Parent columns must not leak into the returned frame: downstream code joins
-    the CDS table against the VCF table (which has its own unrelated "ID" column, the variant
-    ID), and a leftover GFF3 "ID" column would silently take priority in that join and replace
-    the variant ID with a GFF3 record ID such as "CDS:ENST00000643195.1".
-    """
+    """GFF3's own ID/Parent columns do not leak into the returned frame: gene_id and transcript_id replace them."""
     gencode_path = _write(tmp_path, "gencode.gff3", _GENCODE_GFF3)
     ensembl_path = _write(tmp_path, "ensembl.gff3", _ENSEMBL_GFF3)
 

@@ -1016,6 +1016,50 @@ def test_extract_ptc_reads_the_bases_of_its_own_fasta(tmp_path):
         assert freed() is None
 
 
+def test_extract_ptc_takes_the_variant_columns_from_the_vcf_if_cds_df_has_columns_of_the_same_name(tmp_path):
+    """
+    A GFF3 table of pyranges or gffutils has an ID column. VCF_COLUMNS gives the ID of a VCF record the same name, and
+    the names Ref and Alt to REF and ALT. The result takes variant_id, ref and alt from the VCF record, not from the CDS
+    record.
+
+    5' [uuu=========x=sssuu] 3'   one exon
+    tx  0  3        12   17
+    """
+    (tmp_path / "genome.fa").write_text(">chrT\n" + "C" * 10 + "GACATGAAAGCTTAAGC" + "C" * 10 + "\n")
+    annotation = pd.DataFrame(
+        [
+            {
+                "Chromosome": "chrT",
+                "Start": start,
+                "End": end,
+                "Strand": "+",
+                "Feature": gff3_type,
+                "exon_number": "1",
+                "transcript_id": "tx1",
+                "transcript_type": "protein_coding",
+                "transcript_tags": "basic",
+                "gene_id": "gene1",
+                "Frame": "0",
+                "ID": f"{gff3_type}:tx1",
+                "Ref": "T",
+                "Alt": "G",
+            }
+            for gff3_type, start, end in [("exon", 10, 27), ("CDS", 13, 25)]
+        ]
+    )
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=True)
+    vcf = pd.DataFrame([{"chrom": "chrT", "start": 20, "end": 21, "variant_id": "rs1", "ref": "C", "alt": "A"}])
+
+    pair = extract_ptc(coding, vcf, Fasta(str(tmp_path / "genome.fa")), annotation[annotation["Feature"] == "exon"])
+
+    assert _values(pair.iloc[0], ["variant_id", "ref", "alt", "alt_cds_seq"]) == {
+        "variant_id": "rs1",
+        "ref": "C",
+        "alt": "A",
+        "alt_cds_seq": "ATGAAAGATTAA",
+    }
+
+
 def test_extract_ptc_needs_the_coding_regions():
     # CDS and stop_codon records without has_stop_codon: not the coding regions
     annotation = pd.DataFrame(

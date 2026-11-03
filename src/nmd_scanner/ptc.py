@@ -39,7 +39,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
                    transcript and exon, with exon_number, Frame (the GFF3 phase), gene_id, transcript_type,
                    transcript_tags and the columns has_start_codon and has_stop_codon. The last two say whether the
                    coding region of the transcript starts with an annotated start codon and ends in an annotated stop
-                   codon. ``scan.read_annotation`` returns the coding regions as its CDS records.
+                   codon. ``scan.read_annotation`` returns the coding regions as its CDS records. Other columns, e.g.
+                   the ID of a GFF3 record, are ignored.
     :param vcf: VCF records (DataFrame) with chrom, start, end, ref, alt and optionally variant_id, as ``scan.read_vcf``
                 returns them. Without the variant_id column, each record has a null ID. An empty REF or ALT is a valid
                 allele, e.g. ALT "" for a deletion without its anchor base. A record with a symbolic ALT allele or a
@@ -108,9 +109,12 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
             references[chromosome] = ReferenceSequence(fasta, chromosome)
         return references[chromosome]
 
-    # Join the variants with the coding regions and the splice dinucleotides at their exon edges
+    # Join the variants with the coding regions and the splice dinucleotides at their exon edges. The join takes only
+    # the columns of the CDS records that the steps below read from it. Another column, e.g. the ID of a GFF3 record,
+    # could have the name of a variant column.
     variants, placements = place_variants(vcf, set(cds_df_adj["Chromosome"]), reference)
-    intersection_cds_vcf = join_variant_windows(cds_df_adj, variants)
+    joined_columns = ["Chromosome", "Start", "End", "Strand", "transcript_id", "exon_number", "gene_id"]
+    intersection_cds_vcf = join_variant_windows(cds_df_adj[joined_columns], variants)
     logger.info("Joining variants with CDS records: done.")
 
     # Nothing to analyze: the steps below need at least one row

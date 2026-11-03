@@ -252,8 +252,7 @@ def read_gff3(gff3_path, fasta):
         )
 
     # ID/Parent are GFF3 structural columns; _resolve_ids_via_hierarchy has used them by this
-    # point. Drop them so a stray "ID" column doesn't collide with the unrelated "ID" column
-    # extract_ptc uses for the VCF record ID once CDS records are joined to it.
+    # point to give gene_id and transcript_id.
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
     return df.reset_index(drop=True)
