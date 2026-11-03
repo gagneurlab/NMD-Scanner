@@ -142,14 +142,6 @@ TRANSCRIPT_GROUPS = {
     "in_tcga_training": "Transcript in the TCGA training variant-sample pairs",
     "not_in_tcga_training": "Transcript not in the TCGA training variant-sample pairs",
 }
-# The name of the measurements of each cohort in the figures and the log. A measurement of the GTEx cohort is the mean
-# of one variant over the tissues.
-MEASUREMENTS = {
-    "tcga": "variant-sample pairs",
-    "geuvadis": "variants",
-    "gtex": "variants",
-    "mmrf_target": "variant-sample pairs",
-}
 # The terms of r2_terms: the key, the sign in the sum, and the name in the figure
 R2_TERMS = [
     ("r_squared", 1, "Squared Pearson r"),
@@ -506,11 +498,14 @@ joined = {
     .sort("source_row")
     for name, table_df in benchmarks.items()
 }
-# The cohorts and their names in the figures
+# The cohorts, their names, and what the figures and the log call their measurements. A cohort of a benchmark with the
+# column tissue has one measurement per variant: its mean over the tissues.
 cohorts = {"tcga": oof_df}
 cohort_names = {"tcga": f"{DATASETS['tcga'].NAME}, out of fold"}
+cohort_measurements = {"tcga": DATASETS["tcga"].MEASUREMENTS}
 for name, cohort_df in joined.items():
     cohort_names[name] = DATASETS[name].NAME
+    cohort_measurements[name] = DATASETS[name].MEASUREMENTS
     if "tissue" in cohort_df.columns:
         cohort_df = (
             cohort_df.group_by(KEY)
@@ -522,7 +517,13 @@ for name, cohort_df in joined.items():
             .sort("source_row")
         )
         cohort_names[name] += ", mean per variant"
+        cohort_measurements[name] = "variants"
     cohorts[name] = cohort_df
+# The label of each cohort in the figures: its name and the number of its measurements
+cohort_labels = {
+    cohort: f"{cohort_names[cohort]}\n{len(cohort_df):,} {cohort_measurements[cohort]}"
+    for cohort, cohort_df in cohorts.items()
+}
 # The variant-tissue pairs of GTEx
 gtex_df = joined["gtex"]
 
@@ -539,7 +540,7 @@ for cohort, cohort_df in cohorts.items():
         "%s, %d %s of %d genes: model %s, rules %s, gain %s, %s, NMD-triggering mean %.2f",
         cohort,
         cohort_correlations["n"],
-        MEASUREMENTS[cohort],
+        cohort_measurements[cohort],
         cohort_correlations["genes"],
         estimate(cohort_correlations["model"], cohort_correlations["model_ci"]),
         estimate(cohort_correlations["rules"], cohort_correlations["rules_ci"]),
@@ -588,7 +589,7 @@ logger.info(
     "gtex, %d variant-tissue pairs: NMD-triggering mean %.2f, from %.2f to %.2f between the %d tissues without"
     " the %d with too few samples",
     len(gtex_df),
-    mean_nmd_triggering(gtex_df),
+    validation["gtex_variant_tissue_pairs"]["mean_nmd_triggering"],
     min(tissue_means.values()),
     max(tissue_means.values()),
     len(tissue_means),
@@ -602,8 +603,7 @@ logger.info(
 # %%
 scatter_df = facet_frame(
     {
-        f"{cohort_names[cohort]}, {len(cohort_df):,} {MEASUREMENTS[cohort]}\n"
-        f"Spearman {validation[cohort]['model']:.2f}": cohort_df
+        f"{cohort_labels[cohort]}\nSpearman {validation[cohort]['model']:.2f}": cohort_df
         for cohort, cohort_df in cohorts.items()
     }
 )
@@ -625,10 +625,7 @@ save_figure(plot, "measured_vs_predicted", 8, 7.5)
 calibrations = {}
 for cohort, cohort_df in cohorts.items():
     bins_df, slope, intercept = calibration(cohort_df)
-    title = (
-        f"{cohort_names[cohort]}, {len(cohort_df):,} {MEASUREMENTS[cohort]}\n"
-        f"Fit: slope {slope:.2f}, intercept {intercept:.2f}"
-    )
+    title = f"{cohort_labels[cohort]}\nFit: slope {slope:.2f}, intercept {intercept:.2f}"
     calibrations[title] = bins_df.with_columns(slope=slope, intercept=intercept)
 plot = calibration_plot(facet_frame(calibrations)) + pn.facet_wrap("panel", scales="free")
 save_figure(plot, "calibration", 9, 10.25)
@@ -641,7 +638,7 @@ save_figure(plot, "calibration", 9, 10.25)
 # %%
 boxes_df = facet_frame(
     {
-        f"{cohort_names[cohort]}\n{len(cohort_df):,} {MEASUREMENTS[cohort]}": cohort_df.with_columns(
+        cohort_labels[cohort]: cohort_df.with_columns(
             pl.col("nmd_escape").replace_strict(
                 {escape: f"{escape}\n{count:,}" for escape, count in cohort_df["nmd_escape"].value_counts().iter_rows()}
             )
@@ -692,7 +689,7 @@ plot = (
     )
     + pn.scale_x_continuous(
         breaks=-np.arange(len(cohorts)),
-        labels=[f"{cohort_names[cohort]}\n{validation[cohort]['n']:,} {MEASUREMENTS[cohort]}" for cohort in cohorts],
+        labels=[cohort_labels[cohort] for cohort in cohorts],
         expand=(0, 0.4),
     )
     + pn.scale_y_continuous(limits=(0, 1), breaks=np.linspace(0, 1, 6), expand=(0, 0))
@@ -713,9 +710,9 @@ save_figure(plot, "spearman_per_cohort", 7, 3.5)
 
 # %%
 r2_panels = {}
-for cohort, cohort_df in cohorts.items():
+for cohort in cohorts:
     values = [sign * validation[cohort]["r2_decomposition"][term] for term, sign, _ in R2_TERMS]
-    r2_panels[f"{cohort_names[cohort]}\n{len(cohort_df):,} {MEASUREMENTS[cohort]}"] = pl.DataFrame(
+    r2_panels[cohort_labels[cohort]] = pl.DataFrame(
         {
             "term": [name for _, _, name in R2_TERMS],
             "value": values,
