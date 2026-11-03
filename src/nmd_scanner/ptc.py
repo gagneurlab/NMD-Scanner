@@ -115,6 +115,8 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     variants, placements = place_variants(vcf, set(cds_df_adj["Chromosome"]), reference)
     joined_columns = ["Chromosome", "Start", "End", "Strand", "transcript_id", "exon_number", "gene_id"]
     intersection_cds_vcf = join_variant_windows(cds_df_adj[joined_columns], variants)
+    # Only the variants that join a coding region need their placements
+    placements = {row: placements[row] for row in intersection_cds_vcf["variant_row"].unique()}
     logger.info("Joining variants with CDS records: done.")
 
     # Nothing to analyze: the steps below need at least one row
