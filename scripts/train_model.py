@@ -39,7 +39,7 @@ from sklearn.metrics import r2_score
 from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, learning_curve
 
 from nmd_scanner import annotate_variants, read_annotation
-from nmd_scanner.benchmark import KEY, VARIANT_COLUMNS, join_features
+from nmd_scanner.benchmark import DATASETS, KEY, VARIANT_COLUMNS, join_features
 from nmd_scanner.schema import MODEL_INPUTS
 
 logger = logging.getLogger("train_model")
@@ -148,7 +148,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         sequences=False,
         prediction=False,
     )
-    training_df = join_features(tcga_df, results_df, "TCGA").sort("source_row")
+    training_df = join_features(tcga_df, results_df, DATASETS["tcga"].NAME).sort("source_row")
     logger.info(
         "%d TCGA variant-sample pairs, %d of them with nmd_efficiency_prediction_status ok",
         len(tcga_df),
@@ -158,11 +158,12 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
     x_df = training_df.select(pl.col(MODEL_INPUTS).cast(pl.Float64))
     y = training_df["NMD_efficiency"].to_numpy()
     chrom = training_df["chrom"].to_numpy()
+    folds = chromosome_folds(y, chrom)
 
-    # The rows of each fold in a block, in fold order, as validate_model.py.py expects them
+    # The rows of each fold in a block, in fold order
     predictions = []
-    folds = []
-    for fold, (train, test) in enumerate(chromosome_folds(y, chrom)):
+    fold_results = []
+    for fold, (train, test) in enumerate(folds):
         search = tune(x_df[train], y[train], chrom[train])
         prediction = search.predict(x_df[test])
         columns = ["source_row", *KEY, "gene", "nmd_escape", "NMD_efficiency"]
@@ -173,7 +174,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         )
         chromosomes = sorted(set(chrom[test].tolist()))
         r2 = r2_score(y[test], prediction)
-        folds.append(
+        fold_results.append(
             {"chromosomes": chromosomes, "variant_sample_pairs": len(test), "r2": r2, "params": search.best_params_}
         )
         logger.info("fold %d (%s): R2 %.3f, %s", fold, " ".join(chromosomes), r2, search.best_params_)
@@ -190,7 +191,7 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
 
     results = {
         "variant_sample_pairs": len(training_df),
-        "folds": folds,
+        "folds": fold_results,
         "inner_cv_r2": final.best_score_,
         "params": final.best_params_,
         "n_estimators": N_ESTIMATORS,
@@ -226,16 +227,15 @@ def main(gff3: Path, fasta: Path, benchmark_dir: Path, out_dir: Path) -> None:
         how="diagonal",
     ).write_parquet(out_dir / "feature_importance.parquet")
 
-    # The learning curve of the final hyperparameters, in the chromosome folds
-    learning_folds = chromosome_folds(y, chrom)
-    # learning_curve would scale shares by the training variant-sample pairs of the first fold only
-    learning_sizes = (LEARNING_CURVE_SIZES * min(len(train) for train, _ in learning_folds)).astype(int)
+    # The learning curve of the final hyperparameters, in the chromosome folds. learning_curve would scale shares by the
+    # training variant-sample pairs of the first fold only.
+    learning_sizes = (LEARNING_CURVE_SIZES * min(len(train) for train, _ in folds)).astype(int)
     # A copy of the final random forest with its hyperparameters, unfitted. The final model stays as it is.
     train_sizes, train_scores, test_scores = learning_curve(
         clone(final.best_estimator_),
         x_df,
         y,
-        cv=learning_folds,
+        cv=folds,
         train_sizes=learning_sizes,
         scoring="r2",
         shuffle=True,
