@@ -178,7 +178,7 @@ def extract_ptc(cds_df, vcf, fasta, exons_df):
     exon_seqs = get_transcript_sequence(exons_df, reference)
     logger.info("Get transcript sequence: done.")
 
-    # Locate the coding region (CDS plus stop codon) in each transcript sequence
+    # Locate the coding region (the CDS records, which include the stop codon) in each transcript sequence
     exons_by_transcript = dict(list(exons_df.groupby("transcript_id")))
     cds_ranges = {
         transcript_id: cds_range_in_transcript(exons_by_transcript[transcript_id], cds_group)

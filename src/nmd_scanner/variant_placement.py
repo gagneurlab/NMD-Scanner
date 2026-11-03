@@ -362,7 +362,8 @@ def place_in_transcript(placements, coding_intervals, exons, reference, strand, 
     and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
 
     :param placements: equivalent placements of the variant (equivalent_placements)
-    :param coding_intervals: (start, end) of the coding intervals (CDS plus stop codon, one per exon) near the variant
+    :param coding_intervals: (start, end) of the coding intervals near the variant, one per exon: the CDS records,
+        which include the stop codon
     :param exons: (start, end) of every exon of the transcript
     :param reference: ReferenceSequence of the chromosome
     :param strand: strand of the transcript, "+" or "-"

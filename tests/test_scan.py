@@ -541,7 +541,7 @@ def _records(annotation):
     return records, transcripts
 
 
-# 0-based half-open; a coding region is the CDS plus the stop codon bases of its exon
+# 0-based half-open; a CDS record includes the stop codon bases of its exon
 _GENCODE_RECORDS = [
     ("ENST001.1", "CDS", 1050, 1200, 1, True),
     ("ENST001.1", "CDS", 1499, 2000, 2, True),
