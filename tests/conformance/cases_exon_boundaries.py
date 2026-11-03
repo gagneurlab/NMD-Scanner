@@ -434,7 +434,7 @@ CASES = [
         MAIN,
         Change("GGCTC[TG>]TGTAAGC"),
         {
-            **record(per_strand("CTG", "ACA"), per_strand("C", "A"), per_strand(16, 82), per_strand(19, 85)),
+            **record(per_strand("CTG", "TAC"), per_strand("C", "T"), per_strand(16, 79), per_strand(19, 82)),
             **KEEPS_THE_STOP_CODON,
             "alt_cds_seq": "ATGGCTCTAGTGAACGTTGGAAGCCTGCGTTAA",
             "alt_transcript_seq": "ATGGCTCTAGTGAACGTTGGAAGCCTGCGTTAAAAAGCTGCC",
@@ -458,7 +458,7 @@ CASES = [
         MAIN,
         Change("CCTTTTC[AG>]AGTGAAC"),
         {
-            **record(per_strand("CAG", "TCT"), per_strand("C", "T"), per_strand(35, 63), per_strand(38, 66)),
+            **record(per_strand("CAG", "ACT"), per_strand("C", "A"), per_strand(35, 61), per_strand(38, 64)),
             **FRAMESHIFT_NONSTOP,
             "alt_cds_seq": "ATGGCTCTTGAACGTTGGAAGCCTGCGTTAA",
             "alt_cds_length": 31,
@@ -560,7 +560,7 @@ CASES = [
         MAIN,
         Change("CCTTTTCAG[>AG]AGTGAAC"),
         {
-            **record(per_strand("G", "T"), per_strand("GAG", "TCT"), per_strand(37, 63), per_strand(38, 64)),
+            **record(per_strand("C", "A"), per_strand("CAG", "ACT"), per_strand(35, 61), per_strand(36, 62)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
@@ -579,7 +579,7 @@ CASES = [
         MAIN,
         Change("GGCTCT[>GT]GTGTAAG"),
         {
-            **record(per_strand("T", "C"), per_strand("TGT", "CAC"), per_strand(17, 83), per_strand(18, 84)),
+            **record(per_strand("C", "T"), per_strand("CTG", "TAC"), per_strand(16, 79), per_strand(17, 80)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
@@ -659,7 +659,7 @@ CASES = [
         MAIN_AFTER_A,
         Change("CCCCA[A>]TGGCTCT"),
         {
-            **record(per_strand("AA", "AT"), per_strand("A", "A"), per_strand(9, 90), per_strand(11, 92)),
+            **record(per_strand("CA", "AT"), per_strand("C", "A"), per_strand(8, 90), per_strand(10, 92)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
@@ -690,7 +690,7 @@ CASES = [
         STOP_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE,
         Change("CTGTAA[>A]A"),
         {
-            **record(per_strand("A", "T"), per_strand("AA", "TT"), per_strand(27, 0), per_strand(28, 1)),
+            **record(per_strand("T", "T"), per_strand("TA", "TT"), per_strand(25, 0), per_strand(26, 1)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
@@ -718,7 +718,7 @@ CASES = [
         STOP_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE,
         Change("CTGTA[A>]A"),
         {
-            **record(per_strand("AA", "TT"), per_strand("A", "T"), per_strand(26, 0), per_strand(28, 2)),
+            **record(per_strand("TA", "TT"), per_strand("T", "T"), per_strand(25, 0), per_strand(27, 2)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
@@ -751,7 +751,7 @@ CASES = [
         START_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE,
         Change("[>A]ATGGTAAG"),
         {
-            **record(per_strand("A", "T"), per_strand("AA", "TT"), per_strand(0, 47), per_strand(1, 48)),
+            **record(per_strand("A", "A"), per_strand("AA", "AT"), per_strand(0, 46), per_strand(1, 47)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,

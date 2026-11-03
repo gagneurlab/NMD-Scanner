@@ -927,10 +927,10 @@ CASES = [
         Change("GCC[A>]AAGCC"),
         {
             "variant_id": "var1",
-            "ref": per_strand("CA", "TT"),
-            "alt": per_strand("C", "T"),
-            "start": per_strand(43, 285),
-            "end": per_strand(45, 287),
+            "ref": per_strand("CA", "CT"),
+            "alt": per_strand("C", "C"),
+            "start": per_strand(43, 283),
+            "end": per_strand(45, 285),
             "alt_cds_seq": "ATG" + "GCC" * 9 + "AA" + "GCC" * 9 + "GAG" + A_MID + "CAGTTGAGC" + A_TAIL,
             "alt_cds_length": 260,
             "alt_cds_exons": [

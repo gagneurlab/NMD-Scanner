@@ -1197,7 +1197,7 @@ CASES += [
         ATG_C12,
         Change("gggA[>TGAT]TGCCC"),
         {
-            **variant(per_strand("A", "A"), per_strand("ATGAT", "AATCA"), per_strand(13, 53), per_strand(14, 54)),
+            **variant(per_strand("A", "G"), per_strand("ATGAT", "GCAAT"), per_strand(13, 51), per_strand(14, 52)),
             "alt_cds_seq": "ATGATTG" + "C" * 12 + "TAA",
             "alt_cds_length": 22,
             "alt_cds_exons": [{"exon_number": 1, "length": 12}, {"exon_number": 2, "length": 10}],
@@ -1352,7 +1352,7 @@ CASES += [
         Change("ccA[TGAAACCCTAA>]gatg"),
         {
             **variant(
-                per_strand("ATGAAACCCTAA", "CTTAGGGTTTCA"), per_strand("A", "C"), per_strand(12, 21), per_strand(24, 33)
+                per_strand("CATGAAACCCTA", "CTTAGGGTTTCA"), per_strand("C", "C"), per_strand(11, 21), per_strand(23, 33)
             ),
             "alt_cds_seq": "A",
             "alt_cds_length": 1,

@@ -357,10 +357,10 @@ class Change:
         assert len(starts) == 1, f"{self.text} occurs {len(starts)} times in the layout"
         return starts[0] + len(left)
 
-    def record(self, transcript, strand, normalize=True):
+    def record(self, transcript, strand):
         """
         (POS, REF, ALT) of the VCF record that the runner writes, as left_normalize gives it on the strand, except a
-        record with vcf_ref or vcf_alt. With normalize=False, the record as the change gives it.
+        record with vcf_ref or vcf_alt.
         """
         _, ref, alt, _ = self.parse()
         start = self.locate(transcript)
@@ -375,7 +375,7 @@ class Change:
             start -= 1
             ref = genome[start] + ref
             alt = genome[start] + alt
-        if normalize and self.vcf_ref is None and self.vcf_alt is None:
+        if self.vcf_ref is None and self.vcf_alt is None:
             start, ref, alt = left_normalize(start, ref, alt, genome)
         if "ref" in self.lower_case:
             ref = ref.lower()
@@ -520,7 +520,8 @@ class Case:
     :param drawing: the transcript and the variant, 5' to 3': the block that render_case() draws, and sentences that
         explain the constellation
     :param change: the variant, or None for a VCF without a record
-    :param expected: the expected values, NoResult if the variant gives no result, or Raises for an error of annotate()
+    :param expected: the expected values, NoResult if the variant gives no result, or Raises for an error of annotate().
+        The columns that echo the VCF record give the record that the runner writes for change (Change.record).
     :param equivalent: other descriptions of the same variant. Each gives the same result, except for the columns that
         echo the VCF record. The runner writes each description as left_normalize gives it on the strand, and runs the
         descriptions with the same VCF record once.
@@ -671,9 +672,9 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
         return
 
     expected_pairs = [expected_pair(case, strand, more) for more in ({}, *case.more_pairs)]
-    if record is not None and record != case.change.record(case.layout.transcript, strand, normalize=False):
-        # A VCF record other than the one that the case gives: the columns that echo the VCF record take it from the
-        # record, unless a further pair gives them
+    if change is not case.change:
+        # An equivalent description: the columns that echo the VCF record take the record of the description, unless a
+        # further pair gives them
         pos, ref, alt = record
         echo = {"ref": ref, "alt": alt, "start": pos - 1, "end": pos - 1 + len(ref)}
         for pair, more in zip(expected_pairs, ({}, *case.more_pairs)):
