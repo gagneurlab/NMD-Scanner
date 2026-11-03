@@ -541,7 +541,7 @@ def _records(annotation):
     return records, transcripts
 
 
-# 0-based half-open; a coding region is the CDS plus the stop codon bases of its exon
+# 0-based half-open; a CDS record includes the stop codon bases of its exon
 _GENCODE_RECORDS = [
     ("ENST001.1", "CDS", 1050, 1200, 1, True),
     ("ENST001.1", "CDS", 1499, 2000, 2, True),
@@ -617,6 +617,8 @@ def test_read_gff3_gives_the_coding_regions_and_exons_of_the_fixture(
     pd.testing.assert_index_equal(annotation.index, pd.RangeIndex(len(annotation)))
     assert annotation["exon_number"].dtype == "Int64"
     assert _records(annotation) == (expected_records, expected_transcripts)
+    # The phase "." of an exon record is null
+    assert annotation.loc[annotation["Feature"] == "exon", "Frame"].isna().all()
 
 
 def test_read_gff3_stop_codon_from_sequence(tmp_path):
@@ -755,12 +757,7 @@ def test_main_gives_the_results_of_the_fixture(tmp_path, gff3, chrom_m, expected
 
 
 def test_read_gff3_drops_id_and_parent_columns(tmp_path):
-    """
-    GFF3's own ID/Parent columns must not leak into the returned frame: downstream code joins
-    the CDS table against the VCF table (which has its own unrelated "ID" column, the variant
-    ID), and a leftover GFF3 "ID" column would silently take priority in that join and replace
-    the variant ID with a GFF3 record ID such as "CDS:ENST00000643195.1".
-    """
+    """GFF3's own ID/Parent columns do not leak into the returned frame: gene_id and transcript_id replace them."""
     gencode_path = _write(tmp_path, "gencode.gff3", _GENCODE_GFF3)
     ensembl_path = _write(tmp_path, "ensembl.gff3", _ENSEMBL_GFF3)
 
@@ -1029,6 +1026,42 @@ def test_read_gff3_raises_for_a_cds_record_that_reaches_past_the_transcript_end(
     _assert_raises_for_a_cds_record_outside_the_exons(tmp_path, gff3, line, column, value, transcript, location)
 
 
+# The Ensembl fixture with the CDS record of the 3' exon of ENSTE001 moved into the intron, to 1300-1400. It overlaps
+# no exon record of its transcript.
+_ENSEMBL_GFF3_WITH_A_CDS_RECORD_IN_THE_INTRON = _ENSEMBL_GFF3.replace(
+    "chr1\tensembl\tCDS\t1500\t2000\t", "chr1\tensembl\tCDS\t1300\t1400\t"
+)
+
+
+def test_read_gff3_raises_for_an_ensembl_cds_record_that_overlaps_no_exon_record(tmp_path):
+    gff3_path = _write(tmp_path, "in_the_intron.gff3", _ENSEMBL_GFF3_WITH_A_CDS_RECORD_IN_THE_INTRON)
+
+    with pytest.raises(ValueError) as error:
+        nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    assert str(error.value) == (
+        f"Cannot use {gff3_path!r}: 1 CDS record(s) do not lie inside an exon record of their transcript. The first "
+        "is the CDS record of transcript ENSTE001 at chr1:1300-1400. NMD-Scanner needs each CDS record inside an "
+        "exon record of its transcript."
+    )
+
+
+def test_read_gff3_gives_no_exon_number_to_an_ensembl_cds_record_that_overlaps_no_exon_record(tmp_path, monkeypatch):
+    """
+    read_gff3 numbers CDS records by their order only in a transcript without exon records. A CDS record that overlaps
+    no exon record of its transcript keeps a null exon_number, so it cannot take the number of an exon. The CDS-in-exon
+    check rejects such a record, so this test turns the check off.
+    """
+    monkeypatch.setattr(nmd_scanner.scan, "_check_cds_in_exons", lambda df, gff3_path: None)
+    gff3_path = _write(tmp_path, "in_the_intron.gff3", _ENSEMBL_GFF3_WITH_A_CDS_RECORD_IN_THE_INTRON)
+
+    annotation = nmd_scanner.scan.read_gff3(gff3_path, _fasta(tmp_path))
+
+    cds = annotation[(annotation["Feature"] == "CDS") & (annotation["transcript_id"] == "ENSTE001")]
+    assert cds["Start"].tolist() == [1050, 1299]
+    assert [None if pd.isna(number) else number for number in cds["exon_number"]] == [1, None]
+
+
 # The columns that do not depend on the strand, for a variant-transcript pair whose transcript has no exon records: a
 # missense variant C>A that changes no stop codon. The GENCODE fixture has no start_codon records, so the transcript has
 # no annotated start codon.
@@ -1183,6 +1216,58 @@ def test_main_gives_null_transcript_columns_for_a_gff3_transcript_without_exon_r
         for column, value in results.iloc[0].items()
     }
     assert pair == {**_PAIR_WITHOUT_EXON_RECORDS, **expected}
+
+
+# Two transcripts with the CDS ATG AAA CCC GGG TGG TAA: T1 has two CDS records and no exon records, T2 has one exon
+# record. The variant makes TGG a TAG.
+_ENSEMBL_GFF3_WITHOUT_EXON_RECORDS = """\
+##gff-version 3
+chrT\tensembl\tgene\t1\t38\t.\t+\t.\tID=gene:G1;biotype=protein_coding
+chrT\tensembl\tmRNA\t1\t38\t.\t+\t.\tID=transcript:T1;Parent=gene:G1;biotype=protein_coding
+chrT\tensembl\tCDS\t11\t19\t.\t+\t0\tID=CDS:P1;Parent=transcript:T1
+chrT\tensembl\tCDS\t20\t28\t.\t+\t0\tID=CDS:P1;Parent=transcript:T1
+chrT\tensembl\tmRNA\t1\t38\t.\t+\t.\tID=transcript:T2;Parent=gene:G1;biotype=protein_coding
+chrT\tensembl\texon\t1\t38\t.\t+\t.\tParent=transcript:T2;rank=1
+chrT\tensembl\tCDS\t11\t28\t.\t+\t0\tID=CDS:P2;Parent=transcript:T2
+"""
+
+
+def test_main_gives_null_transcript_columns_for_an_ensembl_transcript_without_exon_records(tmp_path):
+    """
+    read_gff3 numbers the CDS records of an Ensembl transcript without exon records 1, 2, ... in the direction of
+    transcription. So T1 gives a result with null transcript columns, as in the GENCODE test above.
+    """
+    (tmp_path / "genome.fa").write_text(">chrT\nGCATGCATGCATGAAACCCGGGTGGTAAGCATGCATGC\n")
+    vcf = _write(tmp_path, "variants.vcf", VCF_HEADER + "chrT\t24\tv0\tG\tA\t.\tPASS\t.\n")
+    gff3_path = _write(tmp_path, "a.gff3", _ENSEMBL_GFF3_WITHOUT_EXON_RECORDS)
+
+    results = _main(vcf, gff3_path, str(tmp_path / "genome.fa"), str(tmp_path / "out.csv"))
+
+    columns = [
+        "transcript_id",
+        "ref_cds_exons",
+        "alt_stop_codon_exons",
+        "alt_has_ptc",
+        "cds_in_transcript",
+        "transcript_length",
+        "nmd_efficiency_prediction_status",
+    ]
+    pairs = [
+        tuple(None if pd.api.types.is_scalar(value) and pd.isna(value) else value for value in pair)
+        for pair in results[columns].itertuples(index=False)
+    ]
+    assert pairs == [
+        (
+            "T1",
+            [{"exon_number": 1, "length": 9}, {"exon_number": 2, "length": 9}],
+            [2, 2],
+            True,
+            False,
+            None,
+            "missing_input",
+        ),
+        ("T2", [{"exon_number": 1, "length": 18}], [1, 1], True, True, 38, "ok"),
+    ]
 
 
 def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_records(tmp_path, caplog):

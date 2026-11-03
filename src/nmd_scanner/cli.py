@@ -33,8 +33,9 @@ def annotate(
     """
     Annotate the variants of a VCF file with NMD features and return the result table.
 
-    Nothing is written to disk and logging is not configured. Use `write_results` to save the table, or `to_arrow`
-    to convert it to a typed pyarrow Table.
+    The table is not written to disk, and logging is not configured. Use `write_results` to save the table, or
+    `to_arrow` to convert it to a typed pyarrow Table. If the FASTA has no index, pyfaidx writes one next to it:
+    `<fasta_path>.fai`, and `<fasta_path>.gzi` for a bgzip-compressed FASTA.
 
     Steps:
     1. Read input files (VCF, FASTA, annotation)
@@ -228,7 +229,14 @@ def main_cli():
     _set_up_process()
 
     parser = argparse.ArgumentParser(description="Run NMD pipeline", allow_abbrev=False)
-    parser.add_argument("--vcf", required=True, help="Path to VCF file")
+    parser.add_argument(
+        "--vcf",
+        required=True,
+        help=(
+            "Path to VCF file, plain or gzip-compressed. The VCF must be left-normalized, with one ALT allele per "
+            "record."
+        ),
+    )
     parser.add_argument(
         "--annotation",
         required=True,

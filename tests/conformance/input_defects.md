@@ -7,7 +7,7 @@ NMD-Scanner rejects, the misannotations that it accepts, and the null cases that
 
 - `scan.read_gff3` raises a ValueError for an exon or CDS record whose strand is not + or -, for a CDS record whose
   phase is not 0, 1 or 2, and for a CDS record that does not lie inside an exon record of its transcript. The error
-  names the transcript of the first such record. A transcript without exon records is not checked.
+  names the transcript of the first such record. The CDS-in-exon check skips a transcript without exon records.
 - `scan.read_gff3` raises a ValueError for an Ensembl transcript without an mRNA record: "Could not resolve
   transcript_id via the ID/Parent hierarchy for N record(s)." Its exon and CDS records get their `transcript_id` from
   that record only.
@@ -15,6 +15,9 @@ NMD-Scanner rejects, the misannotations that it accepts, and the null cases that
   `transcript_type` or `transcript_tags`, i.e. are not the coding regions that `scan.read_annotation` returns. It also
   raises one if the FASTA has no sequence for a chromosome with variants and CDS records, and the error names these
   chromosomes.
+- `ptc.extract_ptc` raises a ValueError for three defects of the VCF records: a missing column `chrom`, `start`, `end`,
+  `ref` or `alt`; a null REF, or a REF or ALT that is not a sequence of bases (A, C, G, T or N, in any case); and a
+  record that is not left-normalized. The left-normalization check skips a record whose REF does not match the FASTA.
 
 ## Misannotations
 
@@ -26,8 +29,9 @@ NMD-Scanner reads a transcript with one of these misannotations. The null cases 
 - An annotated stop codon that is out of frame, because the CDS length does not fit `cds_frame`, because it is no stop
   codon, or because an in-frame stop codon lies upstream of it. The variant-transcript pairs of the transcript keep the
   flags from the CDS ("Technical Notes.md", section "Stop codon classification").
-- A transcript without exon records. Its variant-transcript pairs have no transcript sequence, and `cds_in_transcript`
-  is False.
+- A transcript without exon records. Its variant-transcript pairs have null transcript columns (see "Null cases"), and
+  `cds_in_transcript` is False. A PTC variant on it has `nmd_efficiency_prediction_status` `missing_input`. In an
+  Ensembl GFF3, `scan.read_gff3` numbers its CDS records 1, 2, ... in the direction of transcription.
 - A GENCODE transcript without a transcript record, or a transcript record without the type of the transcript:
   `transcript_type` in GENCODE, `biotype` in Ensembl. `transcript_type` and `transcript_tags` come from the transcript
   record only, and the exon and CDS records do not fill them in.

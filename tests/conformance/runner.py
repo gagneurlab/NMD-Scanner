@@ -4,7 +4,8 @@ Runner of the conformance cases.
 A case pins one constellation: one transcript layout and one variant. A few cases have more variants or none. The
 runner writes a GFF3 (GENCODE or Ensembl flavor), a FASTA and a VCF file for the case, runs annotate() on them and
 compares the result with the expected value of every output column. A case on input that annotate() rejects expects
-an error instead. The VCF holds each record left-normalized, as annotate() requires.
+an error instead. The VCF holds each deletion and insertion left-normalized, as annotate() requires. Other records
+keep their padding (left_normalize).
 Each case runs on both strands. The layout is given 5' to 3', in transcript orientation, and on the minus strand the
 chromosome holds its reverse complement. A column in genomic coordinates has one expected value per strand.
 
@@ -326,8 +327,8 @@ class Change:
     once in the layout of the transcript, and ref becomes alt. ref is empty for an insertion, and alt for a deletion.
 
     The VCF record is on the plus strand. An insertion or a deletion gets a padding base on its left in the genome,
-    which on the minus strand is the base 3' of the change in the transcript. The runner writes the record
-    left-normalized on the strand (record).
+    which on the minus strand is the base 3' of the change in the transcript. The runner writes an insertion or a
+    deletion left-normalized on the strand, and any other record with its padding (record).
 
     :param vcf_ref: the REF of the VCF record in transcript orientation, if it differs from ref, e.g. for a reference
         mismatch
@@ -356,10 +357,10 @@ class Change:
         assert len(starts) == 1, f"{self.text} occurs {len(starts)} times in the layout"
         return starts[0] + len(left)
 
-    def record(self, transcript, strand, normalize=True):
+    def record(self, transcript, strand):
         """
-        (POS, REF, ALT) of the VCF record that the runner writes: left-normalized on the strand (left_normalize), except
-        a record with vcf_ref or vcf_alt. With normalize=False, the record as the change gives it.
+        (POS, REF, ALT) of the VCF record that the runner writes, as left_normalize gives it on the strand, except a
+        record with vcf_ref or vcf_alt.
         """
         _, ref, alt, _ = self.parse()
         start = self.locate(transcript)
@@ -371,10 +372,11 @@ class Change:
             ref = reverse_complement(ref)
             alt = reverse_complement(alt)
         if not ref or not alt:
+            assert start >= 1, f"{self.text}: the padding base of the record would lie before the first chromosome base"
             start -= 1
             ref = genome[start] + ref
             alt = genome[start] + alt
-        if normalize and self.vcf_ref is None and self.vcf_alt is None:
+        if self.vcf_ref is None and self.vcf_alt is None:
             start, ref, alt = left_normalize(start, ref, alt, genome)
         if "ref" in self.lower_case:
             ref = ref.lower()
@@ -387,10 +389,12 @@ class Change:
 
 def left_normalize(start, ref, alt, genome):
     """
-    The VCF record (start, REF, ALT) left-normalized, as `bcftools norm -f` writes it. start is 0-based. The changed
-    bases are REF and ALT without their shared last bases, then without their shared first bases. A deletion or an
-    insertion shifts left while the base before it equals its last base. It is then anchored on the base before it, or
-    on the base after it at the first chromosome base. Any other record stays as it is.
+    The VCF record (start, REF, ALT) as the runner writes it. start is 0-based. The changed bases are REF and ALT
+    without their shared last bases, then without their shared first bases. A deletion or an insertion is
+    left-normalized, as `bcftools norm -f` writes it. It shifts left while the base before it equals its last base. It
+    is then anchored on the base before it, or on the base after it at the first chromosome base. Any other record
+    stays as it is, e.g. an SNV, an MNV or a delins. It keeps its padding, so an equivalent description with padding
+    tests a padded record. `bcftools norm -f` would trim the padding.
     """
     suffix = len(os.path.commonprefix([ref[::-1], alt[::-1]]))
     changed_ref, changed_alt = ref[: len(ref) - suffix], alt[: len(alt) - suffix]
@@ -517,10 +521,11 @@ class Case:
     :param drawing: the transcript and the variant, 5' to 3': the block that render_case() draws, and sentences that
         explain the constellation
     :param change: the variant, or None for a VCF without a record
-    :param expected: the expected values, NoResult if the variant gives no result, or Raises for an error of annotate()
+    :param expected: the expected values, NoResult if the variant gives no result, or Raises for an error of annotate().
+        The columns that echo the VCF record give the record that the runner writes for change (Change.record).
     :param equivalent: other descriptions of the same variant. Each gives the same result, except for the columns that
-        echo the VCF record. The runner writes each description left-normalized on the strand, and runs the descriptions
-        with the same VCF record once.
+        echo the VCF record. The runner writes each description as left_normalize gives it on the strand, and runs the
+        descriptions with the same VCF record once.
     :param bug: the id and a short description of a known bug that makes the case fail. The case then runs as a
         strict xfail and keeps the documented or decided result as the expected one.
     :param more_changes: further variants in the same VCF, each with its own vcf_id
@@ -668,9 +673,9 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
         return
 
     expected_pairs = [expected_pair(case, strand, more) for more in ({}, *case.more_pairs)]
-    if record is not None and record != case.change.record(case.layout.transcript, strand, normalize=False):
-        # A VCF record other than the one that the case gives: the columns that echo the VCF record take it from the
-        # record, unless a further pair gives them
+    if change is not case.change:
+        # An equivalent description: the columns that echo the VCF record take the record of the description, unless a
+        # further pair gives them
         pos, ref, alt = record
         echo = {"ref": ref, "alt": alt, "start": pos - 1, "end": pos - 1 + len(ref)}
         for pair, more in zip(expected_pairs, ({}, *case.more_pairs)):

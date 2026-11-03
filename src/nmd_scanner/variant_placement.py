@@ -34,6 +34,7 @@ class ReferenceSequence:
 
     def __init__(self, fasta, chromosome, max_chunks=_MAX_CHUNKS):
         self._sequence = fasta[chromosome]
+        self._length = len(self._sequence)
         self._chunks = OrderedDict()
         self._max_chunks = max_chunks
 
@@ -42,7 +43,9 @@ class ReferenceSequence:
             self._chunks.move_to_end(index)
             return self._chunks[index]
         start = index * _CHUNK_SIZE
-        chunk = self._sequence[start : start + _CHUNK_SIZE].seq.upper()
+        # The read ends at the chromosome end: a pyfaidx.Fasta with strict_bounds=True raises for a read past it
+        end = min(start + _CHUNK_SIZE, self._length)
+        chunk = self._sequence[start:end].seq.upper() if start < end else ""
         self._chunks[index] = chunk
         if len(self._chunks) > self._max_chunks:
             self._chunks.popitem(last=False)
@@ -164,7 +167,8 @@ class TranscriptEffect:
 def trim_alleles(start, ref, alt):
     """
     Remove the bases that REF and ALT share at the end, then those they share at the start. For a left-normalized
-    record, this gives the leftmost placement, also at POS 1, where the padding base of an indel follows it.
+    record, this gives the leftmost placement. This holds also at POS 1, where the padding base of an indel follows the
+    indel.
 
     :param start: 0-based position of the first REF base
     :return: (start, ref, alt) of the changed bases. ref is empty for an insertion, alt for a deletion.
@@ -238,7 +242,7 @@ def is_left_normalized(start, ref, alt, reference):
     if bool(ref) == bool(alt):
         return True
     last_base = reference.base(start + len(ref) - 1) if ref else alt[-1]
-    return start == 0 or reference.base(start - 1) != last_base
+    return reference.base(start - 1) != last_base
 
 
 def exon_boundaries(exons, reference):
@@ -359,7 +363,8 @@ def place_in_transcript(placements, coding_intervals, exons, reference, strand, 
     and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
 
     :param placements: equivalent placements of the variant (equivalent_placements)
-    :param coding_intervals: (start, end) of the coding intervals (CDS plus stop codon, one per exon) near the variant
+    :param coding_intervals: (start, end) of the coding intervals near the variant, one per exon: the CDS records,
+        which include the stop codon
     :param exons: (start, end) of every exon of the transcript
     :param reference: ReferenceSequence of the chromosome
     :param strand: strand of the transcript, "+" or "-"

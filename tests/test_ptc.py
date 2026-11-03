@@ -1016,6 +1016,50 @@ def test_extract_ptc_reads_the_bases_of_its_own_fasta(tmp_path):
         assert freed() is None
 
 
+def test_extract_ptc_takes_the_variant_columns_from_the_vcf_if_cds_df_has_columns_of_the_same_name(tmp_path):
+    """
+    A GFF3 table of pyranges or gffutils has an ID column. VCF_COLUMNS gives the ID of a VCF record the same name, and
+    the names Ref and Alt to REF and ALT. The result takes variant_id, ref and alt from the VCF record, not from the CDS
+    record.
+
+    5' [uuu=========x=sssuu] 3'   one exon
+    tx  0  3        12   17
+    """
+    (tmp_path / "genome.fa").write_text(">chrT\n" + "C" * 10 + "GACATGAAAGCTTAAGC" + "C" * 10 + "\n")
+    annotation = pd.DataFrame(
+        [
+            {
+                "Chromosome": "chrT",
+                "Start": start,
+                "End": end,
+                "Strand": "+",
+                "Feature": gff3_type,
+                "exon_number": "1",
+                "transcript_id": "tx1",
+                "transcript_type": "protein_coding",
+                "transcript_tags": "basic",
+                "gene_id": "gene1",
+                "Frame": "0",
+                "ID": f"{gff3_type}:tx1",
+                "Ref": "T",
+                "Alt": "G",
+            }
+            for gff3_type, start, end in [("exon", 10, 27), ("CDS", 13, 25)]
+        ]
+    )
+    coding = annotation[annotation["Feature"] == "CDS"].assign(has_start_codon=True, has_stop_codon=True)
+    vcf = pd.DataFrame([{"chrom": "chrT", "start": 20, "end": 21, "variant_id": "rs1", "ref": "C", "alt": "A"}])
+
+    pair = extract_ptc(coding, vcf, Fasta(str(tmp_path / "genome.fa")), annotation[annotation["Feature"] == "exon"])
+
+    assert _values(pair.iloc[0], ["variant_id", "ref", "alt", "alt_cds_seq"]) == {
+        "variant_id": "rs1",
+        "ref": "C",
+        "alt": "A",
+        "alt_cds_seq": "ATGAAAGATTAA",
+    }
+
+
 def test_extract_ptc_needs_the_coding_regions():
     # CDS and stop_codon records without has_stop_codon: not the coding regions
     annotation = pd.DataFrame(
@@ -1087,13 +1131,17 @@ def test_extract_ptc_names_the_missing_vcf_columns():
         ("A", "-", "ref 'A' and alt '-'"),
         (".", "A", "ref '.' and alt 'A'"),
         (None, "G", "ref null and alt 'G'"),
+        ("A", "R", "ref 'A' and alt 'R'"),
+        ("A", "X", "ref 'A' and alt 'X'"),
+        ("A*", "A", "ref 'A*' and alt 'A'"),
     ],
-    ids=["alt_dot", "alt_dash", "ref_dot", "ref_null"],
+    ids=["alt_dot", "alt_dash", "ref_dot", "ref_null", "alt_iupac_code", "alt_x", "ref_star"],
 )
 def test_extract_ptc_rejects_alleles_that_are_not_bases(ref, alt, shown):
     """
     "." and "-" are how other formats write a missing or an empty allele. In the table, a missing ALT is null and an
-    empty allele is "". The first record is valid, so the error names the second.
+    empty allele is "". An IUPAC code such as R, another letter such as X, and "*" in REF are no bases either. The first
+    record is valid, so the error names the second.
     """
     vcf = pd.DataFrame(
         {"chrom": ["chrT", "chrT"], "start": [119, 120], "end": [120, 121], "ref": ["C", ref], "alt": ["G", alt]}
@@ -1110,18 +1158,19 @@ def test_extract_ptc_rejects_alleles_that_are_not_bases(ref, alt, shown):
 
 def test_extract_ptc_rejects_records_that_are_not_left_normalized(tmp_path):
     """
-    chrT has AAA at 121-123 and AGAG at 125-128. AA>A at 122 deletes the A at 123, and G>GAG at 128 inserts AG after
-    128: both can shift left. The SNV, the insertion C>CAG at 124 and the record TA>T, whose REF does not match, pass.
-    The error counts the records that are not left-normalized and names the first.
+    chrT has AAA at 121-123 and AGAG at 125-128. AA>A at 122 deletes the A at 123, G>GAG at 128 inserts AG after 128,
+    and the lower-case a>aga at 127 inserts GA after 127: all three can shift left. The SNV, the insertion C>CAG at 124
+    and the record TA>T, whose REF does not match, pass. The error counts the records that are not left-normalized and
+    names the first.
     """
     (tmp_path / "genome.fa").write_text(">chrT\n" + "C" * 120 + "TAAACAGAGT" + "C" * 70 + "\n")
     vcf = pd.DataFrame(
         {
-            "chrom": ["chrT"] * 5,
-            "start": [110, 122, 124, 128, 122],
-            "end": [111, 124, 125, 129, 124],
-            "ref": ["C", "AA", "C", "G", "TA"],
-            "alt": ["G", "A", "CAG", "GAG", "T"],
+            "chrom": ["chrT"] * 6,
+            "start": [110, 122, 124, 128, 122, 127],
+            "end": [111, 124, 125, 129, 124, 128],
+            "ref": ["C", "AA", "C", "G", "TA", "a"],
+            "alt": ["G", "A", "CAG", "GAG", "T", "aga"],
         }
     )
 
@@ -1129,7 +1178,7 @@ def test_extract_ptc_rejects_records_that_are_not_left_normalized(tmp_path):
         extract_ptc(_coding_region(), vcf, Fasta(str(tmp_path / "genome.fa")), exons_df=None)
 
     assert str(error.value) == (
-        "2 variant(s) are not left-normalized: their deletion or insertion can shift left through a repeat, e.g. ref "
+        "3 variant(s) are not left-normalized: their deletion or insertion can shift left through a repeat, e.g. ref "
         "'AA' and alt 'A' at chrom chrT, start 122, end 124. Left-normalize the VCF first, e.g. with "
         "`bcftools norm -f <reference FASTA>`."
     )

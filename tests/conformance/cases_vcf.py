@@ -1,8 +1,8 @@
 """
 Conformance cases of how the VCF describes a variant. A symbolic allele, a breakend, a missing ALT or the ALT "*" gives
 no result (SY). The same variant gives the same result in each of its VCF descriptions: padded or in lower case (VD).
-The runner left-normalizes each description, as annotate() requires. A REF equal to the ALT, or a REF that does not
-match the genome, gives no result.
+The runner left-normalizes each deletion and insertion, as annotate() requires, and writes any other description with
+its padding. A REF equal to the ALT, or a REF that does not match the genome, gives no result.
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
@@ -484,10 +484,10 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         {
             **THREE_EXONS_UNCHANGED_STOP,
             "variant_id": "var1",
-            "ref": per_strand("GGCC", "CGGC"),
-            "alt": per_strand("G", "C"),
-            "start": per_strand(42, 50),
-            "end": per_strand(46, 54),
+            "ref": per_strand("GGCC", "AGGC"),
+            "alt": per_strand("G", "A"),
+            "start": per_strand(42, 44),
+            "end": per_strand(46, 48),
             "alt_cds_seq": "ATGCAACTGGCCGCCTTCAAGTGGTAA",
             "alt_cds_length": 27,
             "alt_cds_exons": [
@@ -528,10 +528,10 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
         {
             **STOP_ALT_CDS_UNCHANGED,
             "variant_id": "var1",
-            "ref": per_strand("CCTAAC", "GGTTAG"),
-            "alt": per_strand("C", "G"),
-            "start": per_strand(68, 16),
-            "end": per_strand(74, 22),
+            "ref": per_strand("GCCTAA", "CTAGGT"),
+            "alt": per_strand("G", "C"),
+            "start": per_strand(67, 13),
+            "end": per_strand(73, 19),
             "alt_cds_seq": "ATGGCCGCCGCCCTGACCGCCGCCGCCTA",
             "alt_cds_length": 29,
             "alt_cds_exons": [{"exon_number": 1, "length": 12}, {"exon_number": 2, "length": 17}],
@@ -727,8 +727,8 @@ Descriptions: T>A; TT>TA and TC>AC (one padding base); TTC>TAC (padding on both 
             "variant_id": "var1",
             "ref": per_strand("TA", "TT"),
             "alt": per_strand("T", "T"),
-            "start": per_strand(48, 13),
-            "end": per_strand(50, 15),
+            "start": per_strand(48, 0),
+            "end": per_strand(50, 2),
             "unknown_reason": "exon_boundary_ambiguous",
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,

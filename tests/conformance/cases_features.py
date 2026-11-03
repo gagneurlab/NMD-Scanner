@@ -872,10 +872,10 @@ CASES = [
         Change("GCC[A>]AGGCC"),
         {
             "variant_id": "var1",
-            "ref": per_strand("CA", "TT"),
-            "alt": per_strand("C", "T"),
-            "start": per_strand(52, 95),
-            "end": per_strand(54, 97),
+            "ref": per_strand("CA", "CT"),
+            "alt": per_strand("C", "C"),
+            "start": per_strand(52, 94),
+            "end": per_strand(54, 96),
             "alt_cds_seq": "ATGGCCGCCGCC" + "GCCAGGCCGCCGCC" + "GCCCAGGCCCTAACAGCCCCTAACGCCTAA",
             "alt_cds_length": 56,
             "alt_cds_exons": [
@@ -955,10 +955,10 @@ CASES = [
         Change("GCC[>A]AAGGCC"),
         {
             "variant_id": "var1",
-            "ref": per_strand("C", "T"),
-            "alt": per_strand("CA", "TT"),
-            "start": per_strand(52, 96),
-            "end": per_strand(53, 97),
+            "ref": per_strand("C", "C"),
+            "alt": per_strand("CA", "CT"),
+            "start": per_strand(52, 94),
+            "end": per_strand(53, 95),
             "alt_cds_seq": "ATGGCCGCCGCC" + "GCCAAAGGCCGCCGCC" + "GCCCAGGCCCTAACAGCCCCTAACGCCTAA",
             "alt_cds_length": 58,
             "alt_cds_exons": [

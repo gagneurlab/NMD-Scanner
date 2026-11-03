@@ -166,7 +166,8 @@ def read_gff3(gff3_path, fasta):
     - Ensembl: ``gene_id``/``transcript_id`` are never given directly on exon/CDS records and are
       resolved from the ``ID``/``Parent`` hierarchy (``gene:``/``transcript:`` prefixed). Exon
       records carry their number as ``rank``; a CDS record takes the number of the exon it lies in.
-      Without ``rank``, ``compute_exon_numbers`` computes the numbers.
+      Without ``rank``, ``compute_exon_numbers`` computes the numbers. The CDS records of a
+      transcript without exon records are numbered 1, 2, ... in the direction of transcription.
 
     The coding regions are the CDS records. A GFF3 CDS includes the start and the stop codon, so
     the result has no start_codon or stop_codon records. On the CDS records, the column
@@ -251,8 +252,7 @@ def read_gff3(gff3_path, fasta):
         )
 
     # ID/Parent are GFF3 structural columns; _resolve_ids_via_hierarchy has used them by this
-    # point. Drop them so a stray "ID" column doesn't collide with the unrelated "ID" column
-    # extract_ptc uses for the VCF record ID once CDS records are joined to it.
+    # point to give gene_id and transcript_id.
     df = df.drop(columns=[c for c in ("ID", "Parent") if c in df.columns])
 
     return df.reset_index(drop=True)
@@ -767,12 +767,24 @@ def _normalize_ensembl_gff3(df):
 
     # Exon records carry their number as the "rank" attribute, CDS records carry nothing. Without
     # "rank", compute the numbers from genomic order.
-    if "rank" in child_df.columns:
-        rank = pd.to_numeric(child_df["rank"], errors="coerce")
-        if rank[child_df["Feature"] == "exon"].notna().all():
-            child_df["exon_number"] = rank.where(child_df["Feature"] == "exon").astype("Int64")
-            return _assign_exon_numbers_to_cds(child_df)
-    return compute_exon_numbers(child_df)
+    is_exon = child_df["Feature"] == "exon"
+    rank = pd.to_numeric(child_df["rank"], errors="coerce") if "rank" in child_df.columns else None
+    if rank is not None and rank[is_exon].notna().all():
+        child_df["exon_number"] = rank.where(is_exon).astype("Int64")
+        child_df = _assign_exon_numbers_to_cds(child_df)
+    else:
+        child_df = compute_exon_numbers(child_df)
+
+    # The CDS records of a transcript without exon records get no number above. They are numbered 1, 2, ... in the
+    # direction of transcription, as compute_exon_numbers numbers exon records. In a transcript with exon records, a
+    # CDS record that overlaps no exon record keeps a null number. So it cannot take the number of an exon, and
+    # _check_cds_in_exons rejects it.
+    with_exons = child_df.loc[child_df["Feature"] == "exon", "transcript_id"].unique()
+    unnumbered = child_df[
+        (child_df["Feature"] == "CDS") & ~child_df["transcript_id"].isin(with_exons) & child_df["exon_number"].isna()
+    ]
+    child_df.loc[unnumbered.index, "exon_number"] = _numbers_in_transcription_order(unnumbered)
+    return child_df
 
 
 def _add_transcript_attributes(df, transcript_mask, type_attribute):
@@ -835,12 +847,25 @@ def compute_exon_numbers(annotation):
 
     # Step 1: Compute exon numbers for exon records, by genomic order per transcript and strand
     exons = annotation_df[(annotation_df["Feature"] == "exon") & annotation_df["transcript_id"].notna()]
-    sign = np.where(exons["Strand"] == "+", 1, -1)
-    order = exons.assign(_key=exons["Start"].to_numpy() * sign).sort_values(["transcript_id", "_key"], kind="stable")
-    annotation_df.loc[order.index, "exon_number"] = (order.groupby("transcript_id").cumcount() + 1).astype("Int64")
+    annotation_df.loc[exons.index, "exon_number"] = _numbers_in_transcription_order(exons)
 
     # Step 2: Assign exon numbers to CDS and stop_codon records
     return _assign_exon_numbers_to_cds(annotation_df)
+
+
+def _numbers_in_transcription_order(records):
+    """
+    Numbers the records of each transcript 1, 2, ... in the direction of transcription: 1 has the smallest Start on
+    the + strand and the largest Start on the - strand.
+
+    :param records: DataFrame with transcript_id, Start and Strand, with a unique index
+    :return: The numbers (nullable integer), with the index of ``records``
+    """
+    sign = np.where(records["Strand"] == "+", 1, -1)
+    order = records.assign(_key=records["Start"].to_numpy() * sign).sort_values(
+        ["transcript_id", "_key"], kind="stable"
+    )
+    return (order.groupby("transcript_id").cumcount() + 1).astype("Int64")
 
 
 def _assign_exon_numbers_to_cds(df):
