@@ -229,7 +229,14 @@ def main_cli():
     _set_up_process()
 
     parser = argparse.ArgumentParser(description="Run NMD pipeline", allow_abbrev=False)
-    parser.add_argument("--vcf", required=True, help="Path to VCF file")
+    parser.add_argument(
+        "--vcf",
+        required=True,
+        help=(
+            "Path to VCF file, plain or gzip-compressed. The VCF must be left-normalized, with one ALT allele per "
+            "record."
+        ),
+    )
     parser.add_argument(
         "--annotation",
         required=True,
