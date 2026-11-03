@@ -1185,6 +1185,58 @@ def test_main_gives_null_transcript_columns_for_a_gff3_transcript_without_exon_r
     assert pair == {**_PAIR_WITHOUT_EXON_RECORDS, **expected}
 
 
+# Two transcripts with the CDS ATG AAA CCC GGG TGG TAA: T1 has two CDS records and no exon records, T2 has one exon
+# record. The variant makes TGG a TAG.
+_ENSEMBL_GFF3_WITHOUT_EXON_RECORDS = """\
+##gff-version 3
+chrT\tensembl\tgene\t1\t38\t.\t+\t.\tID=gene:G1;biotype=protein_coding
+chrT\tensembl\tmRNA\t1\t38\t.\t+\t.\tID=transcript:T1;Parent=gene:G1;biotype=protein_coding
+chrT\tensembl\tCDS\t11\t19\t.\t+\t0\tID=CDS:P1;Parent=transcript:T1
+chrT\tensembl\tCDS\t20\t28\t.\t+\t0\tID=CDS:P1;Parent=transcript:T1
+chrT\tensembl\tmRNA\t1\t38\t.\t+\t.\tID=transcript:T2;Parent=gene:G1;biotype=protein_coding
+chrT\tensembl\texon\t1\t38\t.\t+\t.\tParent=transcript:T2;rank=1
+chrT\tensembl\tCDS\t11\t28\t.\t+\t0\tID=CDS:P2;Parent=transcript:T2
+"""
+
+
+def test_main_gives_null_transcript_columns_for_an_ensembl_transcript_without_exon_records(tmp_path):
+    """
+    read_gff3 numbers the CDS records of an Ensembl transcript without exon records 1, 2, ... in the direction of
+    transcription. So T1 gives a result with null transcript columns, as in the GENCODE test above.
+    """
+    (tmp_path / "genome.fa").write_text(">chrT\nGCATGCATGCATGAAACCCGGGTGGTAAGCATGCATGC\n")
+    vcf = _write(tmp_path, "variants.vcf", VCF_HEADER + "chrT\t24\tv0\tG\tA\t.\tPASS\t.\n")
+    gff3_path = _write(tmp_path, "a.gff3", _ENSEMBL_GFF3_WITHOUT_EXON_RECORDS)
+
+    results = _main(vcf, gff3_path, str(tmp_path / "genome.fa"), str(tmp_path / "out.csv"))
+
+    columns = [
+        "transcript_id",
+        "ref_cds_exons",
+        "alt_stop_codon_exons",
+        "alt_has_ptc",
+        "cds_in_transcript",
+        "transcript_length",
+        "nmd_efficiency_prediction_status",
+    ]
+    pairs = [
+        tuple(None if pd.api.types.is_scalar(value) and pd.isna(value) else value for value in pair)
+        for pair in results[columns].itertuples(index=False)
+    ]
+    assert pairs == [
+        (
+            "T1",
+            [{"exon_number": 1, "length": 9}, {"exon_number": 2, "length": 9}],
+            [2, 2],
+            True,
+            False,
+            None,
+            "missing_input",
+        ),
+        ("T2", [{"exon_number": 1, "length": 18}], [1, 1], True, True, 38, "ok"),
+    ]
+
+
 def test_read_gff3_warns_if_a_gencode_gff3_has_no_stop_codon_records(tmp_path, caplog):
     without_stop_codons = "".join(line for line in _GENCODE_GFF3.splitlines(True) if "\tstop_codon\t" not in line)
     fasta = _fasta(tmp_path)
