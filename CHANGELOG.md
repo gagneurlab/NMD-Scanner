@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.0.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.5.0...v1.0.0) (2026-11-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* retrain the model on 16 inputs with the benchmark pipeline ([#70](https://github.com/gagneurlab/NMD-Scanner/issues/70))
+* start_loss, stop_loss and ptc_less_than_150nt_to_start are no longer model inputs. The shipped model is retrained on 16 model inputs, so its predictions change.
+* settle the variant input and the public API for 1.0 ([#69](https://github.com/gagneurlab/NMD-Scanner/issues/69))
+* read_vcf returns the columns chrom, start, end, variant_id, ref and alt instead of Chromosome, Start, End, ID, Ref and Alt. The ID `.` is null in variant_id and the ALT `.` is null in alt, instead of `.`. extract_ptc takes these columns. --reassign_exons is renamed to --reassign-exons. the CLI rejects abbreviated flags such as --no-seq; write --no-sequences. annotate takes reassign_exons, sequences and prediction as keyword arguments only. nmd_scanner.read_fasta is removed; use pyfaidx.Fasta. the output column start_codon_exon is start_codon_exon_number, and alt_scan_start_codon_exon is alt_scan_start_codon_exon_number. extract_ptc raises a ValueError if its cds_df lacks transcript_type or transcript_tags, which read_annotation returns. read_annotation and read_gff3 give null in Frame for the GFF3 phase `.`, e.g. on each exon record, instead of `.`. extract_ptc, annotate_variants and annotate raise a ValueError for a null REF, and for a REF or ALT that is not a sequence of the bases A, C, G, T and N, e.g. `.`, `-` or an IUPAC code such as R. extract_ptc, annotate_variants and annotate raise a ValueError for a VCF record that is not left-normalized. Left-normalize the VCF first, e.g. with `bcftools norm -f <reference FASTA>`.
+* the column nmd_model_status is now nmd_efficiency_prediction_status, and schema.MODEL_STATUSES is now schema.PREDICTION_STATUSES.
+
+### Features
+
+* add annotate_variants, which takes the variants and the annotation ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* add nmd_scanner.benchmark and the training and validation scripts ([3fe09ff](https://github.com/gagneurlab/NMD-Scanner/commit/3fe09ff6ba896d2b468de455e61c10469ffb8e8e))
+* add the NMD efficiency prediction to the output by default ([#57](https://github.com/gagneurlab/NMD-Scanner/issues/57)) ([fdb2ee8](https://github.com/gagneurlab/NMD-Scanner/commit/fdb2ee8149c57ec4df38f7b20161aa8b6ad2ee44))
+* add the transcript type and tags to the output ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* export write_results from nmd_scanner ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* retrain the model on 16 inputs with the benchmark pipeline ([#70](https://github.com/gagneurlab/NMD-Scanner/issues/70)) ([3fe09ff](https://github.com/gagneurlab/NMD-Scanner/commit/3fe09ff6ba896d2b468de455e61c10469ffb8e8e))
+* settle the variant input and the public API for 1.0 ([#69](https://github.com/gagneurlab/NMD-Scanner/issues/69)) ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+
+
+### Bug Fixes
+
+* bound the memory of the FASTA reads of extract_ptc ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* do not predict NMD efficiency for start-loss variant-transcript ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* number the CDS records of an Ensembl transcript without exon ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* raise a ValueError for a REF or ALT that is not a sequence of bases ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* raise a ValueError for a variant that is not left-normalized ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* raise a ValueError that names the missing columns in extract_ptc ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* read the GFF3 phase `.` as null in Frame ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* read the last chunk of a chromosome with a ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+* take the variant columns of the result from the VCF records ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+
+
+### Performance Improvements
+
+* use less memory in extract_ptc for many variants ([e5ad7f8](https://github.com/gagneurlab/NMD-Scanner/commit/e5ad7f85df591f3555da14ba8617f1b43622cb49))
+
+
+### Documentation
+
+* validate the NMD efficiency model on four cohorts ([#54](https://github.com/gagneurlab/NMD-Scanner/issues/54)) ([bb60598](https://github.com/gagneurlab/NMD-Scanner/commit/bb60598aa47ab424cf3df022efff2b7c60170b29))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 ([#60](https://github.com/gagneurlab/NMD-Scanner/issues/60)) ([0b580d2](https://github.com/gagneurlab/NMD-Scanner/commit/0b580d2cf882a63dea88c7ad7e142625d8a7696b))
+
 ## [0.5.0](https://github.com/gagneurlab/NMD-Scanner/compare/v0.4.0...v0.5.0) (2026-10-07)
 
 
