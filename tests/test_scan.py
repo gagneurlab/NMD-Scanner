@@ -1121,7 +1121,6 @@ _PAIR_WITHOUT_EXON_RECORDS = {
     "upstream_exon_count": None,
     "downstream_exon_count": None,
     "ptc_to_start_codon": None,
-    "ptc_less_than_150nt_to_start": None,
     "ptc_exon_length": None,
     "annotated_stop_distance": 0,
     "ptc_to_exon_end": None,

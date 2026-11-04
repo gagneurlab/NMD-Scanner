@@ -729,7 +729,6 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 9,
             "annotated_stop_distance": 9,
             "ptc_to_exon_end": 6,
@@ -749,9 +748,8 @@ CASES = [
     ),
     # Pins the null clause of ptc_to_start_codon "the annotated start codon is a stop codon, such as TAG" ("Input
     # Defects.md": "A variant that leaves it unchanged gives a PTC variant whose PTC is this start codon"). So
-    # ptc_less_than_150nt_to_start and nmd_start_proximal_rule are null ("`ptc_to_start_codon` is null"). The
-    # variant-transcript pair keeps the flags from the CDS: the ref transcript, read in frame, stops at the TAG and
-    # not at the annotated stop codon.
+    # nmd_start_proximal_rule is null ("`ptc_to_start_codon` is null"). The variant-transcript pair keeps the flags
+    # from the CDS: the ref transcript, read in frame, stops at the TAG and not at the annotated stop codon.
     # likely_misannotated is False (input_defects.md: "`likely_misannotated` does not flag it, because its start codon
     # check only asks for an annotated start codon at CDS position 0").
     # `ptc_without_an_annotated_start_codon_has_no_ptc_to_start_codon` pins the other clause, a PTC variant without
@@ -800,7 +798,6 @@ CASES = [
             "upstream_exon_count": 0,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 21,
             "annotated_stop_distance": 12,
             "ptc_to_exon_end": 18,
@@ -1568,7 +1565,6 @@ CASES = [
             "upstream_exon_count": 2,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 15,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 12,
             "annotated_stop_distance": 3,
             "ptc_to_exon_end": 12,
@@ -1745,7 +1741,6 @@ CASES = [
             "upstream_exon_count": None,
             "downstream_exon_count": None,
             "ptc_to_start_codon": 9,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": None,
             "annotated_stop_distance": 9,
             "ptc_to_exon_end": None,
@@ -1858,7 +1853,6 @@ CASES = [
             "upstream_exon_count": None,
             "downstream_exon_count": None,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": None,
             "annotated_stop_distance": 18,
             "ptc_to_exon_end": None,

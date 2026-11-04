@@ -21,7 +21,7 @@ def _status_pair(**values):
     return pair
 
 
-# The null model inputs of a variant-transcript pair with an unknown alt transcript: 15 of the 19 model inputs
+# The null model inputs of a variant-transcript pair with an unknown alt transcript: 12 of the 16 model inputs
 _UNKNOWN_INPUTS = {
     name: None
     for name in MODEL_INPUTS

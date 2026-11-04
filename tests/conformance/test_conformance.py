@@ -206,7 +206,6 @@ VALUES = {
     "stop_classification": {"alt_transcript", "start_loss_scan", "alt_cds", None},
     "alt_scan_first_stop_codon": {"TAA", "TAG", "TGA", None},
     "unknown_reason": {"splice_site_destroyed", "exon_boundary_ambiguous", None},
-    "ptc_less_than_150nt_to_start": {True, False, None},
     "likely_misannotated": {True, False},
     "nmd_last_exon_rule": {True, False, None},
     "nmd_50nt_penultimate_rule": {True, False, None},
@@ -504,8 +503,8 @@ NULL_CASES = [
     *[
         (column, NOT_A_PTC_VARIANT, lambda pair: pair["alt_has_ptc"] is False)
         for column in (
-            *("ptc_less_than_150nt_to_start", "nmd_last_exon_rule", "nmd_50nt_penultimate_rule"),
-            *("nmd_long_exon_rule", "nmd_start_proximal_rule", "nmd_single_exon_rule", "nmd_escape"),
+            *("nmd_last_exon_rule", "nmd_50nt_penultimate_rule", "nmd_long_exon_rule"),
+            *("nmd_start_proximal_rule", "nmd_single_exon_rule", "nmd_escape"),
         )
     ],
     # For a PTC variant, a rule is null if one of its inputs is null
@@ -516,7 +515,6 @@ NULL_CASES = [
             lambda pair, rule_input=rule_input: _ptc_variant(pair) and pair[rule_input] is None,
         )
         for column, rule_input in (
-            ("ptc_less_than_150nt_to_start", "ptc_to_start_codon"),
             ("nmd_last_exon_rule", "downstream_exon_count"),
             ("nmd_50nt_penultimate_rule", "alt_transcript_exons"),
             ("nmd_long_exon_rule", "ptc_exon_length"),

@@ -1,7 +1,7 @@
 """
 Conformance cases of the NMD features: the values of the columns that add_nmd_features adds (utr5_length,
-utr3_length, total_exon_count, upstream_exon_count, downstream_exon_count, ptc_to_start_codon,
-ptc_less_than_150nt_to_start, ptc_exon_length, annotated_stop_distance, ptc_to_exon_end and likely_misannotated).
+utr3_length, total_exon_count, upstream_exon_count, downstream_exon_count, ptc_to_start_codon, ptc_exon_length,
+annotated_stop_distance, ptc_to_exon_end and likely_misannotated).
 The null cases of these columns are in cases_null.py.
 
 The drawings show the features as the figures of "Technical Notes.md" do. They show the transcript 5' to 3', also
@@ -666,7 +666,6 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": 180,
-            "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 200,
             "annotated_stop_distance": 177,
             "ptc_to_exon_end": 120,
@@ -740,7 +739,6 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": 15,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 70,
             "annotated_stop_distance": 12,
             "ptc_to_exon_end": 40,
@@ -825,7 +823,6 @@ CASES = [
             "upstream_exon_count": 2,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 30,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 55,
             "annotated_stop_distance": 24,
             "ptc_to_exon_end": 52,
@@ -906,7 +903,6 @@ CASES = [
             "upstream_exon_count": 2,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 36,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 55,
             "annotated_stop_distance": 17,
             "ptc_to_exon_end": 45,
@@ -989,7 +985,6 @@ CASES = [
             "upstream_exon_count": 2,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 48,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 55,
             "annotated_stop_distance": 7,
             "ptc_to_exon_end": 35,
@@ -1079,7 +1074,6 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 15,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 20,
             "annotated_stop_distance": 8,
             "ptc_to_exon_end": 20,
@@ -1150,7 +1144,6 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 6,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 21,
             "annotated_stop_distance": 6,
             "ptc_to_exon_end": 12,
@@ -1320,7 +1313,6 @@ CASES = [
             "upstream_exon_count": 0,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 30,
-            "ptc_less_than_150nt_to_start": True,
             "ptc_exon_length": 90,
             "annotated_stop_distance": 24,
             "ptc_to_exon_end": 52,
@@ -1349,7 +1341,7 @@ CASES = [
         "missense_in_a_cds_at_the_transcript_start_has_no_5utr",
         """
         The CDS starts at the transcript start, so utr5_length is 0. The missense AAG>GAG keeps the annotated stop
-        codon: annotated_stop_distance is 0. It is not a PTC variant, so ptc_less_than_150nt_to_start is null.
+        codon: annotated_stop_distance is 0. It is not a PTC variant, so ptc_to_start_codon is null.
         exon 1: 12 nt, exon 2: 15 nt
 
         tx      0                 12          21    27
@@ -1447,7 +1439,7 @@ CASES = [
         "ptc_150_nt_after_the_start_codon_is_not_less_than_150_nt_to_start",
         """
         C>T at CDS 150 makes CAG the PTC TAG, 150 nt from the start codon ATG at CDS 0. 150 is not < 150, so
-        ptc_less_than_150nt_to_start is False. No NMD rule is True.
+        nmd_start_proximal_rule is False. No NMD rule is True.
         exon 1: 214 nt, exon 2: 12 nt
         ptc_exon_length = 214. upstream_exon_count = 0, downstream_exon_count = 1.
 
@@ -1490,7 +1482,6 @@ CASES = [
             "upstream_exon_count": 0,
             "downstream_exon_count": 1,
             "ptc_to_start_codon": 150,
-            "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 214,
             "annotated_stop_distance": 63,
             "ptc_to_exon_end": 60,
@@ -1559,7 +1550,6 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": 159,
-            "ptc_less_than_150nt_to_start": False,
             "ptc_exon_length": 73,
             "annotated_stop_distance": 6,
             "ptc_to_exon_end": 14,
@@ -1589,8 +1579,8 @@ CASES = [
         "ptc_in_a_cds_start_nf_transcript_has_no_distance_to_the_start_codon",
         """
         The transcript of the CTG case, without start_codon records and tagged cds_start_NF. Its start codon lies
-        upstream of the CDS, at an unknown distance. So ptc_to_start_codon is null, and ptc_less_than_150nt_to_start
-        is null too. Without an annotated start codon, likely_misannotated is True.
+        upstream of the CDS, at an unknown distance. So ptc_to_start_codon is null. Without an annotated start codon,
+        likely_misannotated is True.
         exon 1: 103 nt, exon 2: 73 nt
         ptc_exon_length = 73. upstream_exon_count = 1, downstream_exon_count = 0.
 
@@ -1631,7 +1621,6 @@ CASES = [
             "upstream_exon_count": 1,
             "downstream_exon_count": 0,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": 73,
             "annotated_stop_distance": 6,
             "ptc_to_exon_end": 14,

@@ -113,7 +113,6 @@ def add_nmd_features(row):
             "upstream_exon_count": None,
             "downstream_exon_count": None,
             "ptc_to_start_codon": None,
-            "ptc_less_than_150nt_to_start": None,
             "ptc_exon_length": None,
             "annotated_stop_distance": None,
             "ptc_to_exon_end": None,
@@ -137,9 +136,6 @@ def add_nmd_features(row):
 
     # Distance between PTC to start codon
     ptc_to_start_codon = calculate_ptc_to_start_distance(row)
-    # PTC location < 150nt to start codon. Null without a distance, e.g. for a variant-transcript pair that is not a
-    # PTC variant.
-    ptc_less_than_150nt_to_start = None if ptc_to_start_codon is None else ptc_to_start_codon < 150
 
     # PTC exon length
     ptc_exon_length = calculate_ptc_exon_length(row)
@@ -162,7 +158,6 @@ def add_nmd_features(row):
         "upstream_exon_count": upstream_exon_count,
         "downstream_exon_count": downstream_exon_count,
         "ptc_to_start_codon": ptc_to_start_codon,
-        "ptc_less_than_150nt_to_start": ptc_less_than_150nt_to_start,
         "ptc_exon_length": ptc_exon_length,
         "annotated_stop_distance": stop_distance,
         "ptc_to_exon_end": ptc_to_exon_end,
