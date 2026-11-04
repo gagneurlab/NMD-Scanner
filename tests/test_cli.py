@@ -10,15 +10,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from pyfaidx import Fasta
 
 import nmd_scanner.cli as cli_module
 from nmd_scanner.cli import (
+    _is_valid_output_path,
+    _main,
     annotate,
-    is_valid_output_path,
-    main,
+    annotate_variants,
     main_cli,
     write_results,
 )
+from nmd_scanner.scan import read_annotation, read_vcf
 from nmd_scanner.schema import (
     MODEL_INPUTS,
     NMD_RULE_COLUMN_KINDS,
@@ -39,29 +42,29 @@ def _no_process_setup(monkeypatch):
 
 
 def test_is_valid_output_path_accepts_csv_in_existing_dir(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "results.csv")) is True
+    assert _is_valid_output_path(str(tmp_path / "results.csv")) is True
 
 
 def test_is_valid_output_path_accepts_parquet_extensions(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "results.parquet")) is True
-    assert is_valid_output_path(str(tmp_path / "results.pq")) is True
+    assert _is_valid_output_path(str(tmp_path / "results.parquet")) is True
+    assert _is_valid_output_path(str(tmp_path / "results.pq")) is True
 
 
 def test_is_valid_output_path_accepts_bare_filename_in_cwd():
-    assert is_valid_output_path("results.csv") is True
+    assert _is_valid_output_path("results.csv") is True
 
 
 def test_is_valid_output_path_rejects_existing_directory(tmp_path):
-    assert is_valid_output_path(str(tmp_path)) is False
+    assert _is_valid_output_path(str(tmp_path)) is False
 
 
 def test_is_valid_output_path_rejects_missing_parent_directory(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "missing" / "results.csv")) is False
+    assert _is_valid_output_path(str(tmp_path / "missing" / "results.csv")) is False
 
 
 def test_is_valid_output_path_rejects_unsupported_extension(tmp_path):
-    assert is_valid_output_path(str(tmp_path / "results.tsv")) is False
-    assert is_valid_output_path(str(tmp_path / "results")) is False
+    assert _is_valid_output_path(str(tmp_path / "results.tsv")) is False
+    assert _is_valid_output_path(str(tmp_path / "results")) is False
 
 
 def test_write_results_csv_roundtrip(tmp_path):
@@ -102,6 +105,12 @@ def test_write_results_csv_writes_the_list_columns_as_json(tmp_path):
     assert df.to_dict("list") == columns
 
 
+def test_write_results_is_exported_from_the_package():
+    import nmd_scanner
+
+    assert nmd_scanner.write_results is write_results
+
+
 def test_write_results_rejects_unsupported_extension(tmp_path):
     df = pd.DataFrame({"x": [1]})
     with pytest.raises(ValueError, match="Unsupported output extension"):
@@ -125,7 +134,7 @@ def test_main_end_to_end_smoke(tmp_path):
     """Run the full pipeline on the bundled chr18 test data and check the output file."""
 
     out = tmp_path / "smoke_results.csv"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -168,7 +177,7 @@ def test_main_end_to_end_parquet_typed_columns(tmp_path):
     import pyarrow.parquet as pq
 
     out = tmp_path / "typed_results.parquet"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -260,7 +269,7 @@ def _results_schema(tmp_path, vcf_path, name):
     import pyarrow.parquet as pq
 
     out = tmp_path / name
-    main(
+    _main(
         vcf_path=vcf_path,
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -279,7 +288,14 @@ def test_parquet_schema_is_the_same_for_every_run(tmp_path):
     pytest.importorskip("pyarrow")
     import pyarrow as pa
 
-    schema_without, _ = _results_schema(tmp_path, "resources/test_files/test_variants.vcf", "without.parquet")
+    # a frameshift in the GREB1L CDS
+    without_loss = tmp_path / "without_loss.vcf"
+    without_loss.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383522\tv1\tG\tGT\t.\t.\t.\n"
+    )
+    schema_without, loaded_without = _results_schema(tmp_path, str(without_loss), "without.parquet")
+    assert not loaded_without.empty
+    assert not (loaded_without["start_loss"].any() or loaded_without["stop_loss"].any())
     schema_with, loaded = _results_schema(tmp_path, "resources/test_files/variants.vcf", "with.parquet")
     assert loaded["start_loss"].any() or loaded["stop_loss"].any()
 
@@ -298,7 +314,7 @@ def test_parquet_schema_is_the_same_for_every_run(tmp_path):
         pa.list_(pa.struct([pa.field("position", pa.int64()), pa.field("codon", pa.string())]))
     )
     assert schema_with.field("alt_scan_stop_codon_exons").type.equals(pa.list_(pa.int64()))
-    assert schema_with.field("alt_scan_start_codon_exon").type.equals(pa.int64())
+    assert schema_with.field("alt_scan_start_codon_exon_number").type.equals(pa.int64())
     assert schema_with.field("alt_scan_first_stop_codon").type.equals(pa.string())
 
 
@@ -307,7 +323,7 @@ def test_parquet_values_roundtrip_unchanged_and_none_stays_null(tmp_path):
     import pyarrow.parquet as pq
 
     out = tmp_path / "roundtrip.parquet"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -344,7 +360,7 @@ def test_main_keeps_numeric_and_NA_variant_ids_as_text(tmp_path, output_name, id
         f"chr18\t21383521\t{ids[1]}\tG\tGTTT\t.\t.\t.\n"
     )
     out = tmp_path / output_name
-    results = main(
+    results = _main(
         vcf_path=str(vcf),
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -362,7 +378,7 @@ def test_main_keeps_numeric_and_NA_variant_ids_as_text(tmp_path, output_name, id
 def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, caplog):
     out = tmp_path / "empty.csv"
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=intergenic_vcf,
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
@@ -379,8 +395,8 @@ def test_main_without_cds_overlap_writes_empty_csv(tmp_path, intergenic_vcf, cap
 
 def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp_path, intergenic_vcf):
     """
-    The full run has rows with an unknown alt transcript. Their start and stop loss and NMD rules are null, and
-    those columns stay bool in Parquet, as in the empty run.
+    The full run has variant-transcript pairs with an unknown alt transcript. Their start and stop loss and NMD rules
+    are null, and those columns stay bool in Parquet, as in the empty run.
     """
 
     pytest.importorskip("pyarrow")
@@ -388,14 +404,14 @@ def test_main_without_cds_overlap_writes_empty_parquet_with_the_usual_schema(tmp
     import pyarrow.parquet as pq
 
     empty_out = tmp_path / "empty.parquet"
-    main(
+    _main(
         vcf_path=intergenic_vcf,
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(empty_out),
     )
     full_out = tmp_path / "full.parquet"
-    main(
+    _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -425,12 +441,21 @@ def test_main_without_reference_mismatches_does_not_warn_about_them(tmp_path, ca
         "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr18\t21383521\tv1\tG\tGT\t.\t.\t.\n"
     )
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=str(vcf),
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
             output=str(tmp_path / "out.csv"),
         )
+    assert not results.empty
+    assert "reference mismatches" not in caplog.text
+
+
+@pytest.mark.parametrize("vcf", ["resources/test_files/test_variants.vcf", "resources/test_files/variants.vcf"])
+def test_the_bundled_test_vcfs_have_no_reference_mismatch(vcf, caplog):
+    with caplog.at_level(logging.INFO):
+        results = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", prediction=False)
+
     assert not results.empty
     assert "reference mismatches" not in caplog.text
 
@@ -445,7 +470,7 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
         "chr18\t21383521\tv1\tG\tGT\t.\t.\t.\n"
     )
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=str(vcf),
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
@@ -456,8 +481,10 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
     warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
     # The count is not checked.
     assert any(message.endswith(" variant-transcript pairs due to reference mismatches.") for message in warnings)
-    listing = next(message for message in warnings if message.startswith("Reference-mismatched variants:"))
-    # one row per transcript: transcript_id, Chromosome, Start_variant, End_variant, Ref, Alt
+    listing = next(
+        message for message in warnings if message.startswith("Reference-mismatched variant-transcript pairs:")
+    )
+    # one line per variant-transcript pair: transcript_id, Chromosome, Start_variant, End_variant, Ref, Alt
     rows = [line.split() for line in listing.splitlines()[2:]]
     assert rows
     assert {tuple(row[1:]) for row in rows} == {("chr18", "21383518", "21383519", "C", "T")}
@@ -466,7 +493,7 @@ def test_main_with_a_reference_mismatch_warns_about_it(tmp_path, caplog):
 def test_main_with_only_reference_mismatches_writes_empty_csv(tmp_path, reference_mismatch_vcf, caplog):
     out = tmp_path / "mismatch.csv"
     with caplog.at_level(logging.INFO):
-        results = main(
+        results = _main(
             vcf_path=reference_mismatch_vcf,
             annotation_path="resources/chr18.gff3.gz",
             fasta_path="resources/chr18.fa.gz",
@@ -487,14 +514,14 @@ def test_main_with_only_reference_mismatches_writes_empty_parquet_with_the_usual
     import pyarrow.parquet as pq
 
     empty_out = tmp_path / "mismatch.parquet"
-    main(
+    _main(
         vcf_path=reference_mismatch_vcf,
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
         output=str(empty_out),
     )
     full_out = tmp_path / "full.parquet"
-    main(
+    _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -506,10 +533,10 @@ def test_main_with_only_reference_mismatches_writes_empty_parquet_with_the_usual
 
 
 def test_main_end_to_end_reassign_exons(tmp_path):
-    """``--reassign_exons`` runs on the bundled chr18 data and yields int exon numbers."""
+    """``reassign_exons=True`` runs on the bundled chr18 data and yields int exon numbers."""
 
     out = tmp_path / "reassigned.csv"
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -526,7 +553,7 @@ def test_main_end_to_end_reassign_exons(tmp_path):
 
     # chr18.gff3.gz is hg38, where the annotated exon numbers already follow transcript order.
     # extract_ptc casts the annotated ones to int, too.
-    annotated = main(
+    annotated = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -536,9 +563,9 @@ def test_main_end_to_end_reassign_exons(tmp_path):
 
 
 def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
-    """Variants over a splice site get a row without prediction, and unknown_reason says why."""
+    """Variants over a splice site give a result without prediction, and unknown_reason says why."""
 
-    results = main(
+    results = _main(
         vcf_path="resources/test_files/variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -552,11 +579,12 @@ def test_main_keeps_variants_with_unknown_alt_transcript(tmp_path):
     assert unknown["ref_cds_seq"].notna().all()
     for column in ["alt_cds_seq", "alt_has_ptc", "start_loss", "stop_loss", "nmd_escape"]:
         assert unknown[column].isna().all(), column
-    # The NMD rules are null on a row that is not a PTC row. Each PTC row here has the inputs of the rules.
-    ptc_rows = results["alt_has_ptc"].fillna(False).astype(bool)
-    assert ptc_rows.any()
-    assert results.loc[ptc_rows, "nmd_escape"].notna().all()
-    assert results.loc[~ptc_rows, "nmd_escape"].isna().all()
+    # The NMD rules are null for a variant-transcript pair that is not a PTC variant. Each PTC variant here has the
+    # inputs of the rules.
+    ptc_variants = results["alt_has_ptc"].fillna(False).astype(bool)
+    assert ptc_variants.any()
+    assert results.loc[ptc_variants, "nmd_escape"].notna().all()
+    assert results.loc[~ptc_variants, "nmd_escape"].isna().all()
 
 
 @pytest.fixture(scope="module")
@@ -588,7 +616,8 @@ def cli_stderr(tmp_path_factory):
 
 def test_main_cli_logs_the_info_messages_of_nmd_scanner_in_its_format(cli_stderr):
     assert "INFO nmd_scanner.cli: Reading VCF file" in cli_stderr
-    assert "WARNING nmd_scanner.rules: Skipping 88 variant-transcript pairs" in cli_stderr
+    assert "WARNING nmd_scanner.ptc: 12 variant-transcript pairs get no prediction" in cli_stderr
+    assert "reference mismatches" not in cli_stderr
     # polars-bio's Rust code logs at INFO too
     info = [line for line in cli_stderr.splitlines() if " INFO " in line]
     assert all(" INFO nmd_scanner." in line for line in info)
@@ -607,11 +636,12 @@ def _patch_main(monkeypatch):
 
     def fake_main(vcf_path, annotation_path, fasta_path, output, reassign_exons=False, sequences=True, prediction=True):
         calls["annotation_path"] = annotation_path
+        calls["reassign_exons"] = reassign_exons
         calls["sequences"] = sequences
         calls["prediction"] = prediction
         return pd.DataFrame()
 
-    monkeypatch.setattr(cli_module, "main", fake_main)
+    monkeypatch.setattr(cli_module, "_main", fake_main)
     return calls
 
 
@@ -645,6 +675,16 @@ def test_main_cli_annotation_option_reaches_main(monkeypatch, tmp_path):
     assert calls["annotation_path"] == "annotation.gff3"
 
 
+@pytest.mark.parametrize("flags, reassign_exons", [([], False), (["--reassign-exons"], True)])
+def test_main_cli_reassign_exons_flag_reaches_main(monkeypatch, tmp_path, flags, reassign_exons):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    argv = ["nmd-scanner", "--vcf", "in.vcf", "--annotation", "annotation.gff3", "--fasta", "ref.fa", "--output"]
+    monkeypatch.setattr(sys, "argv", [*argv, str(out), *flags])
+    main_cli()
+    assert calls["reassign_exons"] is reassign_exons
+
+
 @pytest.mark.parametrize("flags, sequences", [([], True), (["--no-sequences"], False)])
 def test_main_cli_no_sequences_flag_reaches_main(monkeypatch, tmp_path, flags, sequences):
     out = tmp_path / "out.csv"
@@ -663,6 +703,18 @@ def test_main_cli_no_prediction_flag_reaches_main(monkeypatch, tmp_path, flags, 
     monkeypatch.setattr(sys, "argv", [*argv, str(out), *flags])
     main_cli()
     assert calls["prediction"] is prediction
+
+
+def test_main_cli_rejects_an_abbreviated_flag(monkeypatch, tmp_path, capsys):
+    out = tmp_path / "out.csv"
+    calls = _patch_main(monkeypatch)
+    argv = ["nmd-scanner", "--vcf", "in.vcf", "--annotation", "annotation.gff3", "--fasta", "ref.fa", "--output"]
+    monkeypatch.setattr(sys, "argv", [*argv, str(out), "--no-seq"])
+    with pytest.raises(SystemExit) as excinfo:
+        main_cli()
+    assert excinfo.value.code == 2
+    assert "unrecognized arguments: --no-seq" in capsys.readouterr().err
+    assert calls == {}
 
 
 def test_main_cli_rejects_empty_annotation(monkeypatch, tmp_path, capsys):
@@ -692,8 +744,8 @@ def test_main_cli_rejects_an_annotation_of_unknown_format(monkeypatch, tmp_path,
 def test_main_accepts_a_path_object_for_the_annotation(tmp_path):
     out = str(tmp_path / "out.csv")
     vcf = "resources/part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf"
-    via_path = main(vcf, Path("resources/chr18.gff3.gz"), "resources/chr18.fa.gz", out)
-    via_str = main(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", out)
+    via_path = _main(vcf, Path("resources/chr18.gff3.gz"), "resources/chr18.fa.gz", out)
+    via_str = _main(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", out)
     assert not via_path.empty
     pd.testing.assert_frame_equal(via_path, via_str)
 
@@ -715,7 +767,7 @@ chr18\tensembl\tCDS\t47390\t48447\t.\t-\t2\tID=CDS:P1;Parent=transcript:T1
 
 def test_annotate_returns_what_main_writes(tmp_path):
     out = tmp_path / "main.csv"
-    expected = main(
+    expected = _main(
         vcf_path="resources/test_files/test_variants.vcf",
         annotation_path="resources/chr18.gff3.gz",
         fasta_path="resources/chr18.fa.gz",
@@ -795,7 +847,7 @@ def test_annotate_without_symbolic_alleles_does_not_warn_about_them(caplog):
     assert "symbolic ALT" not in caplog.text
 
 
-def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_rows(tmp_path):
+def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_records(tmp_path):
     fasta = tmp_path / "chr1.fa"
     fasta.write_text(">chr1\nACGT\n")
 
@@ -803,12 +855,12 @@ def test_annotate_raises_if_the_fasta_lacks_a_chromosome_with_variants_and_cds_r
         annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", str(fasta))
 
     assert str(error.value) == (
-        "The FASTA has no sequence for 1 chromosome(s) with variants and CDS rows: chr18. Each chromosome with "
-        "variants and CDS rows needs a sequence of the same name in the FASTA."
+        "The FASTA has no sequence for 1 chromosome(s) with variants and CDS records: chr18. Each chromosome with "
+        "variants and CDS records needs a sequence of the same name in the FASTA."
     )
 
 
-def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp_path):
+def test_annotate_ignores_a_chromosome_without_cds_records_that_the_fasta_lacks(tmp_path):
     vcf = tmp_path / "chrZ.vcf"
     vcf.write_text(
         "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrZ\t1000\tz1\tA\tT\t.\t.\t.\n"
@@ -820,28 +872,98 @@ def test_annotate_ignores_a_chromosome_without_cds_rows_that_the_fasta_lacks(tmp
     assert list(results.columns) == list(output_column_kinds())
 
 
-def test_annotate_sets_nmd_efficiency_prediction_status_ok_exactly_for_the_rows_the_model_can_prediction():
+def test_annotate_sets_nmd_efficiency_prediction_status_ok_exactly_for_the_pairs_the_model_can_predict():
     results = annotate("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
 
     new_ptc = results["alt_has_ptc"].fillna(False) & ~results["ref_has_ptc"].fillna(False)
-    scorable = new_ptc & results[MODEL_INPUTS].notna().all(axis=1)
+    start_loss = results["start_loss"].fillna(False)
+    scorable = new_ptc & ~start_loss & results[MODEL_INPUTS].notna().all(axis=1)
     assert (results["nmd_efficiency_prediction_status"] == "ok").tolist() == scorable.tolist()
     assert scorable.any()
+    assert (new_ptc & start_loss).any()
     assert set(results["nmd_efficiency_prediction_status"]) <= set(PREDICTION_STATUSES)
 
 
 def test_annotate_reassign_exons_matches_main(tmp_path):
     args = ("resources/test_files/test_variants.vcf", "resources/chr18.gff3.gz", "resources/chr18.fa.gz")
-    expected = main(*args, str(tmp_path / "main.csv"), reassign_exons=True)
+    expected = _main(*args, str(tmp_path / "main.csv"), reassign_exons=True)
 
     results = annotate(*args, reassign_exons=True)
 
     pd.testing.assert_frame_equal(results, expected)
 
 
-def test_annotate_reads_gff3_with_the_fasta(tmp_path):
-    from pyfaidx import Fasta
+@pytest.fixture(scope="module")
+def chr18_annotation():
+    """The FASTA of the bundled chr18 test data, and the annotation that read_annotation returns with it"""
 
+    fasta = Fasta("resources/chr18.fa.gz")
+    return fasta, read_annotation("resources/chr18.gff3.gz", fasta)
+
+
+def test_annotate_variants_returns_what_annotate_returns(chr18_annotation):
+    fasta, annotation_df = chr18_annotation
+    vcf = "resources/test_files/test_variants.vcf"
+    expected = annotate(vcf, "resources/chr18.gff3.gz", "resources/chr18.fa.gz", sequences=False, prediction=False)
+
+    results = annotate_variants(read_vcf(vcf), annotation_df, fasta, sequences=False, prediction=False)
+
+    assert list(results.columns) == list(output_column_kinds(sequences=False, prediction=False))
+    pd.testing.assert_frame_equal(results, expected)
+
+
+def test_annotate_variants_does_not_change_its_inputs(chr18_annotation):
+    fasta, annotation_df = chr18_annotation
+    vcf_df = read_vcf("resources/test_files/test_variants.vcf")
+    vcf_before_df, annotation_before_df = vcf_df.copy(), annotation_df.copy()
+
+    annotate_variants(vcf_df, annotation_df, fasta)
+
+    pd.testing.assert_frame_equal(vcf_df, vcf_before_df)
+    pd.testing.assert_frame_equal(annotation_df, annotation_before_df)
+
+
+def test_annotate_variants_takes_a_table_without_variant_id(chr18_annotation):
+    """
+    Without the variant_id column, each variant-transcript pair has a null variant_id. The other columns stay the
+    same.
+    """
+    fasta, annotation_df = chr18_annotation
+    vcf_df = read_vcf("resources/test_files/test_variants.vcf")
+    expected = annotate_variants(vcf_df, annotation_df, fasta, sequences=False, prediction=False)
+
+    results = annotate_variants(
+        vcf_df.drop(columns="variant_id"), annotation_df, fasta, sequences=False, prediction=False
+    )
+
+    pd.testing.assert_frame_equal(results.drop(columns="variant_id"), expected.drop(columns="variant_id"))
+    assert results["variant_id"].isna().all()
+
+
+@pytest.mark.parametrize(("start", "end", "alt"), [(48000, 48002, ""), (48000, 48000, "AG")], ids=["del", "ins"])
+def test_annotate_variants_takes_empty_alleles(chr18_annotation, start, end, alt):
+    """
+    An empty ref or alt is a valid allele. The deletion of 2 bases has alt "", and the insertion of AG has ref "" with
+    start equal to end. Both are left-normalized and in the CDS of a transcript on the minus strand. Each variant gives
+    the same variant-transcript pairs as its anchored form, which adds the base before start to ref and alt as a VCF
+    does. Only the variant columns differ.
+    """
+    fasta, annotation_df = chr18_annotation
+    ref = str(fasta["chr18"][start:end]).upper()
+    anchor = str(fasta["chr18"][start - 1 : start]).upper()
+    vcf_df = pd.DataFrame({"chrom": ["chr18"], "start": [start], "end": [end], "ref": [ref], "alt": [alt]})
+    expected = annotate_variants(
+        vcf_df.assign(start=start - 1, ref=anchor + ref, alt=anchor + alt), annotation_df, fasta
+    )
+
+    results = annotate_variants(vcf_df, annotation_df, fasta)
+
+    assert not results.empty
+    variant_columns = ["chrom", "start", "end", "ref", "alt"]
+    pd.testing.assert_frame_equal(results.drop(columns=variant_columns), expected.drop(columns=variant_columns))
+
+
+def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     fasta_path = "resources/chr18.fa.gz"
     ref = str(Fasta(fasta_path)["chr18"][48000:48001]).upper()
     alt = "A" if ref != "A" else "C"
@@ -854,11 +976,11 @@ def test_annotate_reads_gff3_with_the_fasta(tmp_path):
     gff3.write_text(_TUBB8B_GFF3)
 
     results = annotate(str(vcf), str(gff3), fasta_path)
-    expected = main(str(vcf), str(gff3), fasta_path, str(tmp_path / "main.csv"))
+    expected = _main(str(vcf), str(gff3), fasta_path, str(tmp_path / "main.csv"))
 
     assert list(results.columns) == list(output_column_kinds())
     assert list(results["transcript_id"]) == ["T1"]
-    # The FASTA has TAG (reverse complement of chr18:47390-47392) at the end of the last CDS row, so the
+    # The FASTA has TAG (reverse complement of chr18:47390-47392) at the end of the last CDS record, so the
     # coding region ends in a stop codon: 57 + 109 + 111 + 1058 nt.
     assert results["strand"].tolist() == ["-"]
     assert results["has_stop_codon"].tolist() == [True]
@@ -879,7 +1001,7 @@ def test_main_without_sequences_writes_the_full_output_without_the_4_sequence_co
     reduced_out = tmp_path / f"reduced{extension}"
     write_results(annotate(*args), str(full_out))
 
-    reduced = main(*args, str(reduced_out), sequences=False)
+    reduced = _main(*args, str(reduced_out), sequences=False)
 
     assert list(reduced.columns) == list(output_column_kinds(sequences=False))
     if extension == ".csv":
@@ -896,7 +1018,7 @@ def test_main_without_sequences_writes_the_full_output_without_the_4_sequence_co
 @pytest.mark.parametrize("vcf", ["resources/test_files/test_variants.vcf", "intergenic_vcf"])
 def test_main_cli_writes_nmd_efficiency_prediction_unless_no_prediction(monkeypatch, request, tmp_path, vcf, extension):
     """
-    By default, the output has nmd_efficiency_prediction after nmd_efficiency_prediction_status. With --no-prediction, it has the 80 columns of
+    By default, the output has nmd_efficiency_prediction after nmd_efficiency_prediction_status. With --no-prediction, it has the 82 columns of
     OUTPUT_COLUMN_KINDS, with the values of the default output.
     """
     import pyarrow as pa
@@ -928,7 +1050,8 @@ def test_main_cli_writes_nmd_efficiency_prediction_unless_no_prediction(monkeypa
         loaded = table.to_pandas()
     assert list(loaded.columns) == list(output_column_kinds())
     assert len(loaded) == len(expected)
-    # nmd_efficiency_prediction is NaN in the rows whose nmd_efficiency_prediction_status is not ok. CSV writes it as an empty field.
+    # nmd_efficiency_prediction is NaN for the variant-transcript pairs whose nmd_efficiency_prediction_status is
+    # not ok. CSV writes it as an empty field.
     np.testing.assert_allclose(
         loaded["nmd_efficiency_prediction"].to_numpy(dtype=float), expected["nmd_efficiency_prediction"]
     )

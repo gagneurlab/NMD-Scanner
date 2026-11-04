@@ -1,10 +1,11 @@
 """
 Place a variant relative to the exon boundaries of a transcript.
 
-A VCF record names one placement of a variant. An indel in a repeat has more placements that give the same alt
-sequence, and near an exon boundary they can disagree on whether the exon or the intron changes. A delins whose REF
-and ALT differ in length has two, because its bases can be matched from either end. The functions here use all
-placements and the splice dinucleotides to find the alt coding region, or to report why it is unknown.
+A left-normalized VCF record names the leftmost placement of a variant. An indel in a repeat has more placements that
+give the same alt sequence: it shifts right through the repeat. Near an exon boundary, these placements can disagree
+on whether the exon or the intron changes. A delins whose REF and ALT differ in length has two placements, because its
+bases can be matched from either end. The functions here use all placements and the splice dinucleotides to find the
+alt coding region, or to report why it is unknown.
 
 Coordinates are 0-based, half-open and on the plus strand. A boundary is a point between two bases: boundary x lies
 between base x - 1 and base x.
@@ -33,6 +34,7 @@ class ReferenceSequence:
 
     def __init__(self, fasta, chromosome, max_chunks=_MAX_CHUNKS):
         self._sequence = fasta[chromosome]
+        self._length = len(self._sequence)
         self._chunks = OrderedDict()
         self._max_chunks = max_chunks
 
@@ -41,7 +43,9 @@ class ReferenceSequence:
             self._chunks.move_to_end(index)
             return self._chunks[index]
         start = index * _CHUNK_SIZE
-        chunk = self._sequence[start : start + _CHUNK_SIZE].seq.upper()
+        # The read ends at the chromosome end: a pyfaidx.Fasta with strict_bounds=True raises for a read past it
+        end = min(start + _CHUNK_SIZE, self._length)
+        chunk = self._sequence[start:end].seq.upper() if start < end else ""
         self._chunks[index] = chunk
         if len(self._chunks) > self._max_chunks:
             self._chunks.popitem(last=False)
@@ -145,7 +149,7 @@ class TranscriptEffect:
     Effect of a variant on the coding region of one transcript.
 
     ``unknown_reason`` is SPLICE_SITE_DESTROYED or EXON_BOUNDARY_AMBIGUOUS if the alt transcript is unknown,
-    else None. ``alt_coding`` maps each given coding row (start, end) to its alt bases, if the alt is known.
+    else None. ``alt_coding`` maps each given coding interval (start, end) to its alt bases, if the alt is known.
     ``utr5`` and ``utr3`` give the change of the UTR next to the coding region as (ref, alt), in transcript
     orientation: the ref bases right before the coding region (5'UTR) or right after it (3'UTR), and the alt bases
     that replace them. If the variant leaves that UTR unchanged, ref equals alt, and both are mostly empty.
@@ -162,26 +166,29 @@ class TranscriptEffect:
 
 def trim_alleles(start, ref, alt):
     """
-    Remove the bases that REF and ALT share at the start, then those they share at the end.
+    Remove the bases that REF and ALT share at the end, then those they share at the start. For a left-normalized
+    record, this gives the leftmost placement. This holds also at POS 1, where the padding base of an indel follows the
+    indel.
 
     :param start: 0-based position of the first REF base
     :return: (start, ref, alt) of the changed bases. ref is empty for an insertion, alt for a deletion.
     """
-    prefix = 0
-    while prefix < min(len(ref), len(alt)) and ref[prefix] == alt[prefix]:
-        prefix += 1
-    ref = ref[prefix:]
-    alt = alt[prefix:]
     suffix = 0
     while suffix < min(len(ref), len(alt)) and ref[-1 - suffix] == alt[-1 - suffix]:
         suffix += 1
-    return start + prefix, ref[: len(ref) - suffix], alt[: len(alt) - suffix]
+    ref = ref[: len(ref) - suffix]
+    alt = alt[: len(alt) - suffix]
+    prefix = 0
+    while prefix < min(len(ref), len(alt)) and ref[prefix] == alt[prefix]:
+        prefix += 1
+    return start + prefix, ref[prefix:], alt[prefix:]
 
 
 def equivalent_placements(start, ref, alt, reference):
     """
     All placements of a trimmed variant that give the same alt sequence, from left to right by where their length
-    change lies. A deletion or insertion shifts through a repeat. A delins whose REF and ALT differ in length has two
+    change lies. A deletion or insertion shifts right through a repeat, from the given placement on, so the given
+    placement must be the leftmost one (is_left_normalized). A delins whose REF and ALT differ in length has two
     placements: its bases matched from the right, then from the left. Any other variant has one placement.
 
     :param start, ref, alt: the changed bases, as returned by trim_alleles
@@ -196,19 +203,13 @@ def equivalent_placements(start, ref, alt, reference):
 
     if ref:
         length = len(ref)
-        first = start
-        while first > 0 and reference.base(first - 1) == reference.base(first + length - 1):
-            first -= 1
         last = start
         while reference.base(last + length) is not None and reference.base(last) == reference.base(last + length):
             last += 1
-        return [Placement(position, position + length, "") for position in range(first, last + 1)]
+        return [Placement(position, position + length, "") for position in range(start, last + 1)]
 
     inserted = alt
     position = start
-    while position > 0 and reference.base(position - 1) == inserted[-1]:
-        inserted = inserted[-1] + inserted[:-1]
-        position -= 1
     placements = [Placement(position, position, inserted)]
     while reference.base(position) == inserted[0]:
         inserted = inserted[1:] + inserted[0]
@@ -228,6 +229,20 @@ def variant_placements(start, ref, alt, reference):
     if not ref and not alt:
         return []
     return equivalent_placements(start, ref, alt, reference)
+
+
+def is_left_normalized(start, ref, alt, reference):
+    """
+    Whether a VCF record is left-normalized: its deletion or insertion cannot shift left through a repeat. It can if
+    the base before it equals its last base. Any other variant is left-normalized.
+
+    :param start: 0-based position of the first REF base
+    """
+    start, ref, alt = trim_alleles(start, ref.upper(), alt.upper())
+    if bool(ref) == bool(alt):
+        return True
+    last_base = reference.base(start + len(ref) - 1) if ref else alt[-1]
+    return reference.base(start - 1) != last_base
 
 
 def exon_boundaries(exons, reference):
@@ -319,12 +334,12 @@ def _stop_codon_position(placements, edge, strand, exon_edge):
     return position if exon_edge is None else max(position, exon_edge)
 
 
-def place_in_transcript(placements, coding_rows, exons, reference, strand, coding_region, boundaries=None):
+def place_in_transcript(placements, coding_intervals, exons, reference, strand, coding_region, boundaries=None):
     """
     Effect of a variant on the coding region of one transcript.
 
-    The window of the variant is the union of its placements. If the window touches a coding row, or the splice
-    dinucleotide at an exon edge of a coding row (not at a transcript end), the variant has an effect.
+    The window of the variant is the union of its placements. If the window touches a coding interval, or the splice
+    dinucleotide at an exon edge of a coding interval (not at a transcript end), the variant has an effect.
 
     Each placement maps each nearby exon boundary to an alt position (ExonBoundary.alt_position), and a position is
     valid if the reference splice dinucleotide stays next to it. A placement is valid if all its positions are valid.
@@ -335,28 +350,29 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     is valid there: valid placements that put a transcript end at different alt positions make the boundary
     ambiguous.
 
-    The exon boundaries decide which bases the mRNA holds. A coding row edge at an exon boundary takes the boundary's
-    alt position, except at the two edges of the whole coding region, where the exon can hold UTR bases next to the
-    coding region. At the stop codon, the edge takes the position of the valid placement shifted farthest into the
-    3'UTR, so an indel that fits into the UTR leaves the coding region unchanged. At the start codon, it takes the
+    The exon boundaries decide which bases the mRNA holds. A coding interval edge at an exon boundary takes the
+    boundary's alt position, except at the two edges of the whole coding region, where the exon can hold UTR bases next
+    to the coding region. At the stop codon, the edge takes the position of the valid placement shifted farthest into
+    the 3'UTR, so an indel that fits into the UTR leaves the coding region unchanged. At the start codon, it takes the
     5'-most position, over all valid placements, where an ATG starts in the alt, because a scanning ribosome starts at
     the first ATG. Without such a position, it takes the position of the valid placement shifted farthest into the
-    5'UTR. Of the two placements of a delins, the one with its length change at the UTR end counts as shifted into
-    the UTR. If such an edge is also an exon edge, its position stays on the exon side of the exon boundary's alt
-    position. So for an insertion at that exon boundary, the splice site decides whether its bases enter the mRNA, and
-    the coding region edge rule decides whether they are coding. The alt bases that these rules leave outside the
-    coding region, and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
+    5'UTR. Of the two placements of a delins, the one with its length change at the UTR end counts as shifted into the
+    UTR. If such an edge is also an exon edge, its position stays on the exon side of the exon boundary's alt position.
+    So for an insertion at that exon boundary, the splice site decides whether its bases enter the mRNA, and the coding
+    region edge rule decides whether they are coding. The alt bases that these rules leave outside the coding region,
+    and the deleted UTR bases, give the UTR change (TranscriptEffect.utr5 and utr3).
 
     :param placements: equivalent placements of the variant (equivalent_placements)
-    :param coding_rows: (start, end) of the coding rows (CDS plus stop codon, one per exon) near the variant
+    :param coding_intervals: (start, end) of the coding intervals near the variant, one per exon: the CDS records,
+        which include the stop codon
     :param exons: (start, end) of every exon of the transcript
     :param reference: ReferenceSequence of the chromosome
     :param strand: strand of the transcript, "+" or "-"
-    :param coding_region: (start, end) of the transcript's whole coding region: the smallest coding row start and the
-        largest coding row end
+    :param coding_region: (start, end) of the transcript's whole coding region: the smallest start and the largest end
+        of the coding intervals
     :param boundaries: exon_boundaries(exons, reference), or None to compute it here. It is the same for every variant
         of the transcript, so a caller with many variants computes it once.
-    :return: TranscriptEffect, or None if the variant touches no coding row and no splice dinucleotide
+    :return: TranscriptEffect, or None if the variant touches no coding interval and no splice dinucleotide
     """
     if not placements:
         return None
@@ -368,11 +384,11 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     splice_sites = {(b.position, b.exon_on_left) for b in boundaries if b.dinucleotide is not None}
     coding_start, coding_end = coding_region
 
-    # An insertion at an exon edge of a coding row goes into the coding row, but not at an edge of the whole coding
-    # region: there its bases go into the UTR. At the start codon they can be coding, but only through another
-    # placement inside the coding row.
+    # An insertion at an exon edge of a coding interval goes into the coding interval, but not at an edge of the whole
+    # coding region: there its bases go into the UTR. At the start codon they can be coding, but only through another
+    # placement inside the coding interval.
     targets = []
-    for start, end in coding_rows:
+    for start, end in coding_intervals:
         targets.append(
             (start, end, start in exon_starts and start != coding_start, end in exon_ends and end != coding_end)
         )
@@ -418,7 +434,7 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
     ]
     left = ("", "")
     right = ("", "")
-    for start, end in coding_rows:
+    for start, end in coding_intervals:
         exon_start = resolved.get((start, False))
         exon_end = resolved.get((end, True))
         if start == coding_start:
@@ -438,7 +454,7 @@ def place_in_transcript(placements, coding_rows, exons, reference, strand, codin
         else:
             alt_end = exon_end if exon_end is not None else rightmost.map_boundary(end, insert_left=False)
         # Guard: exon edges come from one placement and keep their order, but the coding region edge rules can take
-        # the two edges of a row from different placements
+        # the two edges of a coding interval from different placements
         if alt_end < alt_start:
             return TranscriptEffect(unknown_reason=SPLICE_SITE_DESTROYED)
         bases_start = min(start, window_start)

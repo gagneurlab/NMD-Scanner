@@ -57,7 +57,7 @@ uv run ruff check --fix .
 uv run pytest
 
 # Run a single test
-uv run pytest tests/test_rules.py::test_name -x
+uv run pytest tests/test_ptc.py::test_name -x
 ```
 
 ## Releases

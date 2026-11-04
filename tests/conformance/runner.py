@@ -4,7 +4,8 @@ Runner of the conformance cases.
 A case pins one constellation: one transcript layout and one variant. A few cases have more variants or none. The
 runner writes a GFF3 (GENCODE or Ensembl flavor), a FASTA and a VCF file for the case, runs annotate() on them and
 compares the result with the expected value of every output column. A case on input that annotate() rejects expects
-an error instead.
+an error instead. The VCF holds each deletion and insertion left-normalized, as annotate() requires. Other records
+keep their padding (left_normalize).
 Each case runs on both strands. The layout is given 5' to 3', in transcript orientation, and on the minus strand the
 chromosome holds its reverse complement. A column in genomic coordinates has one expected value per strand.
 
@@ -17,6 +18,7 @@ constellation. A meta-test in test_conformance.py checks that each drawing holds
 """
 
 import dataclasses
+import os
 import re
 from collections.abc import Callable
 from typing import Any, NamedTuple
@@ -37,6 +39,8 @@ FLAVORS = ("gencode", "ensembl")
 # The columns that depend on the transcript only. A Layout gives their expected values.
 REF_COLUMNS = (
     "transcript_id",
+    "transcript_type",
+    "transcript_tags",
     "gene_id",
     "chrom",
     "strand",
@@ -49,7 +53,7 @@ REF_COLUMNS = (
     "cds_frame",
     "ref_cds_exons",
     "cds_in_transcript",
-    "start_codon_exon",
+    "start_codon_exon_number",
     "ref_last_codon",
     "ref_valid_stop",
     "ref_first_stop_codon",
@@ -87,11 +91,20 @@ def per_strand(plus, minus):
     return PerStrand(plus, minus)
 
 
-# Expected values that many cases share
-IDS = {"transcript_id": "tx1", "gene_id": "g1", "chrom": CHROMOSOME, "strand": per_strand("+", "-")}
+# Expected values that many cases share. The transcript record of the GFF3 has the transcript_type of TYPES (GENCODE)
+# or the biotype protein_coding (Ensembl), and a tag only if the Transcript has tags. The Layout of a Transcript with
+# tags gives them as transcript_tags.
+IDS = {
+    "transcript_id": "tx1",
+    "transcript_type": "protein_coding",
+    "transcript_tags": None,
+    "gene_id": "g1",
+    "chrom": CHROMOSOME,
+    "strand": per_strand("+", "-"),
+}
 NOT_SCANNED = {
     "alt_scan_start_codon_pos": None,
-    "alt_scan_start_codon_exon": None,
+    "alt_scan_start_codon_exon_number": None,
     "alt_scan_first_stop_codon": None,
     "alt_scan_first_stop_pos": None,
     "alt_scan_stop_codon_count": None,
@@ -106,7 +119,7 @@ NO_PTC_FEATURES = {
     "ptc_exon_length": None,
     "ptc_to_exon_end": None,
 }
-# The NMD rules of a row that is not a PTC row
+# The NMD rules of a variant-transcript pair that is not a PTC variant
 NO_RULE = {
     "nmd_last_exon_rule": None,
     "nmd_50nt_penultimate_rule": None,
@@ -115,10 +128,10 @@ NO_RULE = {
     "nmd_single_exon_rule": None,
     "nmd_escape": None,
 }
-# The NMD rules of a PTC row whose PTC meets no rule
+# The NMD rules of a PTC variant whose PTC meets no rule
 RULES_FALSE = dict.fromkeys(NO_RULE, False)
-# A row with unknown_reason: the alt transcript is unknown, so every column of the alt side is null, and the
-# model cannot predict the row
+# A variant-transcript pair with unknown_reason: the alt transcript is unknown, so every column of the alt side is
+# null, and the model cannot predict the pair
 UNKNOWN_ALT = {
     "alt_cds_seq": None,
     "alt_cds_length": None,
@@ -163,7 +176,7 @@ class _SameExons:
 
 
 # The expected alt_transcript_exons of a variant that keeps the length of every exon: the transcript_exons of
-# the row
+# the variant-transcript pair
 SAME_EXONS = _SameExons()
 
 
@@ -177,20 +190,22 @@ class Transcript:
     A transcript on its own chromosome, given 5' to 3' in transcript orientation.
 
     :param exons: exon sequences in transcript order. Upper case bases form the coding region: the CDS with its stop
-        codon, as a GFF3 CDS row holds it. Lower case bases are UTR.
+        codon, as a GFF3 CDS record holds it. Lower case bases are UTR.
     :param introns: intron sequences, INTRON by default
-    :param start_codon: whether the GFF3 has start_codon rows, on the first 3 coding bases
-    :param stop_codon: whether the GFF3 has stop_codon rows, on the last 3 coding bases
-    :param frame: GFF3 phase of the 5'-most CDS row: the number of bases before the first complete codon
-    :param tags: tags of the transcript, e.g. cds_start_NF. GENCODE repeats them on every row of the transcript;
-        Ensembl has them on the transcript row only.
-    :param exon_rows: whether the GFF3 has the exon rows
+    :param start_codon: whether the GFF3 has start_codon records, on the first 3 coding bases
+    :param stop_codon: whether the GFF3 has stop_codon records, on the last 3 coding bases
+    :param frame: GFF3 phase of the 5'-most CDS record: the number of bases before the first complete codon
+    :param tags: tags of the transcript, e.g. cds_start_NF. GENCODE repeats them on every record of the
+        transcript; Ensembl has them on the transcript record only.
+    :param exon_records: whether the GFF3 has the exon records
     :param flanks: the chromosome bases before the 5' end and after the 3' end of the transcript
     :param contig: the name of the chromosome, e.g. chrM for the mitochondrial stop codons
-    :param flavor: "gencode" or "ensembl". An Ensembl GFF3 has biotype attributes, an mRNA row, the ID/Parent
-        hierarchy with gene: and transcript: prefixes, exon numbers as rank, and never start_codon or stop_codon rows.
-    :param edit_gff3: a function that takes the GFF3 rows (lists of the 9 columns, as strings) and the strand, and
-        returns the rows to write. For annotations that the other fields cannot express, e.g. a CDS outside the exons.
+    :param flavor: "gencode" or "ensembl". An Ensembl GFF3 has biotype attributes, an mRNA record, the
+        ID/Parent hierarchy with gene: and transcript: prefixes, exon numbers as rank, and never start_codon or
+        stop_codon records.
+    :param edit_gff3: a function that takes the GFF3 records (lists of the 9 columns, as strings) and the strand,
+        and returns the records to write. For annotations that the other fields cannot express, e.g. a CDS outside
+        the exons.
     :param fasta_contig: the name of the chromosome in the FASTA, if it differs from contig, e.g. for a FASTA that
         lacks the chromosome of the transcript
     """
@@ -201,7 +216,7 @@ class Transcript:
     stop_codon: bool = True
     frame: int = 0
     tags: tuple[str, ...] = ()
-    exon_rows: bool = True
+    exon_records: bool = True
     flanks: tuple[str, str] = (FLANK, FLANK)
     contig: str = CHROMOSOME
     flavor: str = "gencode"
@@ -244,36 +259,39 @@ class Transcript:
         return (start, end) if strand == "+" else (length - end, length - start)
 
     def gff3(self, strand):
-        """The lines of the GFF3 with the gene, the transcript and its exon, CDS and codon rows."""
+        """The lines of the GFF3 with the gene, the transcript and its exon, CDS and codon records."""
         spans = self.exon_spans()
         ensembl = self.flavor == "ensembl"
         tag = f";tag={','.join(self.tags)}" if self.tags else ""
         if ensembl:
             gene = "ID=gene:g1;gene_id=g1;biotype=protein_coding"
-            transcript_row = ("mRNA", "ID=transcript:tx1;Parent=gene:g1;transcript_id=tx1;biotype=protein_coding" + tag)
+            transcript_record = (
+                "mRNA",
+                "ID=transcript:tx1;Parent=gene:g1;transcript_id=tx1;biotype=protein_coding" + tag,
+            )
         else:
             gene = "ID=g1;gene_id=g1;" + TYPES
-            transcript_row = ("transcript", "ID=tx1;Parent=g1;gene_id=g1;transcript_id=tx1;" + TYPES + tag)
+            transcript_record = ("transcript", "ID=tx1;Parent=g1;gene_id=g1;transcript_id=tx1;" + TYPES + tag)
         transcript = ";gene_id=g1;transcript_id=tx1;" + TYPES
 
-        def row(feature, start, end, phase, attributes):
+        def record(gff3_type, start, end, phase, attributes):
             genomic_start, genomic_end = self.to_genome(start, end, strand)
-            columns = [self.contig, "test", feature, genomic_start + 1, genomic_end, ".", strand, phase, attributes]
+            columns = [self.contig, "test", gff3_type, genomic_start + 1, genomic_end, ".", strand, phase, attributes]
             return [str(column) for column in columns]
 
-        rows = [
-            row("gene", spans[0][0], spans[-1][1], ".", gene),
-            row(transcript_row[0], spans[0][0], spans[-1][1], ".", transcript_row[1]),
+        records = [
+            record("gene", spans[0][0], spans[-1][1], ".", gene),
+            record(transcript_record[0], spans[0][0], spans[-1][1], ".", transcript_record[1]),
         ]
         # The coding bases in layout positions, 5' to 3'
         coding = [
             start + i for (start, _), exon in zip(spans, self.exons) for i, base in enumerate(exon) if base.isupper()
         ]
-        features = [("CDS", coding)]
+        gff3_types = [("CDS", coding)]
         if self.start_codon and not ensembl:
-            features.append(("start_codon", coding[:3]))
+            gff3_types.append(("start_codon", coding[:3]))
         if self.stop_codon and not ensembl:
-            features.append(("stop_codon", coding[-3:]))
+            gff3_types.append(("stop_codon", coding[-3:]))
         phase = self.frame
         for number, (start, end) in enumerate(spans, start=1):
             if ensembl:
@@ -281,23 +299,25 @@ class Transcript:
             else:
                 attributes = f"Parent=tx1{transcript};exon_number={number}{tag}"
                 exon_attributes = f"ID=exon:tx1:{number};" + attributes
-            if self.exon_rows:
-                rows.append(row("exon", start, end, ".", exon_attributes))
-            for feature, positions in features:
+            if self.exon_records:
+                records.append(record("exon", start, end, ".", exon_attributes))
+            for gff3_type, positions in gff3_types:
                 part = [position for position in positions if start <= position < end]
                 if not part:
                     continue
                 if ensembl:
-                    feature_attributes = "ID=CDS:p1;Parent=transcript:tx1;protein_id=p1"
+                    record_attributes = "ID=CDS:p1;Parent=transcript:tx1;protein_id=p1"
                 else:
-                    feature_attributes = f"ID={feature}:tx1:{number};" + attributes
-                rows.append(row(feature, part[0], part[-1] + 1, phase if feature == "CDS" else ".", feature_attributes))
-                if feature == "CDS":
-                    # the phase of the next CDS row: the bases that its first codon still needs
+                    record_attributes = f"ID={gff3_type}:tx1:{number};" + attributes
+                records.append(
+                    record(gff3_type, part[0], part[-1] + 1, phase if gff3_type == "CDS" else ".", record_attributes)
+                )
+                if gff3_type == "CDS":
+                    # the phase of the next CDS record: the bases that its first codon still needs
                     phase = (3 - (len(part) - phase) % 3) % 3
         if self.edit_gff3 is not None:
-            rows = self.edit_gff3(rows, strand)
-        return ["\t".join(columns) for columns in rows]
+            records = self.edit_gff3(records, strand)
+        return ["\t".join(columns) for columns in records]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -307,7 +327,8 @@ class Change:
     once in the layout of the transcript, and ref becomes alt. ref is empty for an insertion, and alt for a deletion.
 
     The VCF record is on the plus strand. An insertion or a deletion gets a padding base on its left in the genome,
-    which on the minus strand is the base 3' of the change in the transcript.
+    which on the minus strand is the base 3' of the change in the transcript. The runner writes an insertion or a
+    deletion left-normalized on the strand, and any other record with its padding (record).
 
     :param vcf_ref: the REF of the VCF record in transcript orientation, if it differs from ref, e.g. for a reference
         mismatch
@@ -337,7 +358,10 @@ class Change:
         return starts[0] + len(left)
 
     def record(self, transcript, strand):
-        """(POS, REF, ALT) of the VCF record."""
+        """
+        (POS, REF, ALT) of the VCF record that the runner writes, as left_normalize gives it on the strand, except a
+        record with vcf_ref or vcf_alt.
+        """
         _, ref, alt, _ = self.parse()
         start = self.locate(transcript)
         if self.vcf_ref is not None:
@@ -348,9 +372,12 @@ class Change:
             ref = reverse_complement(ref)
             alt = reverse_complement(alt)
         if not ref or not alt:
+            assert start >= 1, f"{self.text}: the padding base of the record would lie before the first chromosome base"
             start -= 1
             ref = genome[start] + ref
             alt = genome[start] + alt
+        if self.vcf_ref is None and self.vcf_alt is None:
+            start, ref, alt = left_normalize(start, ref, alt, genome)
         if "ref" in self.lower_case:
             ref = ref.lower()
         if "alt" in self.lower_case:
@@ -358,6 +385,33 @@ class Change:
         if self.vcf_alt is not None:
             alt = self.vcf_alt.format(ref=ref)
         return start + 1, ref, alt
+
+
+def left_normalize(start, ref, alt, genome):
+    """
+    The VCF record (start, REF, ALT) as the runner writes it. start is 0-based. The changed bases are REF and ALT
+    without their shared last bases, then without their shared first bases. A deletion or an insertion is
+    left-normalized, as `bcftools norm -f` writes it. It shifts left while the base before it equals its last base. It
+    is then anchored on the base before it, or on the base after it at the first chromosome base. Any other record
+    stays as it is, e.g. an SNV, an MNV or a delins. It keeps its padding, so an equivalent description with padding
+    tests a padded record. `bcftools norm -f` would trim the padding.
+    """
+    suffix = len(os.path.commonprefix([ref[::-1], alt[::-1]]))
+    changed_ref, changed_alt = ref[: len(ref) - suffix], alt[: len(alt) - suffix]
+    prefix = len(os.path.commonprefix([changed_ref, changed_alt]))
+    position, changed_ref, changed_alt = start + prefix, changed_ref[prefix:], changed_alt[prefix:]
+    if bool(changed_ref) == bool(changed_alt):
+        return start, ref, alt
+    while position > 0 and genome[position - 1] == (changed_ref or changed_alt)[-1]:
+        position -= 1
+        if changed_ref:
+            changed_ref = genome[position] + changed_ref[:-1]
+        else:
+            changed_alt = changed_alt[-1] + changed_alt[:-1]
+    if position == 0:
+        after = genome[len(changed_ref)]
+        return 0, changed_ref + after, changed_alt + after
+    return position - 1, genome[position - 1] + changed_ref, genome[position - 1] + changed_alt
 
 
 @dataclasses.dataclass(frozen=True)
@@ -420,25 +474,25 @@ class Layout:
         assert sorted(self.ref) == sorted(REF_COLUMNS), _column_difference(self.ref, REF_COLUMNS)
 
 
-# Why a variant gives no row ("Technical Notes.md", section "Output columns"), and a VCF without a record
-NO_ROW_REASONS = (
+# Why a variant gives no result ("Technical Notes.md", section "Output columns"), and a VCF without a record
+NO_RESULT_REASONS = (
     "touches no coding region",
     "symbolic allele",
     "breakend",
-    'ALT "." or "*"',
+    'missing ALT or ALT "*"',
     "REF mismatch",
     "no record",
 )
 
 
 @dataclasses.dataclass(frozen=True)
-class NoRow:
-    """The expected result of a variant that gives no row, with the reason (one of NO_ROW_REASONS)."""
+class NoResult:
+    """The expectation that the variant gives no result, with the reason (one of NO_RESULT_REASONS)."""
 
     reason: str
 
     def __post_init__(self):
-        assert self.reason in NO_ROW_REASONS, self.reason
+        assert self.reason in NO_RESULT_REASONS, self.reason
 
 
 @dataclasses.dataclass(frozen=True)
@@ -467,15 +521,17 @@ class Case:
     :param drawing: the transcript and the variant, 5' to 3': the block that render_case() draws, and sentences that
         explain the constellation
     :param change: the variant, or None for a VCF without a record
-    :param expected: the expected values, NoRow if the variant gives no row, or Raises for an error of annotate()
+    :param expected: the expected values, NoResult if the variant gives no result, or Raises for an error of annotate().
+        The columns that echo the VCF record give the record that the runner writes for change (Change.record).
     :param equivalent: other descriptions of the same variant. Each gives the same result, except for the columns that
-        echo the VCF record.
+        echo the VCF record. The runner writes each description as left_normalize gives it on the strand, and runs the
+        descriptions with the same VCF record once.
     :param bug: the id and a short description of a known bug that makes the case fail. The case then runs as a
         strict xfail and keeps the documented or decided result as the expected one.
     :param more_changes: further variants in the same VCF, each with its own vcf_id
-    :param more_rows: the expected values of further rows, e.g. of a second transcript or of more_changes. Each row
-        gives the columns whose values differ from the first row. The runner compares the rows in the order of
-        transcript_id, then variant_id.
+    :param more_pairs: the expected values of further variant-transcript pairs, e.g. of a second transcript or of
+        more_changes. Each item gives the columns whose values differ from the first pair. The runner compares the
+        pairs in the order of transcript_id, then variant_id.
     :param reassign_exons: the reassign_exons argument of annotate()
     :param marks: the Mark, Span and Ruler lines of the drawing, under the change
     :param ruler: the Ruler line of the drawing above the ref line
@@ -485,11 +541,11 @@ class Case:
     drawing: str
     layout: Layout
     change: Change | None
-    expected: dict | NoRow | Raises
+    expected: dict | NoResult | Raises
     equivalent: tuple[Change, ...] = ()
     bug: str | None = None
     more_changes: tuple[Change, ...] = ()
-    more_rows: tuple[dict, ...] = ()
+    more_pairs: tuple[dict, ...] = ()
     reassign_exons: bool = False
     marks: tuple[Mark | Span | Ruler, ...] = ()
     ruler: Ruler | None = None
@@ -499,9 +555,9 @@ class Case:
         if isinstance(self.expected, dict):
             assert sorted(self.expected) == sorted(CASE_COLUMNS), _column_difference(self.expected, CASE_COLUMNS)
         else:
-            assert not self.more_rows, f"{self.name} has more_rows but expects no row"
-        for row in self.more_rows:
-            assert set(row) <= set(OUTPUT_COLUMN_KINDS), _column_difference(row, OUTPUT_COLUMN_KINDS)
+            assert not self.more_pairs, f"{self.name} has more_pairs but expects no result"
+        for more in self.more_pairs:
+            assert set(more) <= set(OUTPUT_COLUMN_KINDS), _column_difference(more, OUTPUT_COLUMN_KINDS)
 
 
 def _column_difference(columns, expected):
@@ -511,14 +567,20 @@ def _column_difference(columns, expected):
 def case_params(cases):
     """
     pytest params (case, change, strand) of each case on each strand, for its change and each equivalent description.
-    A case with a known bug is a strict xfail.
+    The descriptions whose VCF records are the same on a strand run once there, with the label of the first one. A case
+    with a known bug is a strict xfail.
     """
     params = []
     for case in cases:
         marks = [pytest.mark.xfail(reason=case.bug, strict=True)] if case.bug else []
         changes = [("vcf", case.change)] + [(f"equivalent{i}", change) for i, change in enumerate(case.equivalent, 1)]
+        records = {"+": set(), "-": set()}
         for label, change in changes:
             for strand, strand_name in [("+", "plus"), ("-", "minus")]:
+                record = None if change is None else change.record(case.layout.transcript, strand)
+                if record in records[strand]:
+                    continue
+                records[strand].add(record)
                 params.append(pytest.param(case, change, strand, id=f"{case.name}-{strand_name}-{label}", marks=marks))
     return params
 
@@ -555,8 +617,9 @@ def write_inputs(transcript, changes, strand, directory):
 def run(case, change, strand, directory, sequences=True):
     """
     Run annotate() on the case, with the given description of its variant and the further variants of the case.
-    Return the result table and the VCF record of the given description, None without one. The cases pin the columns
-    of OUTPUT_COLUMN_KINDS, so annotate() runs with prediction=False. tests/test_model.py tests nmd_efficiency_prediction.
+    Return the result table and the VCF record that the runner writes for the description, None without one. The cases
+    pin the columns of OUTPUT_COLUMN_KINDS, so annotate() runs with prediction=False. tests/test_model.py tests
+    nmd_efficiency_prediction.
 
     :param sequences: the sequences argument of annotate()
     """
@@ -571,16 +634,17 @@ def on_strand(value, strand):
     return getattr(value, "plus" if strand == "+" else "minus") if isinstance(value, PerStrand) else value
 
 
-def expected_row(case, strand, more=None):
+def expected_pair(case, strand, more=None):
     """
-    The expected value of every output column on the strand, in output order: of the first row, or of the further row
-    with the values more, an item of more_rows. SAME_EXONS becomes the transcript_exons of the row.
+    The expected value of every output column on the strand, in output order: of the first variant-transcript pair, or
+    of the further pair with the values more, an item of more_pairs. SAME_EXONS becomes the transcript_exons of the
+    pair.
     """
     values = {**case.layout.ref, **case.expected, **(more or {})}
-    row = {column: on_strand(values[column], strand) for column in OUTPUT_COLUMN_KINDS}
-    if row["alt_transcript_exons"] is SAME_EXONS:
-        row["alt_transcript_exons"] = row["transcript_exons"]
-    return row
+    pair = {column: on_strand(values[column], strand) for column in OUTPUT_COLUMN_KINDS}
+    if pair["alt_transcript_exons"] is SAME_EXONS:
+        pair["alt_transcript_exons"] = pair["transcript_exons"]
+    return pair
 
 
 def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN_KINDS):
@@ -604,29 +668,31 @@ def check(case, change, strand, directory, sequences=True, columns=OUTPUT_COLUMN
         if results[column].dtype != pd.api.types.pandas_dtype(KIND_DTYPES[kind])
     ]
     assert not wrong_dtypes, f"wrong dtypes: {wrong_dtypes}"
-    if isinstance(case.expected, NoRow):
-        assert len(results) == 0, f"expected 0 rows, got {len(results)}"
+    if isinstance(case.expected, NoResult):
+        assert len(results) == 0, f"expected 0 variant-transcript pairs, got {len(results)}"
         return
 
-    rows = [expected_row(case, strand, more) for more in ({}, *case.more_rows)]
+    expected_pairs = [expected_pair(case, strand, more) for more in ({}, *case.more_pairs)]
     if change is not case.change:
-        # Another description of the variant: the columns that echo the VCF record take it from the record, unless a
-        # further row gives them
+        # An equivalent description: the columns that echo the VCF record take the record of the description, unless a
+        # further pair gives them
         pos, ref, alt = record
         echo = {"ref": ref, "alt": alt, "start": pos - 1, "end": pos - 1 + len(ref)}
-        for row, more in zip(rows, ({}, *case.more_rows)):
-            row.update({column: value for column, value in echo.items() if column not in more})
-    assert len(results) == len(rows), f"expected {len(rows)} rows, got {len(results)}"
+        for pair, more in zip(expected_pairs, ({}, *case.more_pairs)):
+            pair.update({column: value for column, value in echo.items() if column not in more})
+    assert len(results) == len(expected_pairs), (
+        f"expected {len(expected_pairs)} variant-transcript pairs, got {len(results)}"
+    )
 
-    def key(row):
+    def key(pair):
         # variant_id is null for a record without ID
-        return row["transcript_id"], row["variant_id"] is not None, row["variant_id"] or ""
+        return pair["transcript_id"], pair["variant_id"] is not None, pair["variant_id"] or ""
 
-    actual_rows = [{column: plain(value) for column, value in results.iloc[i].items()} for i in range(len(results))]
+    actual_pairs = [{column: plain(value) for column, value in results.iloc[i].items()} for i in range(len(results))]
     differences = [
-        (f"{key(expected)}: " if len(rows) > 1 else "")
+        (f"{key(expected)}: " if len(expected_pairs) > 1 else "")
         + f"{column}: expected {expected[column]!r}, got {actual[column]!r}"
-        for expected, actual in zip(sorted(rows, key=key), sorted(actual_rows, key=key))
+        for expected, actual in zip(sorted(expected_pairs, key=key), sorted(actual_pairs, key=key))
         for column in columns
         if actual[column] != expected[column] or type(actual[column]) is not type(expected[column])
     ]
@@ -904,29 +970,29 @@ def render(transcript, change=None, marks=(), ruler=None, more_changes=(), equiv
             line += " " * (at - len(line)) + str(position)
         return line
 
-    rows = [(_ruler_label(ruler), numbers(ruler))] if ruler else []
-    rows.append(("ref", ref_line))
+    lines = [(_ruler_label(ruler), numbers(ruler))] if ruler else []
+    lines.append(("ref", ref_line))
     if ref != alt:
-        rows.append(("alt", alt_line))
+        lines.append(("alt", alt_line))
     if changed:
-        rows.append(("", under(xs[changed[0]], xs[changed[-1]], "^", _change_label(change))))
+        lines.append(("", under(xs[changed[0]], xs[changed[-1]], "^", _change_label(change))))
     for c in more_changes:
         touched = [xs[index["layout", "ref"][p]] for p in _touched(c, transcript)]
-        rows.append(("", under(min(touched), max(touched), "^", f"{_change_label(c)} {c.vcf_id}")))
+        lines.append(("", under(min(touched), max(touched), "^", f"{_change_label(c)} {c.vcf_id}")))
     for item in marks:
         if isinstance(item, Ruler):
-            rows.append((_ruler_label(item), numbers(item)))
+            lines.append((_ruler_label(item), numbers(item)))
             continue
         first = x(find(item.line, item.start))
         last = x(find(item.line, item.end - 1))
-        rows.append(
+        lines.append(
             (
                 "",
                 under(first, last, item.char, item.label) if isinstance(item, Mark) else arrow(first, last, item.label),
             )
         )
-    width = max(len(label) for label, _ in rows) + 1
-    return "\n".join((label.ljust(width) + body).rstrip() for label, body in rows)
+    width = max(len(label) for label, _ in lines) + 1
+    return "\n".join((label.ljust(width) + body).rstrip() for label, body in lines)
 
 
 def render_case(case):

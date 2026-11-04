@@ -27,15 +27,13 @@ VCF files created for testing the NMD-Scanner functionality.
 
 - **`test_variants.vcf`** : Test VCF containing variants on the plus strand only.
 
-- **`test_variants_minus.vcf`** : Test VCF containing variants on the minus strand only.
-
 - **`variants.vcf`** : Combined test VCF containing both plus- and minus-strand variants.
 
 The VCFs contain edge-case variants such as start and stop-loss mutations, frameshifts and nonsense mutations.
 
 ### `test_output_files/`
 
-Contains intermediate and final output files used for testing of the computation of NMD features (see `../tests/test_rules.py`).
+The input and the expected output of `ptc.create_reference_cds`, for a test in `../tests/test_ptc.py`.
 
 ---
 
@@ -49,7 +47,7 @@ These files are provided to allow testing on a small genomic region (chromosome 
 
 - **`chr18.fa.gz.gzi`** : FASTA gzip index.
 
-- **`chr18.gff3.gz`** : GFF3 annotation file for chromosome 18: the chr18 rows of `gencode.v40.annotation.gff3.gz` (GENCODE release 40), with the header lines `##gff-version`, `#description`, `#provider`, `#date` and the `##sequence-region` line of chr18.
+- **`chr18.gff3.gz`** : GFF3 annotation file for chromosome 18: the chr18 records of `gencode.v40.annotation.gff3.gz` (GENCODE release 40), with the header lines `##gff-version`, `#description`, `#provider`, `#date` and the `##sequence-region` line of chr18.
 
 - **`part-00241-61a0abbf-fbf9-444f-8287-4e46ad4b9b7b-c000.vcf`** : Example VCF file containing some variants from chromosome 18, used as a realistic input example for testing and demonstration.
 

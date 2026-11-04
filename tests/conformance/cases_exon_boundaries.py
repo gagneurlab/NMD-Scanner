@@ -1,7 +1,7 @@
 """
 Conformance cases of variant placement and exon boundaries. They cover SNVs in and next to the splice
 dinucleotides, the reach of a variant into a splice site, indels and delins at an exon edge, the transcript start,
-and the rows with unknown_reason ("Technical Notes.md", section "Variants at exon boundaries").
+and the variant-transcript pairs with unknown_reason ("Technical Notes.md", section "Variants at exon boundaries").
 
 The drawings show the transcript 5' to 3', also for the minus strand. The runner renders their layout block from the
 case. The line ref is the transcript and the line alt is the transcript with the change. The two lines are aligned,
@@ -22,7 +22,7 @@ from .runner import (
     Case,
     Change,
     Layout,
-    NoRow,
+    NoResult,
     Ruler,
     Transcript,
     per_strand,
@@ -50,7 +50,7 @@ MAIN_REF = {
         {"exon_number": 3, "length": 9},
     ],
     "cds_in_transcript": True,
-    "start_codon_exon": 1,
+    "start_codon_exon_number": 1,
     "ref_last_codon": "TAA",
     "ref_valid_stop": True,
     "ref_first_stop_codon": "TAA",
@@ -82,7 +82,8 @@ MAIN_AFTER_A = Layout(
     MAIN_REF,
 )
 
-# The alt columns of a known row whose alt CDS keeps 33 nt and its only in-frame stop codon, the annotated one
+# The alt columns of a variant-transcript pair with a known alt transcript. Its alt CDS keeps 33 nt and its only
+# in-frame stop codon, the annotated one
 KEEPS_THE_STOP_CODON = {
     "alt_cds_length": 33,
     "alt_cds_exons": [
@@ -108,8 +109,9 @@ KEEPS_THE_STOP_CODON = {
     "annotated_stop_distance": 0,
     **NO_RULE,
 }
-# The alt columns of a known row after a frameshift in the CDS of MAIN: the alt CDS ends in ...GCG TTA A, out of
-# frame, and the alt transcript reads on through ...TTA AAA AGC TGC C without a stop codon (nonstop)
+# The alt columns of a variant-transcript pair with a known alt transcript after a frameshift in the CDS of MAIN: the
+# alt CDS ends in ...GCG TTA A, out of frame, and the alt transcript reads on through ...TTA AAA AGC TGC C without a
+# stop codon (nonstop)
 FRAMESHIFT_NONSTOP = {
     "alt_last_codon": "TAA",
     "alt_valid_stop": True,
@@ -123,7 +125,7 @@ FRAMESHIFT_NONSTOP = {
     "stop_loss": True,
     "alt_cds_start_in_transcript": 0,
     "alt_scan_start_codon_pos": 0,
-    "alt_scan_start_codon_exon": 1,
+    "alt_scan_start_codon_exon_number": 1,
     "alt_scan_first_stop_codon": None,
     "alt_scan_first_stop_pos": None,
     "alt_scan_stop_codon_count": 0,
@@ -152,7 +154,7 @@ SHORT_CDS = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 6}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -191,7 +193,7 @@ STOP_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 15}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -228,7 +230,7 @@ START_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE = Layout(
         "cds_frame": 0,
         "ref_cds_exons": [{"exon_number": 1, "length": 3}, {"exon_number": 2, "length": 12}],
         "cds_in_transcript": True,
-        "start_codon_exon": 1,
+        "start_codon_exon_number": 1,
         "ref_last_codon": "TAA",
         "ref_valid_stop": True,
         "ref_first_stop_codon": "TAA",
@@ -362,13 +364,13 @@ CASES = [
         ref 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gtaagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
         alt 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gtcagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
                                                      ^ A>C
-        A>C at donor +3, outside the splice dinucleotide: no row
+        A>C at donor +3, outside the splice dinucleotide: no result
         """,
         MAIN,
         Change("GAAGCGT[A>C]AGTCC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
     ),
-    # An insertion inside the donor dinucleotide reaches the coding row
+    # An insertion inside the donor dinucleotide reaches the coding interval
     Case(
         "insertion_between_donor_plus_1_and_plus_2_destroys_the_splice_site",
         """
@@ -386,20 +388,19 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("GGAAGCG[T>AT]AAGTCC"),),
     ),
-    # An insertion right after the donor dinucleotide changes neither it nor the coding row
+    # An insertion right after the donor dinucleotide changes neither it nor the coding interval
     Case(
         "insertion_between_donor_plus_2_and_plus_3_touches_no_coding_region",
         """
         ref 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gt-aagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
         alt 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]gtcaagtcccccccctttcag[CTG CGT TAA aaagctgcc] 3'
                                                      ^ ->C
-        C inserted between donor +2 and +3: GT stays, no row
+        C inserted between donor +2 and +3: GT stays, no result
         """,
         MAIN,
         Change("GGAAGCGT[>C]AAGTCC"),
-        NoRow("touches no coding region"),
+        NoResult("touches no coding region"),
     ),
     Case(
         "deletion_from_the_last_exon_base_to_donor_plus_5_destroys_the_splice_site",
@@ -419,7 +420,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("GGCTC[TGTGTAA>A]GCCCC"),),
     ),
     Case(
         "deletion_of_tg_over_a_donor_with_an_intronic_placement_keeps_the_exon",
@@ -434,7 +434,7 @@ CASES = [
         MAIN,
         Change("GGCTC[TG>]TGTAAGC"),
         {
-            **record(per_strand("CTG", "ACA"), per_strand("C", "A"), per_strand(16, 82), per_strand(19, 85)),
+            **record(per_strand("CTG", "TAC"), per_strand("C", "T"), per_strand(16, 79), per_strand(19, 82)),
             **KEEPS_THE_STOP_CODON,
             "alt_cds_seq": "ATGGCTCTAGTGAACGTTGGAAGCCTGCGTTAA",
             "alt_transcript_seq": "ATGGCTCTAGTGAACGTTGGAAGCCTGCGTTAAAAAGCTGCC",
@@ -444,7 +444,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GGCTCT[GT>]GTAAGC"), Change("GGCTCTGT[GT>]AAGC")),
     ),
     Case(
         "deletion_of_ag_at_a_cag_ag_acceptor_keeps_the_acceptor_only_if_the_exon_loses_ag",
@@ -459,7 +458,7 @@ CASES = [
         MAIN,
         Change("CCTTTTC[AG>]AGTGAAC"),
         {
-            **record(per_strand("CAG", "TCT"), per_strand("C", "T"), per_strand(35, 63), per_strand(38, 66)),
+            **record(per_strand("CAG", "ACT"), per_strand("C", "A"), per_strand(35, 61), per_strand(38, 64)),
             **FRAMESHIFT_NONSTOP,
             "alt_cds_seq": "ATGGCTCTTGAACGTTGGAAGCCTGCGTTAA",
             "alt_cds_length": 31,
@@ -480,7 +479,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CCTTTTCA[GA>]GTGAAC"), Change("CCTTTTCAG[AG>]TGAAC")),
     ),
     Case(
         "insertion_between_an_acceptor_and_a_coding_exon_goes_into_the_exon",
@@ -515,7 +513,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("CCTTTTCAG[A>TA]GTGAAC"),),
     ),
     Case(
         "insertion_between_a_coding_exon_and_a_donor_goes_into_the_exon",
@@ -550,7 +547,6 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("GGCTCT[G>AG]TGTAAG"),),
     ),
     Case(
         "insertion_of_ag_at_a_cag_ag_acceptor_is_exon_boundary_ambiguous",
@@ -564,13 +560,12 @@ CASES = [
         MAIN,
         Change("CCTTTTCAG[>AG]AGTGAAC"),
         {
-            **record(per_strand("G", "T"), per_strand("GAG", "TCT"), per_strand(37, 63), per_strand(38, 64)),
+            **record(per_strand("C", "A"), per_strand("CAG", "ACT"), per_strand(35, 61), per_strand(36, 62)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("CCTTTTC[>AG]AGAGTGAAC"), Change("CCTTTTCAGAG[>AG]TGAAC")),
     ),
     Case(
         "insertion_of_gt_at_a_ct_gtgt_donor_is_exon_boundary_ambiguous",
@@ -584,13 +579,12 @@ CASES = [
         MAIN,
         Change("GGCTCT[>GT]GTGTAAG"),
         {
-            **record(per_strand("T", "C"), per_strand("TGT", "CAC"), per_strand(17, 83), per_strand(18, 84)),
+            **record(per_strand("C", "T"), per_strand("CTG", "TAC"), per_strand(16, 79), per_strand(17, 80)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("GGCTC[>TG]TGTGTAAG"), Change("GGCTCTGTGT[>GT]AAGCC")),
     ),
     Case(
         "deletion_over_the_transcript_start_shortens_exon_1_and_loses_the_start_codon",
@@ -629,7 +623,7 @@ CASES = [
             "alt_transcript_length": 41,
             "alt_cds_start_in_transcript": 0,
             "alt_scan_start_codon_pos": None,
-            "alt_scan_start_codon_exon": None,
+            "alt_scan_start_codon_exon_number": None,
             "alt_scan_first_stop_codon": None,
             "alt_scan_first_stop_pos": None,
             "alt_scan_stop_codon_count": 0,
@@ -649,16 +643,15 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "start_loss_scan",
         },
-        equivalent=(Change("CC[CCA>C]TGGCTCT"),),
         ruler=Ruler((0,)),
     ),
     Case(
         "deletion_in_an_a_run_across_the_transcript_start_is_exon_boundary_ambiguous",
         """
-        tx                0
-        ref 5' ccccccccca[ATG GCT CT]|[A GTG AAC GTT GGA AGC]|[CTG CGT TAA aaagctgcc] 3'
-        alt 5' ccccccccca[-TG GCT CT]|[A GTG AAC GTT GGA AGC]|[CTG CGT TAA aaagctgcc] 3'
-                          ^ A>-
+        tx      0
+        ref 5' [ATG GCT CT]|[A GTG AAC GTT GGA AGC]|[CTG CGT TAA aaagctgcc] 3'
+        alt 5' [-TG GCT CT]|[A GTG AAC GTT GGA AGC]|[CTG CGT TAA aaagctgcc] 3'
+                ^ A>-
         one A deleted: the flank A or the A of the start codon
         A transcript start has no splice dinucleotide, so both placements are valid. They put the transcript start
         at different positions: exon_boundary_ambiguous
@@ -666,13 +659,12 @@ CASES = [
         MAIN_AFTER_A,
         Change("CCCCA[A>]TGGCTCT"),
         {
-            **record(per_strand("AA", "AT"), per_strand("A", "A"), per_strand(9, 90), per_strand(11, 92)),
+            **record(per_strand("CA", "AT"), per_strand("C", "A"), per_strand(8, 90), per_strand(10, 92)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("CCCC[A>]ATGGCTCT"),),
         ruler=Ruler((0,)),
     ),
     # Pins "The shift stops at the chromosome ends. So ... an insertion can go before the first base or after the
@@ -698,13 +690,12 @@ CASES = [
         STOP_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE,
         Change("CTGTAA[>A]A"),
         {
-            **record(per_strand("A", "T"), per_strand("AA", "TT"), per_strand(27, 0), per_strand(28, 1)),
+            **record(per_strand("T", "T"), per_strand("TA", "TT"), per_strand(25, 0), per_strand(26, 1)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("CTGT[>A]AA"), Change("CTGTA[>A]A"), Change("CTGTAA[A>AA]")),
         ruler=Ruler((0, 3, 15)),
     ),
     # Pins "The shift stops at the chromosome ends. So a deletion can reach the first or the last base of the
@@ -716,8 +707,8 @@ CASES = [
         "deletion_in_an_a_run_that_ends_at_the_chromosome_edge_1_nt_past_the_transcript_end_is_exon_boundary_ambiguous",
         """
         tx      0   3               15
-        ref 5' [gcc ATG GCC AAG CTG TAA]a 3'
-        alt 5' [gcc ATG GCC AAG CTG TA-]a 3'
+        ref 5' [gcc ATG GCC AAG CTG TAA] 3'
+        alt 5' [gcc ATG GCC AAG CTG TA-] 3'
                                       ^ A>-
         One A deleted in the A run of the last 2 stop codon bases and the flank A, the last chromosome base. The
         deletion has 3 placements: tx 16, tx 17 and the flank A. Deleting the flank A keeps the transcript, and the
@@ -727,13 +718,12 @@ CASES = [
         STOP_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE,
         Change("CTGTA[A>]A"),
         {
-            **record(per_strand("AA", "TT"), per_strand("A", "T"), per_strand(26, 0), per_strand(28, 2)),
+            **record(per_strand("TA", "TT"), per_strand("T", "T"), per_strand(25, 0), per_strand(27, 2)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("CTGT[A>]AA"), Change("CTGTA[AA>A]")),
         ruler=Ruler((0, 3, 15)),
     ),
     # Pins "The shift stops at the chromosome ends. So ... an insertion can go before the first base or after the
@@ -761,13 +751,12 @@ CASES = [
         START_CODON_1_NT_FROM_THE_CHROMOSOME_EDGE,
         Change("[>A]ATGGTAAG"),
         {
-            **record(per_strand("A", "T"), per_strand("AA", "TT"), per_strand(0, 47), per_strand(1, 48)),
+            **record(per_strand("A", "A"), per_strand("AA", "AT"), per_strand(0, 46), per_strand(1, 47)),
             **AMBIGUOUS,
             "ptc_pos_in_alt_transcript": None,
             "ptc_exon_number": None,
             "stop_classification": None,
         },
-        equivalent=(Change("A[>A]TGGTAAG"), Change("[A>AA]ATGGTAAG")),
         ruler=Ruler((0, 3)),
     ),
     Case(
@@ -1022,7 +1011,7 @@ CASES = [
         cATGTAAg > 15 T (8 nt > 15 nt, 7 nt longer; the coding region ATGTAA has 6 nt)
         no splice site is near, so both matchings are valid. Neither puts an ATG at the start codon edge, so that
         edge takes the matching from the right: layout 13 > 20. The stop codon edge takes the matching from the
-        left: layout 19 > 19. The coding row would end before it starts: splice_site_destroyed
+        left: layout 19 > 19. The coding interval would end before it starts: splice_site_destroyed
         """,
         SHORT_CDS,
         Change("GC[CATGTAAG>TTTTTTTTTTTTTTT]CC"),
@@ -1100,10 +1089,10 @@ CASES = [
     # Pins "A placement is valid if the reference splice dinucleotide stays next to each of its positions. If all
     # valid placements agree, the exon edges lie there." for a deletion from coding exon 2 across intron 2 into
     # coding exon 3. Both exon edges map to its start. The AG of exon 2 stays before that position and the GT of
-    # exon 3 after it, so the alt transcript is known, and the alt bases come from two coding rows. The closest
+    # exon 3 after it, so the alt transcript is known, and the alt bases come from two coding intervals. The closest
     # cases delete a whole intron and lose both splice sites
     # (deletion_of_a_whole_intron_between_two_coding_exons_destroys_the_splice_site in cases_coding_region_edges),
-    # or delete a whole exon, which joins no two coding rows
+    # or delete a whole exon, which joins no two coding intervals
     # (deletion_of_a_whole_short_coding_exon_that_keeps_both_splice_sites_empties_the_exon there).
     Case(
         "deletion_across_an_intron_that_keeps_ag_and_gt_joins_two_coding_exons",
@@ -1160,6 +1149,5 @@ CASES = [
             "ptc_exon_number": None,
             "stop_classification": "alt_transcript",
         },
-        equivalent=(Change("TCAGAG[TGAACGTTGGAAGC" + INTRON + "CTGCG>G]TTAA"),),
     ),
 ]

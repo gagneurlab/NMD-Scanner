@@ -12,6 +12,7 @@ from nmd_scanner.variant_placement import (
     Placement,
     ReferenceSequence,
     equivalent_placements,
+    is_left_normalized,
     place_in_transcript,
     trim_alleles,
     variant_placements,
@@ -43,6 +44,19 @@ def test_reference_sequence_keeps_at_most_max_chunks(tmp_path):
     assert reference.base(4096) is None
 
 
+def test_reference_sequence_reads_up_to_the_chromosome_end_with_strict_bounds(tmp_path):
+    # 1200 bases: the last chunk holds 176 of 1024 bases. pyfaidx with strict_bounds=True raises for a read past them.
+    sequence = "ACGT" * 300
+    (tmp_path / "genome.fa").write_text(f">chrR\n{sequence}\n")
+    reference = ReferenceSequence(Fasta(str(tmp_path / "genome.fa"), strict_bounds=True), "chrR")
+    assert reference.bases(1100, 1105) == sequence[1100:1105]
+    assert reference.bases(1190, 1300) == sequence[1190:]
+    assert reference.base(1199) == "T"
+    assert reference.base(1200) is None
+    assert reference.base(5000) is None
+    assert reference.bases(2048, 2100) == ""
+
+
 def test_trim_alleles():
     # VCF padding base of an indel
     assert trim_alleles(10, "CAG", "C") == (11, "AG", "")
@@ -51,20 +65,22 @@ def test_trim_alleles():
     assert trim_alleles(10, "TG", "CG") == (10, "T", "C")
     # shared bases on both sides
     assert trim_alleles(10, "ATCATG", "ATTTG") == (12, "CA", "T")
-    assert trim_alleles(10, "A", "A") == (11, "", "")
+    assert trim_alleles(10, "A", "A") == (10, "", "")
+    # at POS 1, the padding base follows the indel, which stays at 0
+    assert trim_alleles(0, "A", "AA") == (0, "", "A")
+    assert trim_alleles(0, "AA", "A") == (0, "A", "")
 
 
 def test_equivalent_placements_deletion_in_repeat():
     reference = _Reference("GGCTGTGTAC")
     # deleting TG at 3, GT at 4, TG at 5 or GT at 6 gives GGCTGTAC
     assert equivalent_placements(3, "TG", "", reference) == [Placement(s, s + 2, "") for s in [3, 4, 5, 6]]
-    assert equivalent_placements(6, "GT", "", reference) == [Placement(s, s + 2, "") for s in [3, 4, 5, 6]]
 
 
 def test_equivalent_placements_insertion_in_repeat():
     reference = _Reference("CCAGAGTT")
     # inserting AG anywhere in AGAG gives CCAGAGAGTT
-    assert equivalent_placements(4, "", "AG", reference) == [
+    assert equivalent_placements(2, "", "AG", reference) == [
         Placement(2, 2, "AG"),
         Placement(3, 3, "GA"),
         Placement(4, 4, "AG"),
@@ -75,7 +91,7 @@ def test_equivalent_placements_insertion_in_repeat():
 
 def test_equivalent_placements_at_chromosome_ends():
     reference = _Reference("AAAC")
-    assert equivalent_placements(1, "A", "", reference) == [Placement(s, s + 1, "") for s in [0, 1, 2]]
+    assert equivalent_placements(0, "A", "", reference) == [Placement(s, s + 1, "") for s in [0, 1, 2]]
     reference = _Reference("CAAA")
     assert equivalent_placements(1, "A", "", reference) == [Placement(s, s + 1, "") for s in [1, 2, 3]]
 
@@ -90,6 +106,51 @@ def test_equivalent_placements_substitution():
     ]
 
 
+@pytest.mark.parametrize(
+    ("sequence", "start", "ref", "alt", "expected"),
+    [
+        ("GGCTGTGTAC", 3, "TG", "", True),
+        ("GGCTGTGTAC", 6, "GT", "", False),
+        ("CCAGAGTT", 2, "", "AG", True),
+        ("CCAGAGTT", 4, "", "AG", False),
+        # the padding base of an insertion after G, which can shift left
+        ("CCAGAGTT", 3, "G", "GAG", False),
+        # at the chromosome start
+        ("AAAC", 0, "A", "", True),
+        ("AAAC", 1, "A", "", False),
+        # at POS 1, the padding base follows the indel
+        ("AAAC", 0, "AA", "A", True),
+        ("AAAC", 0, "A", "AA", True),
+        # a delins whose REF and ALT differ in length
+        ("AAAAAA", 2, "AA", "C", True),
+        # lower-case alleles, as "padded"
+        ("CCAGAGTT", 3, "g", "gag", False),
+    ],
+    ids=[
+        "deletion",
+        "shifted_deletion",
+        "insertion",
+        "shifted_insertion",
+        "padded",
+        "start",
+        "shifted_start",
+        "pos_1_deletion",
+        "pos_1_insertion",
+        "delins",
+        "lower_case",
+    ],
+)
+def test_is_left_normalized(sequence, start, ref, alt, expected):
+    assert is_left_normalized(start, ref, alt, _Reference(sequence)) is expected
+
+
+def test_variant_placements_at_pos_1():
+    # The padding base of an indel at POS 1 follows it. Its placements start at position 0.
+    reference = _Reference("AAAC")
+    assert variant_placements(0, "AA", "A", reference) == [Placement(s, s + 1, "") for s in [0, 1, 2]]
+    assert variant_placements(0, "A", "AA", reference) == [Placement(s, s, "A") for s in [0, 1, 2, 3]]
+
+
 def test_variant_placements_without_change():
     # REF and ALT differ only in case
     assert variant_placements(2, "g", "G", _Reference("ACGTACGT")) == []
@@ -102,10 +163,10 @@ _GENOME = _Reference("CCATGGCTCTGTGTAAGCCCCCCTTTTCAGAGTGAACGTTGGCC")
 _EXONS = [(2, 10), (30, 40)]
 
 
-def _effect(variant_start, ref, alt, coding_rows=((2, 10), (30, 40)), exons=_EXONS):
+def _effect(variant_start, ref, alt, coding_intervals=((2, 10), (30, 40)), exons=_EXONS):
     placements = variant_placements(variant_start, ref, alt, _GENOME)
-    coding_region = (min(start for start, _ in coding_rows), max(end for _, end in coding_rows))
-    return place_in_transcript(placements, list(coding_rows), exons, _GENOME, "+", coding_region)
+    coding_region = (min(start for start, _ in coding_intervals), max(end for _, end in coding_intervals))
+    return place_in_transcript(placements, list(coding_intervals), exons, _GENOME, "+", coding_region)
 
 
 def test_place_in_transcript_changes_over_boundary_that_keep_the_donor():
